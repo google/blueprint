@@ -1,0 +1,490 @@
+package bootstrap
+
+import (
+	"blueprint"
+	"fmt"
+	"path/filepath"
+	"strings"
+)
+
+var (
+	gcCmd   = blueprint.StaticVariable("gcCmd", "$goToolDir/${GoChar}g")
+	packCmd = blueprint.StaticVariable("packCmd", "$goToolDir/pack")
+	linkCmd = blueprint.StaticVariable("linkCmd", "$goToolDir/${GoChar}l")
+
+	gc = blueprint.StaticRule("gc",
+		blueprint.RuleParams{
+			Command: "GOROOT='$GoRoot' $gcCmd -o $out -p $pkgPath -complete " +
+				"$incFlags $in",
+			Description: "${GoChar}g $out",
+		},
+		"pkgPath", "incFlags")
+
+	pack = blueprint.StaticRule("pack",
+		blueprint.RuleParams{
+			Command:     "GOROOT='$GoRoot' $packCmd grcP $prefix $out $in",
+			Description: "pack $out",
+		},
+		"prefix")
+
+	link = blueprint.StaticRule("link",
+		blueprint.RuleParams{
+			Command:     "GOROOT='$GoRoot' $linkCmd -o $out $libDirFlags $in",
+			Description: "${GoChar}l $out",
+		},
+		"libDirFlags")
+
+	cp = blueprint.StaticRule("cp",
+		blueprint.RuleParams{
+			Command:     "cp $in $out",
+			Description: "cp $out",
+		})
+
+	bootstrap = blueprint.StaticRule("bootstrap",
+		blueprint.RuleParams{
+			Command:     "$Bootstrap $in $BootstrapManifest",
+			Description: "bootstrap $in",
+			Generator:   true,
+		})
+
+	rebootstrap = blueprint.StaticRule("rebootstrap",
+		blueprint.RuleParams{
+			// Ninja only re-invokes itself once when it regenerates a .ninja
+			// file.  For the re-bootstrap process we need that to happen twice,
+			// so we invoke ninja ourselves once from this.  Unfortunately this
+			// seems to cause "warning: bad deps log signature or version;
+			// starting over" messages from Ninja.  This warning can be avoided
+			// by having the bootstrap and non-bootstrap build manifests have a
+			// different builddir (so they use different log files).
+			//
+			// This workaround can be avoided entirely by making a simple change
+			// to Ninja that would allow it to rebuild the manifest twice rather
+			// than just once.
+			Command:     "$Bootstrap $in && ninja",
+			Description: "re-bootstrap $in",
+			Generator:   true,
+		})
+
+	minibp = blueprint.StaticRule("minibp",
+		blueprint.RuleParams{
+			Command: fmt.Sprintf("%s -d %s -o $out $in",
+				minibpFile, minibpDepFile),
+			Description: "minibp $out",
+			Generator:   true,
+			Restat:      true,
+			Depfile:     minibpDepFile,
+			Deps:        blueprint.DepsGCC,
+		})
+
+	// Work around a Ninja issue.  See https://github.com/martine/ninja/pull/634
+	phony = blueprint.StaticRule("phony",
+		blueprint.RuleParams{
+			Command:     "# phony $out",
+			Description: "phony $out",
+			Generator:   true,
+		},
+		"depfile")
+
+	goPackageModule = blueprint.MakeModuleType("goPackageModule", newGoPackage)
+	goBinaryModule  = blueprint.MakeModuleType("goBinaryModule", newGoBinary)
+
+	binDir        = filepath.Join("bootstrap", "bin")
+	minibpFile    = filepath.Join(binDir, "minibp")
+	minibpDepFile = filepath.Join("bootstrap", "bootstrap_manifest.d")
+)
+
+type goPackageProducer interface {
+	GoPkgRoot() string
+	GoPackageTarget() string
+}
+
+func isGoPackageProducer(module blueprint.Module) bool {
+	_, ok := module.(goPackageProducer)
+	return ok
+}
+
+func isBootstrapModule(module blueprint.Module) bool {
+	_, isPackage := module.(*goPackage)
+	_, isBinary := module.(*goBinary)
+	return isPackage || isBinary
+}
+
+func isBootstrapBinaryModule(module blueprint.Module) bool {
+	_, isBinary := module.(*goBinary)
+	return isBinary
+}
+
+func generatingBootstrapper(config blueprint.Config) bool {
+	bootstrapConfig, ok := config.(Config)
+	if ok {
+		return bootstrapConfig.GeneratingBootstrapper()
+	}
+	return false
+}
+
+// A goPackage is a module for building Go packages.
+type goPackage struct {
+	properties struct {
+		PkgPath string
+		Srcs    []string
+	}
+
+	// The root dir in which the package .a file is located.  The full .a file
+	// path will be "packageRoot/PkgPath.a"
+	pkgRoot string
+
+	// The path of the .a file that is to be built.
+	archiveFile string
+}
+
+var _ goPackageProducer = (*goPackage)(nil)
+
+func newGoPackage() (blueprint.Module, interface{}) {
+	module := &goPackage{}
+	return module, &module.properties
+}
+
+func (g *goPackage) GoPkgRoot() string {
+	return g.pkgRoot
+}
+
+func (g *goPackage) GoPackageTarget() string {
+	return g.archiveFile
+}
+
+func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
+	name := ctx.ModuleName()
+
+	if g.properties.PkgPath == "" {
+		ctx.ModuleErrorf("module %s did not specify a valid pkgPath", name)
+		return
+	}
+
+	g.pkgRoot = packageRoot(ctx)
+	g.archiveFile = filepath.Clean(filepath.Join(g.pkgRoot,
+		filepath.FromSlash(g.properties.PkgPath)+".a"))
+
+	// We only actually want to build the builder modules if we're running as
+	// minibp (i.e. we're generating a bootstrap Ninja file).  This is to break
+	// the circular dependence that occurs when the builder requires a new Ninja
+	// file to be built, but building a new ninja file requires the builder to
+	// be built.
+	if generatingBootstrapper(ctx.Config()) {
+		buildGoPackage(ctx, g.pkgRoot, g.properties.PkgPath, g.archiveFile,
+			g.properties.Srcs)
+	} else {
+		phonyGoTarget(ctx, g.archiveFile, g.properties.Srcs)
+	}
+}
+
+// A goBinary is a module for building executable binaries from Go sources.
+type goBinary struct {
+	properties struct {
+		Srcs           []string
+		PrimaryBuilder bool
+	}
+}
+
+func newGoBinary() (blueprint.Module, interface{}) {
+	module := &goBinary{}
+	return module, &module.properties
+}
+
+func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
+	var (
+		name        = ctx.ModuleName()
+		objDir      = objDir(ctx)
+		archiveFile = filepath.Join(objDir, name+".a")
+		aoutFile    = filepath.Join(objDir, "a.out")
+		binaryFile  = filepath.Join(binDir, name)
+	)
+
+	// We only actually want to build the builder modules if we're running as
+	// minibp (i.e. we're generating a bootstrap Ninja file).  This is to break
+	// the circular dependence that occurs when the builder requires a new Ninja
+	// file to be built, but building a new ninja file requires the builder to
+	// be built.
+	if generatingBootstrapper(ctx.Config()) {
+		buildGoPackage(ctx, objDir, name, archiveFile, g.properties.Srcs)
+
+		var libDirFlags []string
+		ctx.VisitDepsDepthFirstIf(isGoPackageProducer,
+			func(module blueprint.Module) {
+				dep := module.(goPackageProducer)
+				libDir := dep.GoPkgRoot()
+				libDirFlags = append(libDirFlags, "-L "+libDir)
+			})
+
+		linkArgs := map[string]string{}
+		if len(libDirFlags) > 0 {
+			linkArgs["libDirFlags"] = strings.Join(libDirFlags, " ")
+		}
+
+		ctx.Build(blueprint.BuildParams{
+			Rule:    link,
+			Outputs: []string{aoutFile},
+			Inputs:  []string{archiveFile},
+			Args:    linkArgs,
+		})
+
+		ctx.Build(blueprint.BuildParams{
+			Rule:    cp,
+			Outputs: []string{binaryFile},
+			Inputs:  []string{aoutFile},
+		})
+	} else {
+		phonyGoTarget(ctx, binaryFile, g.properties.Srcs)
+	}
+}
+
+func buildGoPackage(ctx blueprint.ModuleContext, pkgRoot string,
+	pkgPath string, archiveFile string, srcs []string) {
+
+	srcDir := srcDir(ctx)
+	srcFiles := PrefixPaths(srcs, srcDir)
+
+	objDir := objDir(ctx)
+	objFile := filepath.Join(objDir, "_go_.$GoChar")
+
+	var incFlags []string
+	var depTargets []string
+	ctx.VisitDepsDepthFirstIf(isGoPackageProducer,
+		func(module blueprint.Module) {
+			dep := module.(goPackageProducer)
+			incDir := dep.GoPkgRoot()
+			target := dep.GoPackageTarget()
+			incFlags = append(incFlags, "-I "+incDir)
+			depTargets = append(depTargets, target)
+		})
+
+	gcArgs := map[string]string{
+		"pkgPath": pkgPath,
+	}
+
+	if len(incFlags) > 0 {
+		gcArgs["incFlags"] = strings.Join(incFlags, " ")
+	}
+
+	ctx.Build(blueprint.BuildParams{
+		Rule:      gc,
+		Outputs:   []string{objFile},
+		Inputs:    srcFiles,
+		Implicits: depTargets,
+		Args:      gcArgs,
+	})
+
+	ctx.Build(blueprint.BuildParams{
+		Rule:    pack,
+		Outputs: []string{archiveFile},
+		Inputs:  []string{objFile},
+		Args: map[string]string{
+			"prefix": pkgRoot,
+		},
+	})
+}
+
+func phonyGoTarget(ctx blueprint.ModuleContext, target string, srcs []string) {
+	var depTargets []string
+	ctx.VisitDepsDepthFirstIf(isGoPackageProducer,
+		func(module blueprint.Module) {
+			dep := module.(goPackageProducer)
+			target := dep.GoPackageTarget()
+			depTargets = append(depTargets, target)
+		})
+
+	moduleDir := ctx.ModuleDir()
+	srcs = PrefixPaths(srcs, filepath.Join("$SrcDir", moduleDir))
+
+	ctx.Build(blueprint.BuildParams{
+		Rule:      phony,
+		Outputs:   []string{target},
+		Inputs:    srcs,
+		Implicits: depTargets,
+	})
+
+	// If one of the source files gets deleted or renamed that will prevent the
+	// re-bootstrapping happening because it depends on the missing source file.
+	// To get around this we add a build statement using the built-in phony rule
+	// for each source file, which will cause Ninja to treat it as dirty if its
+	// missing.
+	for _, src := range srcs {
+		ctx.Build(blueprint.BuildParams{
+			Rule:    blueprint.Phony,
+			Outputs: []string{src},
+		})
+	}
+}
+
+type singleton struct{}
+
+func newSingleton() *singleton {
+	return &singleton{}
+}
+
+func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
+	// Find the module that's marked as the "primary builder", which means it's
+	// creating the binary that we'll use to generate the non-bootstrap
+	// build.ninja file.
+	var primaryBuilders []*goBinary
+	ctx.VisitAllModulesIf(isBootstrapBinaryModule,
+		func(module blueprint.Module) {
+			binaryModule := module.(*goBinary)
+			if binaryModule.properties.PrimaryBuilder {
+				primaryBuilders = append(primaryBuilders, binaryModule)
+			}
+		})
+
+	var primaryBuilderName, primaryBuilderExtraFlags string
+	switch len(primaryBuilders) {
+	case 0:
+		// If there's no primary builder module then that means we'll use minibp
+		// as the primary builder.  We can trigger its primary builder mode with
+		// the -p flag.
+		primaryBuilderName = "minibp"
+		primaryBuilderExtraFlags = "-p"
+
+	case 1:
+		primaryBuilderName = ctx.ModuleName(primaryBuilders[0])
+
+	default:
+		ctx.Errorf("multiple primary builder modules present:")
+		for _, primaryBuilder := range primaryBuilders {
+			ctx.ModuleErrorf(primaryBuilder, "<-- module %s",
+				ctx.ModuleName(primaryBuilder))
+		}
+		return
+	}
+
+	primaryBuilderFile := filepath.Join(binDir, primaryBuilderName)
+
+	// Get the filename of the top-level Blueprints file to pass to minibp.
+	// This comes stored in a global variable that's set by Main.
+	topLevelBlueprints := filepath.Join("$SrcDir",
+		filepath.Base(topLevelBlueprintsFile))
+
+	tmpNinjaFile := filepath.Join("bootstrap", "build.ninja.in")
+	tmpNinjaDepFile := tmpNinjaFile + ".d"
+
+	if generatingBootstrapper(ctx.Config()) {
+		// We're generating a bootstrapper Ninja file, so we need to set things
+		// up to rebuild the build.ninja file using the primary builder.
+
+		// We generate the depfile here that includes the dependencies for all
+		// the Blueprints files that contribute to generating the big build
+		// manifest (build.ninja file).  This depfile will be used by the non-
+		// bootstrap build manifest to determine whether it should trigger a re-
+		// bootstrap.  Because the re-bootstrap rule's output is "build.ninja"
+		// we need to force the depfile to have that as its "make target"
+		// (recall that depfiles use a subset of the Makefile syntax).
+		bigbp := ctx.Rule("bigbp",
+			blueprint.RuleParams{
+				Command: fmt.Sprintf("%s %s -d %s -o $out $in",
+					primaryBuilderFile, primaryBuilderExtraFlags,
+					tmpNinjaDepFile),
+				Description: fmt.Sprintf("%s $out", primaryBuilderName),
+				Depfile:     tmpNinjaDepFile,
+			})
+
+		ctx.Build(blueprint.BuildParams{
+			Rule:      bigbp,
+			Outputs:   []string{tmpNinjaFile},
+			Inputs:    []string{topLevelBlueprints},
+			Implicits: []string{primaryBuilderFile},
+		})
+
+		// When the current build.ninja file is a bootstrapper, we always want
+		// to have it replace itself with a non-bootstrapper build.ninja.  To
+		// accomplish that we depend on a file that should never exist and
+		// "build" it using Ninja's built-in phony rule.
+		//
+		// We also need to add an implicit dependency on the minibp binary so
+		// that it actually gets built.  Nothing in the bootstrap build.ninja
+		// file actually requires minibp, but the non-bootstrap build.ninja
+		// requires that it have been built during the bootstrapping.
+		notAFile := filepath.Join("bootstrap", "notAFile")
+		ctx.Build(blueprint.BuildParams{
+			Rule:    blueprint.Phony,
+			Outputs: []string{notAFile},
+		})
+
+		ctx.Build(blueprint.BuildParams{
+			Rule:      bootstrap,
+			Outputs:   []string{"build.ninja"},
+			Inputs:    []string{tmpNinjaFile},
+			Implicits: []string{"$Bootstrap", notAFile, minibpFile},
+		})
+
+		// Because the non-bootstrap build.ninja file manually re-invokes Ninja,
+		// its builddir must be different than that of the bootstrap build.ninja
+		// file.  Otherwise we occasionally get "warning: bad deps log signature
+		// or version; starting over" messages from Ninja, presumably because
+		// two Ninja processes try to write to the same log concurrently.
+		ctx.SetBuildDir("bootstrap")
+	} else {
+		// We're generating a non-bootstrapper Ninja file, so we need to set it
+		// up to depend on the bootstrapper Ninja file.  The build.ninja target
+		// also has an implicit dependency on the primary builder, which will
+		// have a phony dependency on all its sources.  This will cause any
+		// changes to the primary builder's sources to trigger a re-bootstrap
+		// operation, which will rebuild the primary builder.
+		//
+		// On top of that we need to use the depfile generated by the bigbp
+		// rule.  We do this by depending on that file and then setting up a
+		// phony rule to generate it that uses the depfile.
+		ctx.Build(blueprint.BuildParams{
+			Rule:      rebootstrap,
+			Outputs:   []string{"build.ninja"},
+			Inputs:    []string{"$BootstrapManifest"},
+			Implicits: []string{"$Bootstrap", primaryBuilderFile, tmpNinjaFile},
+		})
+
+		ctx.Build(blueprint.BuildParams{
+			Rule:    phony,
+			Outputs: []string{tmpNinjaFile},
+			Inputs:  []string{topLevelBlueprints},
+			Args: map[string]string{
+				"depfile": tmpNinjaDepFile,
+			},
+		})
+
+		// Rebuild the bootstrap Ninja file using minibp, passing it all the
+		// Blueprint files that define a bootstrap_* module.
+		ctx.Build(blueprint.BuildParams{
+			Rule:      minibp,
+			Outputs:   []string{"$BootstrapManifest"},
+			Inputs:    []string{topLevelBlueprints},
+			Implicits: []string{minibpFile},
+		})
+	}
+}
+
+// packageRoot returns the module-specific package root directory path.  This
+// directory is where the final package .a files are output and where dependant
+// modules search for this package via -I arguments.
+func packageRoot(ctx blueprint.ModuleContext) string {
+	return filepath.Join("bootstrap", ctx.ModuleName(), "pkg")
+}
+
+// srcDir returns the path of the directory that all source file paths are
+// specified relative to.
+func srcDir(ctx blueprint.ModuleContext) string {
+	return filepath.Join("$SrcDir", ctx.ModuleDir())
+}
+
+// objDir returns the module-specific object directory path.
+func objDir(ctx blueprint.ModuleContext) string {
+	return filepath.Join("bootstrap", ctx.ModuleName(), "obj")
+}
+
+// PrefixPaths returns a list of paths consisting of prefix joined with each
+// element of paths.  The resulting paths are "clean" in the filepath.Clean
+// sense.
+//
+// TODO: This should probably go in a utility package.
+func PrefixPaths(paths []string, prefix string) []string {
+	result := make([]string, len(paths))
+	for i, path := range paths {
+		result[i] = filepath.Clean(filepath.Join(prefix, path))
+	}
+	return result
+}
