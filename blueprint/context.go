@@ -1195,11 +1195,18 @@ func (c *Context) writeAllModuleActions(nw *ninjaWriter) error {
 
 	for _, info := range c.moduleInfo {
 		buf.Reset()
+
+		// In order to make the bootstrap build manifest independent of the
+		// build dir we need to output the Blueprints file locations in the
+		// comments as paths relative to the source directory.
+		relPos := info.pos
+		relPos.Filename = info.relBlueprintFile
+
 		infoMap := map[string]interface{}{
 			"properties": info.properties,
 			"typeName":   info.typeName,
 			"goTypeName": info.typ.name(),
-			"pos":        info.pos,
+			"pos":        relPos,
 		}
 		err = headerTemplate.Execute(buf, infoMap)
 		if err != nil {

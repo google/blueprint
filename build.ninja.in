@@ -58,7 +58,7 @@ rule g.bootstrap.bootstrap
 # Module:  blueprint
 # Type:    bootstrap_go_package
 # GoType:  blueprint/bootstrap.goPackageModule
-# Defined: ../Blueprints:1:1
+# Defined: Blueprints:1:1
 
 build bootstrap/blueprint/obj/_go_.${g.bootstrap.GoChar}: g.bootstrap.gc $
         ${g.bootstrap.SrcDir}/blueprint/context.go $
@@ -84,7 +84,7 @@ build bootstrap/blueprint/pkg/blueprint.a: g.bootstrap.pack $
 # Module:  blueprint-parser
 # Type:    bootstrap_go_package
 # GoType:  blueprint/bootstrap.goPackageModule
-# Defined: ../Blueprints:18:1
+# Defined: Blueprints:18:1
 
 build bootstrap/blueprint-parser/obj/_go_.${g.bootstrap.GoChar}: $
         g.bootstrap.gc ${g.bootstrap.SrcDir}/blueprint/parser/parser.go
@@ -98,7 +98,7 @@ build bootstrap/blueprint-parser/pkg/blueprint/parser.a: g.bootstrap.pack $
 # Module:  blueprint-bootstrap
 # Type:    bootstrap_go_package
 # GoType:  blueprint/bootstrap.goPackageModule
-# Defined: ../Blueprints:24:1
+# Defined: Blueprints:24:1
 
 build bootstrap/blueprint-bootstrap/obj/_go_.${g.bootstrap.GoChar}: $
         g.bootstrap.gc ${g.bootstrap.SrcDir}/blueprint/bootstrap/bootstrap.go $
@@ -119,7 +119,7 @@ build bootstrap/blueprint-bootstrap/pkg/blueprint/bootstrap.a: $
 # Module:  minibp
 # Type:    bootstrap_go_binary
 # GoType:  blueprint/bootstrap.goBinaryModule
-# Defined: ../Blueprints:34:1
+# Defined: Blueprints:34:1
 
 build bootstrap/minibp/obj/_go_.${g.bootstrap.GoChar}: g.bootstrap.gc $
         ${g.bootstrap.SrcDir}/blueprint/bootstrap/minibp/main.go | $
