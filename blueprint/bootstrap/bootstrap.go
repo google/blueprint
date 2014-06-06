@@ -38,7 +38,8 @@ var (
 		blueprint.RuleParams{
 			Command:     "cp $in $out",
 			Description: "cp $out",
-		})
+		},
+		"generator")
 
 	bootstrap = blueprint.StaticRule("bootstrap",
 		blueprint.RuleParams{
@@ -65,17 +66,6 @@ var (
 			Generator:   true,
 		})
 
-	minibp = blueprint.StaticRule("minibp",
-		blueprint.RuleParams{
-			Command: fmt.Sprintf("%s -d %s -o $out $in",
-				minibpFile, minibpDepFile),
-			Description: "minibp $out",
-			Generator:   true,
-			Restat:      true,
-			Depfile:     minibpDepFile,
-			Deps:        blueprint.DepsGCC,
-		})
-
 	// Work around a Ninja issue.  See https://github.com/martine/ninja/pull/634
 	phony = blueprint.StaticRule("phony",
 		blueprint.RuleParams{
@@ -88,9 +78,8 @@ var (
 	goPackageModule = blueprint.MakeModuleType("goPackageModule", newGoPackage)
 	goBinaryModule  = blueprint.MakeModuleType("goBinaryModule", newGoBinary)
 
-	binDir        = filepath.Join("bootstrap", "bin")
-	minibpFile    = filepath.Join(binDir, "minibp")
-	minibpDepFile = filepath.Join("bootstrap", "bootstrap_manifest.d")
+	binDir     = filepath.Join("bootstrap", "bin")
+	minibpFile = filepath.Join(binDir, "minibp")
 )
 
 type goPackageProducer interface {
@@ -364,10 +353,18 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 	tmpNinjaFile := filepath.Join("bootstrap", "build.ninja.in")
 	tmpNinjaDepFile := tmpNinjaFile + ".d"
+	tmpBootstrapFile := filepath.Join("bootstrap", "bootstrap.ninja.in")
 
 	if generatingBootstrapper(ctx.Config()) {
 		// We're generating a bootstrapper Ninja file, so we need to set things
 		// up to rebuild the build.ninja file using the primary builder.
+
+		// Because the non-bootstrap build.ninja file manually re-invokes Ninja,
+		// its builddir must be different than that of the bootstrap build.ninja
+		// file.  Otherwise we occasionally get "warning: bad deps log signature
+		// or version; starting over" messages from Ninja, presumably because
+		// two Ninja processes try to write to the same log concurrently.
+		ctx.SetBuildDir("bootstrap")
 
 		// We generate the depfile here that includes the dependencies for all
 		// the Blueprints files that contribute to generating the big build
@@ -397,10 +394,8 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// accomplish that we depend on a file that should never exist and
 		// "build" it using Ninja's built-in phony rule.
 		//
-		// We also need to add an implicit dependency on the minibp binary so
-		// that it actually gets built.  Nothing in the bootstrap build.ninja
-		// file actually requires minibp, but the non-bootstrap build.ninja
-		// requires that it have been built during the bootstrapping.
+		// We also need to add an implicit dependency on tmpBootstrapFile so
+		// that it gets generated as part of the bootstrap process.
 		notAFile := filepath.Join("bootstrap", "notAFile")
 		ctx.Build(blueprint.BuildParams{
 			Rule:    blueprint.Phony,
@@ -411,15 +406,34 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			Rule:      bootstrap,
 			Outputs:   []string{"build.ninja"},
 			Inputs:    []string{tmpNinjaFile},
-			Implicits: []string{"$Bootstrap", notAFile, minibpFile},
+			Implicits: []string{"$Bootstrap", notAFile, tmpBootstrapFile},
 		})
 
-		// Because the non-bootstrap build.ninja file manually re-invokes Ninja,
-		// its builddir must be different than that of the bootstrap build.ninja
-		// file.  Otherwise we occasionally get "warning: bad deps log signature
-		// or version; starting over" messages from Ninja, presumably because
-		// two Ninja processes try to write to the same log concurrently.
-		ctx.SetBuildDir("bootstrap")
+		// Rebuild the bootstrap Ninja file using the minibp that we just built.
+		// The checkFile tells minibp to compare the new bootstrap file to the
+		// current one.  If the files are the same then minibp sets the new
+		// file's mtime to match that of the current one.  If they're different
+		// then the new file will have a newer timestamp than the current one
+		// and it will trigger a reboostrap by the non-boostrap build manifest.
+		minibp := ctx.Rule("minibp",
+			blueprint.RuleParams{
+				Command: fmt.Sprintf("%s -c $checkFile -d $out.d -o $out $in",
+					minibpFile),
+				Description: "minibp $out",
+				Generator:   true,
+				Depfile:     "$out.d",
+			},
+			"checkFile")
+
+		ctx.Build(blueprint.BuildParams{
+			Rule:      minibp,
+			Outputs:   []string{tmpBootstrapFile},
+			Inputs:    []string{topLevelBlueprints},
+			Implicits: []string{minibpFile},
+			Args: map[string]string{
+				"checkFile": "$BootstrapManifest",
+			},
+		})
 	} else {
 		// We're generating a non-bootstrapper Ninja file, so we need to set it
 		// up to depend on the bootstrapper Ninja file.  The build.ninja target
@@ -447,13 +461,18 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			},
 		})
 
-		// Rebuild the bootstrap Ninja file using minibp, passing it all the
-		// Blueprint files that define a bootstrap_* module.
+		// If the bootstrap Ninja invocation caused a new tmpBootstrapFile to be
+		// generated then that means we need to rebootstrap using it instead of
+		// the current bootstrap manifest.  We enable the Ninja "generator"
+		// behavior so that Ninja doesn't invoke this build just because it's
+		// missing a command line log entry for the bootstrap manifest.
 		ctx.Build(blueprint.BuildParams{
-			Rule:      minibp,
-			Outputs:   []string{"$BootstrapManifest"},
-			Inputs:    []string{topLevelBlueprints},
-			Implicits: []string{minibpFile},
+			Rule:    cp,
+			Outputs: []string{"$BootstrapManifest"},
+			Inputs:  []string{tmpBootstrapFile},
+			Args: map[string]string{
+				"generator": "true",
+			},
 		})
 	}
 }

@@ -18,7 +18,7 @@ type ModuleContext interface {
 	PropertyErrorf(property, fmt string, args ...interface{})
 
 	Variable(name, value string)
-	Rule(name string, params RuleParams) Rule
+	Rule(name string, params RuleParams, argNames ...string) Rule
 	Build(params BuildParams)
 
 	VisitDepsDepthFirst(visit func(Module))
@@ -81,10 +81,12 @@ func (m *moduleContext) Variable(name, value string) {
 	m.actionDefs.variables = append(m.actionDefs.variables, v)
 }
 
-func (m *moduleContext) Rule(name string, params RuleParams) Rule {
+func (m *moduleContext) Rule(name string, params RuleParams,
+	argNames ...string) Rule {
+
 	// TODO: Verify that params.Pool is accessible in this module's scope.
 
-	r, err := m.scope.AddLocalRule(name, &params)
+	r, err := m.scope.AddLocalRule(name, &params, argNames...)
 	if err != nil {
 		panic(err)
 	}

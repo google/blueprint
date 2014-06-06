@@ -148,9 +148,19 @@ rule s.bootstrap.bigbp
     depfile = bootstrap/build.ninja.in.d
     description = minibp ${out}
 
+rule s.bootstrap.minibp
+    command = bootstrap/bin/minibp -c ${checkFile} -d ${out}.d -o ${out} ${in}
+    depfile = ${out}.d
+    description = minibp ${out}
+    generator = true
+
 build bootstrap/build.ninja.in: s.bootstrap.bigbp $
         ${g.bootstrap.SrcDir}/Blueprints | bootstrap/bin/minibp
 build bootstrap/notAFile: phony
 build build.ninja: g.bootstrap.bootstrap bootstrap/build.ninja.in | $
-        ${g.bootstrap.Bootstrap} bootstrap/notAFile bootstrap/bin/minibp
+        ${g.bootstrap.Bootstrap} bootstrap/notAFile $
+        bootstrap/bootstrap.ninja.in
+build bootstrap/bootstrap.ninja.in: s.bootstrap.minibp $
+        ${g.bootstrap.SrcDir}/Blueprints | bootstrap/bin/minibp
+    checkFile = ${g.bootstrap.BootstrapManifest}
 

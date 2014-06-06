@@ -12,7 +12,7 @@ import (
 
 var outFile string
 var depFile string
-var depTarget string
+var checkFile string
 
 // topLevelBlueprintsFile is set by Main as a way to pass this information on to
 // the bootstrap build manifest generators.  This information was not passed via
@@ -23,8 +23,7 @@ var topLevelBlueprintsFile string
 func init() {
 	flag.StringVar(&outFile, "o", "build.ninja.in", "the Ninja file to output")
 	flag.StringVar(&depFile, "d", "", "the dependency file to output")
-	flag.StringVar(&depTarget, "t", "", "the target name for the dependency "+
-		"file")
+	flag.StringVar(&checkFile, "c", "", "the existing file to check against")
 }
 
 func Main(ctx *blueprint.Context, config blueprint.Config) {
@@ -58,9 +57,42 @@ func Main(ctx *blueprint.Context, config blueprint.Config) {
 		fatalf("error generating Ninja file contents: %s", err)
 	}
 
-	err = writeFileIfChanged(outFile, buf.Bytes(), 0666)
+	const outFilePermissions = 0666
+	err = ioutil.WriteFile(outFile, buf.Bytes(), outFilePermissions)
 	if err != nil {
 		fatalf("error writing %s: %s", outFile, err)
+	}
+
+	if checkFile != "" {
+		checkData, err := ioutil.ReadFile(checkFile)
+		if err != nil {
+			fatalf("error reading %s: %s", checkFile, err)
+		}
+
+		matches := buf.Len() == len(checkData)
+		if !matches {
+			for i, value := range buf.Bytes() {
+				if value != checkData[i] {
+					matches = false
+					break
+				}
+			}
+		}
+
+		if matches {
+			// The new file content matches the check-file content, so we set
+			// the new file's mtime and atime to match that of the check-file.
+			checkFileInfo, err := os.Stat(checkFile)
+			if err != nil {
+				fatalf("error stat'ing %s: %s", checkFile, err)
+			}
+
+			time := checkFileInfo.ModTime()
+			err = os.Chtimes(outFile, time, time)
+			if err != nil {
+				fatalf("error setting timestamps for %s: %s", outFile, err)
+			}
+		}
 	}
 
 	if depFile != "" {
@@ -69,12 +101,7 @@ func Main(ctx *blueprint.Context, config blueprint.Config) {
 			fatalf("error creating depfile: %s", err)
 		}
 
-		target := depTarget
-		if target == "" {
-			target = outFile
-		}
-
-		_, err = fmt.Fprintf(f, "%s: \\\n %s\n", target,
+		_, err = fmt.Fprintf(f, "%s: \\\n %s\n", outFile,
 			strings.Join(deps, " \\\n "))
 		if err != nil {
 			fatalf("error writing depfile: %s", err)
@@ -87,7 +114,7 @@ func Main(ctx *blueprint.Context, config blueprint.Config) {
 }
 
 func fatalf(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, format, args...)
+	fmt.Printf(format, args...)
 	os.Exit(1)
 }
 
@@ -95,9 +122,9 @@ func fatalErrors(errs []error) {
 	for _, err := range errs {
 		switch err.(type) {
 		case *blueprint.Error:
-			_, _ = fmt.Fprintf(os.Stderr, "%s\n", err.Error())
+			_, _ = fmt.Printf("%s\n", err.Error())
 		default:
-			_, _ = fmt.Fprintf(os.Stderr, "internal error: %s\n", err)
+			_, _ = fmt.Printf("internal error: %s\n", err)
 		}
 	}
 	os.Exit(1)

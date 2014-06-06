@@ -20,7 +20,7 @@ type SingletonContext interface {
 	Errorf(format string, args ...interface{})
 
 	Variable(name, value string)
-	Rule(name string, params RuleParams) Rule
+	Rule(name string, params RuleParams, argNames ...string) Rule
 	Build(params BuildParams)
 	RequireNinjaVersion(major, minor, micro int)
 
@@ -89,10 +89,12 @@ func (s *singletonContext) Variable(name, value string) {
 	s.actionDefs.variables = append(s.actionDefs.variables, v)
 }
 
-func (s *singletonContext) Rule(name string, params RuleParams) Rule {
+func (s *singletonContext) Rule(name string, params RuleParams,
+	argNames ...string) Rule {
+
 	// TODO: Verify that params.Pool is accessible in this module's scope.
 
-	r, err := s.scope.AddLocalRule(name, &params)
+	r, err := s.scope.AddLocalRule(name, &params, argNames...)
 	if err != nil {
 		panic(err)
 	}
