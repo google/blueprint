@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"blueprint"
+	"blueprint/pathtools"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -232,7 +233,7 @@ func buildGoPackage(ctx blueprint.ModuleContext, pkgRoot string,
 	pkgPath string, archiveFile string, srcs []string) {
 
 	srcDir := srcDir(ctx)
-	srcFiles := PrefixPaths(srcs, srcDir)
+	srcFiles := pathtools.PrefixPaths(srcs, srcDir)
 
 	objDir := objDir(ctx)
 	objFile := filepath.Join(objDir, "_go_.$GoChar")
@@ -284,7 +285,7 @@ func phonyGoTarget(ctx blueprint.ModuleContext, target string, srcs []string) {
 		})
 
 	moduleDir := ctx.ModuleDir()
-	srcs = PrefixPaths(srcs, filepath.Join("$SrcDir", moduleDir))
+	srcs = pathtools.PrefixPaths(srcs, filepath.Join("$SrcDir", moduleDir))
 
 	ctx.Build(blueprint.BuildParams{
 		Rule:      phony,
@@ -495,17 +496,4 @@ func srcDir(ctx blueprint.ModuleContext) string {
 // objDir returns the module-specific object directory path.
 func objDir(ctx blueprint.ModuleContext) string {
 	return filepath.Join(bootstrapDir, ctx.ModuleName(), "obj")
-}
-
-// PrefixPaths returns a list of paths consisting of prefix joined with each
-// element of paths.  The resulting paths are "clean" in the filepath.Clean
-// sense.
-//
-// TODO: This should probably go in a utility package.
-func PrefixPaths(paths []string, prefix string) []string {
-	result := make([]string, len(paths))
-	for i, path := range paths {
-		result[i] = filepath.Clean(filepath.Join(prefix, path))
-	}
-	return result
 }
