@@ -3,6 +3,7 @@ package blueprint
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
 	"runtime"
 	"strings"
@@ -24,6 +25,7 @@ var Phony Rule = &builtinRule{
 }
 
 var errRuleIsBuiltin = errors.New("the rule is a built-in")
+var errVariableIsArg = errors.New("argument variables have no value")
 
 // We make a Ninja-friendly name out of a Go package name by replaceing all the
 // '/' characters with '.'.  We assume the results are unique, though this is
@@ -84,6 +86,31 @@ func callerPackage() *pkg {
 	return p
 }
 
+// Import enables access to the global Ninja rules and variables that are
+// exported by another Go package.  It may only be called from a Go package's
+// init() function.  The Go package path passed to Import must have already been
+// imported into the Go package using a Go import statement.  The imported
+// variables may then be accessed from Ninja strings as "${pkg.Variable}", while
+// the imported rules can simply be accessed as exported Go variables from the
+// package.  For example:
+//
+//     import (
+//         "blueprint"
+//         "foo/bar"
+//     )
+//
+//     func init() {
+//         blueprint.Import("foo/bar")
+//     }
+//
+//     ...
+//
+//     func (m *MyModule) GenerateBuildActions(ctx blueprint.Module) {
+//         ctx.Build(blueprint.BuildParams{
+//             Rule:    bar.SomeRule,
+//             Outputs: []string{"${bar.SomeVariable}"},
+//         })
+//     }
 func Import(pkgPath string) {
 	callerPkg := callerPackage()
 
@@ -184,6 +211,35 @@ func VariableFunc(name string, f func(Config) (string, error)) Variable {
 	return v
 }
 
+// VariableConfigMethod returns a Variable whose value is determined by calling
+// a method on the Config object.  The method must take no arguments and return
+// a single string that will be the variable's value.
+func VariableConfigMethod(name string, method interface{}) Variable {
+	err := validateNinjaName(name)
+	if err != nil {
+		panic(err)
+	}
+
+	pkg := callerPackage()
+
+	methodValue := reflect.ValueOf(method)
+	validateVariableMethod(name, methodValue)
+
+	fun := func(config Config) (string, error) {
+		result := methodValue.Call([]reflect.Value{reflect.ValueOf(config)})
+		resultStr := result[0].Interface().(string)
+		return resultStr, nil
+	}
+
+	v := &variableFunc{pkg, name, fun}
+	err = pkg.scope.AddVariable(v)
+	if err != nil {
+		panic(err)
+	}
+
+	return v
+}
+
 func (v *variableFunc) pkg() *pkg {
 	return v.pkg_
 }
@@ -202,6 +258,26 @@ func (v *variableFunc) value(config Config) (*ninjaString, error) {
 		return nil, err
 	}
 	return parseNinjaString(v.pkg_.scope, value)
+}
+
+func validateVariableMethod(name string, methodValue reflect.Value) {
+	methodType := methodValue.Type()
+	if methodType.Kind() != reflect.Func {
+		panic(fmt.Errorf("method given for variable %s is not a function",
+			name))
+	}
+	if n := methodType.NumIn(); n != 1 {
+		panic(fmt.Errorf("method for variable %s has %d inputs (should be 1)",
+			name, n))
+	}
+	if n := methodType.NumOut(); n != 1 {
+		panic(fmt.Errorf("method for variable %s has %d outputs (should be 1)",
+			name, n))
+	}
+	if kind := methodType.Out(0).Kind(); kind != reflect.String {
+		panic(fmt.Errorf("method for variable %s does not return a string",
+			name))
+	}
 }
 
 // An argVariable is a Variable that exists only when it is set by a build
@@ -224,8 +300,6 @@ func (v *argVariable) name() string {
 func (v *argVariable) fullName(pkgNames map[*pkg]string) string {
 	return v.name_
 }
-
-var errVariableIsArg = errors.New("argument variables have no value")
 
 func (v *argVariable) value(config Config) (*ninjaString, error) {
 	return nil, errVariableIsArg
