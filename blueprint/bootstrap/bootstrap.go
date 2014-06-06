@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const bootstrapDir = ".bootstrap"
+
 var (
 	gcCmd   = blueprint.StaticVariable("gcCmd", "$goToolDir/${GoChar}g")
 	packCmd = blueprint.StaticVariable("packCmd", "$goToolDir/pack")
@@ -78,7 +80,7 @@ var (
 	goPackageModule = blueprint.MakeModuleType("goPackageModule", newGoPackage)
 	goBinaryModule  = blueprint.MakeModuleType("goBinaryModule", newGoBinary)
 
-	binDir     = filepath.Join("bootstrap", "bin")
+	binDir     = filepath.Join(bootstrapDir, "bin")
 	minibpFile = filepath.Join(binDir, "minibp")
 )
 
@@ -351,9 +353,9 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	topLevelBlueprints := filepath.Join("$SrcDir",
 		filepath.Base(topLevelBlueprintsFile))
 
-	tmpNinjaFile := filepath.Join("bootstrap", "build.ninja.in")
+	tmpNinjaFile := filepath.Join(bootstrapDir, "build.ninja.in")
 	tmpNinjaDepFile := tmpNinjaFile + ".d"
-	tmpBootstrapFile := filepath.Join("bootstrap", "bootstrap.ninja.in")
+	tmpBootstrapFile := filepath.Join(bootstrapDir, "bootstrap.ninja.in")
 
 	if generatingBootstrapper(ctx.Config()) {
 		// We're generating a bootstrapper Ninja file, so we need to set things
@@ -364,7 +366,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// file.  Otherwise we occasionally get "warning: bad deps log signature
 		// or version; starting over" messages from Ninja, presumably because
 		// two Ninja processes try to write to the same log concurrently.
-		ctx.SetBuildDir("bootstrap")
+		ctx.SetBuildDir(bootstrapDir)
 
 		// We generate the depfile here that includes the dependencies for all
 		// the Blueprints files that contribute to generating the big build
@@ -396,7 +398,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		//
 		// We also need to add an implicit dependency on tmpBootstrapFile so
 		// that it gets generated as part of the bootstrap process.
-		notAFile := filepath.Join("bootstrap", "notAFile")
+		notAFile := filepath.Join(bootstrapDir, "notAFile")
 		ctx.Build(blueprint.BuildParams{
 			Rule:    blueprint.Phony,
 			Outputs: []string{notAFile},
@@ -481,7 +483,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 // directory is where the final package .a files are output and where dependant
 // modules search for this package via -I arguments.
 func packageRoot(ctx blueprint.ModuleContext) string {
-	return filepath.Join("bootstrap", ctx.ModuleName(), "pkg")
+	return filepath.Join(bootstrapDir, ctx.ModuleName(), "pkg")
 }
 
 // srcDir returns the path of the directory that all source file paths are
@@ -492,7 +494,7 @@ func srcDir(ctx blueprint.ModuleContext) string {
 
 // objDir returns the module-specific object directory path.
 func objDir(ctx blueprint.ModuleContext) string {
-	return filepath.Join("bootstrap", ctx.ModuleName(), "obj")
+	return filepath.Join(bootstrapDir, ctx.ModuleName(), "obj")
 }
 
 // PrefixPaths returns a list of paths consisting of prefix joined with each
