@@ -354,9 +354,9 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	topLevelBlueprints := filepath.Join("$SrcDir",
 		filepath.Base(topLevelBlueprintsFile))
 
-	tmpNinjaFile := filepath.Join(bootstrapDir, "build.ninja.in")
-	tmpNinjaDepFile := tmpNinjaFile + ".d"
-	tmpBootstrapFile := filepath.Join(bootstrapDir, "bootstrap.ninja.in")
+	mainNinjaFile := filepath.Join(bootstrapDir, "main.ninja.in")
+	mainNinjaDepFile := mainNinjaFile + ".d"
+	bootstrapNinjaFile := filepath.Join(bootstrapDir, "bootstrap.ninja.in")
 
 	if generatingBootstrapper(ctx.Config()) {
 		// We're generating a bootstrapper Ninja file, so we need to set things
@@ -380,14 +380,14 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			blueprint.RuleParams{
 				Command: fmt.Sprintf("%s %s -d %s -o $out $in",
 					primaryBuilderFile, primaryBuilderExtraFlags,
-					tmpNinjaDepFile),
+					mainNinjaDepFile),
 				Description: fmt.Sprintf("%s $out", primaryBuilderName),
-				Depfile:     tmpNinjaDepFile,
+				Depfile:     mainNinjaDepFile,
 			})
 
 		ctx.Build(blueprint.BuildParams{
 			Rule:      bigbp,
-			Outputs:   []string{tmpNinjaFile},
+			Outputs:   []string{mainNinjaFile},
 			Inputs:    []string{topLevelBlueprints},
 			Implicits: []string{primaryBuilderFile},
 		})
@@ -397,7 +397,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// accomplish that we depend on a file that should never exist and
 		// "build" it using Ninja's built-in phony rule.
 		//
-		// We also need to add an implicit dependency on tmpBootstrapFile so
+		// We also need to add an implicit dependency on bootstrapNinjaFile so
 		// that it gets generated as part of the bootstrap process.
 		notAFile := filepath.Join(bootstrapDir, "notAFile")
 		ctx.Build(blueprint.BuildParams{
@@ -408,8 +408,8 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		ctx.Build(blueprint.BuildParams{
 			Rule:      bootstrap,
 			Outputs:   []string{"build.ninja"},
-			Inputs:    []string{tmpNinjaFile},
-			Implicits: []string{"$Bootstrap", notAFile, tmpBootstrapFile},
+			Inputs:    []string{mainNinjaFile},
+			Implicits: []string{"$Bootstrap", notAFile, bootstrapNinjaFile},
 		})
 
 		// Rebuild the bootstrap Ninja file using the minibp that we just built.
@@ -430,7 +430,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 		ctx.Build(blueprint.BuildParams{
 			Rule:      minibp,
-			Outputs:   []string{tmpBootstrapFile},
+			Outputs:   []string{bootstrapNinjaFile},
 			Inputs:    []string{topLevelBlueprints},
 			Implicits: []string{minibpFile},
 			Args: map[string]string{
@@ -449,22 +449,26 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// rule.  We do this by depending on that file and then setting up a
 		// phony rule to generate it that uses the depfile.
 		ctx.Build(blueprint.BuildParams{
-			Rule:      rebootstrap,
-			Outputs:   []string{"build.ninja"},
-			Inputs:    []string{"$BootstrapManifest"},
-			Implicits: []string{"$Bootstrap", primaryBuilderFile, tmpNinjaFile},
+			Rule:    rebootstrap,
+			Outputs: []string{"build.ninja"},
+			Inputs:  []string{"$BootstrapManifest"},
+			Implicits: []string{
+				"$Bootstrap",
+				primaryBuilderFile,
+				mainNinjaFile,
+			},
 		})
 
 		ctx.Build(blueprint.BuildParams{
 			Rule:    phony,
-			Outputs: []string{tmpNinjaFile},
+			Outputs: []string{mainNinjaFile},
 			Inputs:  []string{topLevelBlueprints},
 			Args: map[string]string{
-				"depfile": tmpNinjaDepFile,
+				"depfile": mainNinjaDepFile,
 			},
 		})
 
-		// If the bootstrap Ninja invocation caused a new tmpBootstrapFile to be
+		// If the bootstrap Ninja invocation caused a new bootstrapNinjaFile to be
 		// generated then that means we need to rebootstrap using it instead of
 		// the current bootstrap manifest.  We enable the Ninja "generator"
 		// behavior so that Ninja doesn't invoke this build just because it's
@@ -472,11 +476,22 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		ctx.Build(blueprint.BuildParams{
 			Rule:    cp,
 			Outputs: []string{"$BootstrapManifest"},
-			Inputs:  []string{tmpBootstrapFile},
+			Inputs:  []string{bootstrapNinjaFile},
 			Args: map[string]string{
 				"generator": "true",
 			},
 		})
+
+		if primaryBuilderName == "minibp" {
+			// This is a standalone Blueprint build, so we copy the minibp
+			// binary to the "bin" directory to make it easier to find.
+			finalMinibp := filepath.Join("bin", primaryBuilderName)
+			ctx.Build(blueprint.BuildParams{
+				Rule:    cp,
+				Inputs:  []string{primaryBuilderFile},
+				Outputs: []string{finalMinibp},
+			})
+		}
 	}
 }
 

@@ -161,8 +161,8 @@ build .bootstrap/bin/minibp: g.bootstrap.cp .bootstrap/minibp/obj/a.out
 # GoType:    blueprint/bootstrap.singleton
 
 rule s.bootstrap.bigbp
-    command = .bootstrap/bin/minibp -p -d .bootstrap/build.ninja.in.d -o ${out} ${in}
-    depfile = .bootstrap/build.ninja.in.d
+    command = .bootstrap/bin/minibp -p -d .bootstrap/main.ninja.in.d -o ${out} ${in}
+    depfile = .bootstrap/main.ninja.in.d
     description = minibp ${out}
 
 rule s.bootstrap.minibp
@@ -171,10 +171,10 @@ rule s.bootstrap.minibp
     description = minibp ${out}
     generator = true
 
-build .bootstrap/build.ninja.in: s.bootstrap.bigbp $
+build .bootstrap/main.ninja.in: s.bootstrap.bigbp $
         ${g.bootstrap.SrcDir}/Blueprints | .bootstrap/bin/minibp
 build .bootstrap/notAFile: phony
-build build.ninja: g.bootstrap.bootstrap .bootstrap/build.ninja.in | $
+build build.ninja: g.bootstrap.bootstrap .bootstrap/main.ninja.in | $
         ${g.bootstrap.Bootstrap} .bootstrap/notAFile $
         .bootstrap/bootstrap.ninja.in
 build .bootstrap/bootstrap.ninja.in: s.bootstrap.minibp $

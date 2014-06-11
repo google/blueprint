@@ -5,7 +5,7 @@ import (
 )
 
 var (
-	// These variables are the only only configuration needed by the boostrap
+	// These variables are the only configuration needed by the boostrap
 	// modules.  They are always set to the variable name enclosed in "@@" so
 	// that their values can be easily replaced in the generated Ninja file.
 	SrcDir            = blueprint.StaticVariable("SrcDir", "@@SrcDir@@")
