@@ -70,7 +70,7 @@ func Main(ctx *blueprint.Context, config blueprint.Config) {
 		}
 
 		matches := buf.Len() == len(checkData)
-		if !matches {
+		if matches {
 			for i, value := range buf.Bytes() {
 				if value != checkData[i] {
 					matches = false
