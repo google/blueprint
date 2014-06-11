@@ -1183,6 +1183,22 @@ func (c *Context) writeGlobalRules(nw *ninjaWriter) error {
 	return nil
 }
 
+type moduleInfoSorter []*moduleInfo
+
+func (s moduleInfoSorter) Len() int {
+	return len(s)
+}
+
+func (s moduleInfoSorter) Less(i, j int) bool {
+	iName := s[i].properties.Name
+	jName := s[j].properties.Name
+	return iName < jName
+}
+
+func (s moduleInfoSorter) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
 func (c *Context) writeAllModuleActions(nw *ninjaWriter) error {
 	headerTemplate := template.New("moduleHeader")
 	_, err := headerTemplate.Parse(moduleHeaderTemplate)
@@ -1191,9 +1207,15 @@ func (c *Context) writeAllModuleActions(nw *ninjaWriter) error {
 		panic(err)
 	}
 
+	infos := make([]*moduleInfo, 0, len(c.moduleInfo))
+	for _, info := range c.moduleInfo {
+		infos = append(infos, info)
+	}
+	sort.Sort(moduleInfoSorter(infos))
+
 	buf := bytes.NewBuffer(nil)
 
-	for _, info := range c.moduleInfo {
+	for _, info := range infos {
 		buf.Reset()
 
 		// In order to make the bootstrap build manifest independent of the
@@ -1247,7 +1269,15 @@ func (c *Context) writeAllSingletonActions(nw *ninjaWriter) error {
 
 	buf := bytes.NewBuffer(nil)
 
-	for name, info := range c.singletonInfo {
+	singletonNames := make([]string, 0, len(c.singletonInfo))
+	for name := range c.singletonInfo {
+		singletonNames = append(singletonNames, name)
+	}
+	sort.Strings(singletonNames)
+
+	for _, name := range singletonNames {
+		info := c.singletonInfo[name]
+
 		buf.Reset()
 		infoMap := map[string]interface{}{
 			"name":       name,
