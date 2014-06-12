@@ -5,14 +5,14 @@ package blueprint
 // definition.  When an entity is made live its value is computed based on the
 // configuration.
 type liveTracker struct {
-	config Config // Used to evaluate variable, rule, and pool values.
+	config interface{} // Used to evaluate variable, rule, and pool values.
 
 	variables map[Variable]*ninjaString
 	pools     map[Pool]*poolDef
 	rules     map[Rule]*ruleDef
 }
 
-func newLiveTracker(config Config) *liveTracker {
+func newLiveTracker(config interface{}) *liveTracker {
 	return &liveTracker{
 		config:    config,
 		variables: make(map[Variable]*ninjaString),

@@ -181,20 +181,20 @@ func (v *staticVariable) fullName(pkgNames map[*pkg]string) string {
 	return packageNamespacePrefix(pkgNames[v.pkg_]) + v.name_
 }
 
-func (v *staticVariable) value(Config) (*ninjaString, error) {
+func (v *staticVariable) value(interface{}) (*ninjaString, error) {
 	return parseNinjaString(v.pkg_.scope, v.value_)
 }
 
 type variableFunc struct {
 	pkg_   *pkg
 	name_  string
-	value_ func(Config) (string, error)
+	value_ func(interface{}) (string, error)
 }
 
 // VariableFunc returns a Variable whose value is determined by a function that
-// takes a Config object as input and returns either the variable value or an
+// takes a interface{} object as input and returns either the variable value or an
 // error.
-func VariableFunc(name string, f func(Config) (string, error)) Variable {
+func VariableFunc(name string, f func(interface{}) (string, error)) Variable {
 	err := validateNinjaName(name)
 	if err != nil {
 		panic(err)
@@ -212,7 +212,7 @@ func VariableFunc(name string, f func(Config) (string, error)) Variable {
 }
 
 // VariableConfigMethod returns a Variable whose value is determined by calling
-// a method on the Config object.  The method must take no arguments and return
+// a method on the interface{} object.  The method must take no arguments and return
 // a single string that will be the variable's value.
 func VariableConfigMethod(name string, method interface{}) Variable {
 	err := validateNinjaName(name)
@@ -225,7 +225,7 @@ func VariableConfigMethod(name string, method interface{}) Variable {
 	methodValue := reflect.ValueOf(method)
 	validateVariableMethod(name, methodValue)
 
-	fun := func(config Config) (string, error) {
+	fun := func(config interface{}) (string, error) {
 		result := methodValue.Call([]reflect.Value{reflect.ValueOf(config)})
 		resultStr := result[0].Interface().(string)
 		return resultStr, nil
@@ -252,7 +252,7 @@ func (v *variableFunc) fullName(pkgNames map[*pkg]string) string {
 	return packageNamespacePrefix(pkgNames[v.pkg_]) + v.name_
 }
 
-func (v *variableFunc) value(config Config) (*ninjaString, error) {
+func (v *variableFunc) value(config interface{}) (*ninjaString, error) {
 	value, err := v.value_(config)
 	if err != nil {
 		return nil, err
@@ -301,7 +301,7 @@ func (v *argVariable) fullName(pkgNames map[*pkg]string) string {
 	return v.name_
 }
 
-func (v *argVariable) value(config Config) (*ninjaString, error) {
+func (v *argVariable) value(config interface{}) (*ninjaString, error) {
 	return nil, errVariableIsArg
 }
 
@@ -340,7 +340,7 @@ func (p *staticPool) fullName(pkgNames map[*pkg]string) string {
 	return packageNamespacePrefix(pkgNames[p.pkg_]) + p.name_
 }
 
-func (p *staticPool) def(config Config) (*poolDef, error) {
+func (p *staticPool) def(config interface{}) (*poolDef, error) {
 	def, err := parsePoolParams(p.pkg_.scope, &p.params)
 	if err != nil {
 		panic(fmt.Errorf("error parsing PoolParams for %s: %s", p.name_, err))
@@ -351,10 +351,10 @@ func (p *staticPool) def(config Config) (*poolDef, error) {
 type poolFunc struct {
 	pkg_       *pkg
 	name_      string
-	paramsFunc func(Config) (PoolParams, error)
+	paramsFunc func(interface{}) (PoolParams, error)
 }
 
-func PoolFunc(name string, f func(Config) (PoolParams, error)) Pool {
+func PoolFunc(name string, f func(interface{}) (PoolParams, error)) Pool {
 	err := validateNinjaName(name)
 	if err != nil {
 		panic(err)
@@ -383,7 +383,7 @@ func (p *poolFunc) fullName(pkgNames map[*pkg]string) string {
 	return packageNamespacePrefix(pkgNames[p.pkg_]) + p.name_
 }
 
-func (p *poolFunc) def(config Config) (*poolDef, error) {
+func (p *poolFunc) def(config interface{}) (*poolDef, error) {
 	params, err := p.paramsFunc(config)
 	if err != nil {
 		return nil, err
@@ -444,7 +444,7 @@ func (r *staticRule) fullName(pkgNames map[*pkg]string) string {
 	return packageNamespacePrefix(pkgNames[r.pkg_]) + r.name_
 }
 
-func (r *staticRule) def(Config) (*ruleDef, error) {
+func (r *staticRule) def(interface{}) (*ruleDef, error) {
 	def, err := parseRuleParams(r.scope(), &r.params)
 	if err != nil {
 		panic(fmt.Errorf("error parsing RuleParams for %s: %s", r.name_, err))
@@ -469,12 +469,12 @@ func (r *staticRule) isArg(argName string) bool {
 type ruleFunc struct {
 	pkg_       *pkg
 	name_      string
-	paramsFunc func(Config) (RuleParams, error)
+	paramsFunc func(interface{}) (RuleParams, error)
 	argNames   map[string]bool
 	scope_     *scope
 }
 
-func RuleFunc(name string, f func(Config) (RuleParams, error),
+func RuleFunc(name string, f func(interface{}) (RuleParams, error),
 	argNames ...string) Rule {
 
 	pkg := callerPackage()
@@ -517,7 +517,7 @@ func (r *ruleFunc) fullName(pkgNames map[*pkg]string) string {
 	return packageNamespacePrefix(pkgNames[r.pkg_]) + r.name_
 }
 
-func (r *ruleFunc) def(config Config) (*ruleDef, error) {
+func (r *ruleFunc) def(config interface{}) (*ruleDef, error) {
 	params, err := r.paramsFunc(config)
 	if err != nil {
 		return nil, err
@@ -560,7 +560,7 @@ func (r *builtinRule) fullName(pkgNames map[*pkg]string) string {
 	return r.name_
 }
 
-func (r *builtinRule) def(config Config) (*ruleDef, error) {
+func (r *builtinRule) def(config interface{}) (*ruleDef, error) {
 	return nil, errRuleIsBuiltin
 }
 

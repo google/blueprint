@@ -14,7 +14,7 @@ type Variable interface {
 	pkg() *pkg
 	name() string                             // "foo"
 	fullName(pkgNames map[*pkg]string) string // "pkg.foo" or "path/to/pkg.foo"
-	value(config Config) (*ninjaString, error)
+	value(config interface{}) (*ninjaString, error)
 }
 
 // A Pool represents a Ninja pool that will be written to the output .ninja
@@ -23,7 +23,7 @@ type Pool interface {
 	pkg() *pkg
 	name() string                             // "foo"
 	fullName(pkgNames map[*pkg]string) string // "pkg.foo" or "path/to/pkg.foo"
-	def(config Config) (*poolDef, error)
+	def(config interface{}) (*poolDef, error)
 }
 
 // A Rule represents a Ninja build rule that will be written to the output
@@ -32,7 +32,7 @@ type Rule interface {
 	pkg() *pkg
 	name() string                             // "foo"
 	fullName(pkgNames map[*pkg]string) string // "pkg.foo" or "path/to/pkg.foo"
-	def(config Config) (*ruleDef, error)
+	def(config interface{}) (*ruleDef, error)
 	scope() *scope
 	isArg(argName string) bool
 }
@@ -283,7 +283,7 @@ func (l *localVariable) fullName(pkgNames map[*pkg]string) string {
 	return l.namePrefix + l.name_
 }
 
-func (l *localVariable) value(Config) (*ninjaString, error) {
+func (l *localVariable) value(interface{}) (*ninjaString, error) {
 	return l.value_, nil
 }
 
@@ -307,7 +307,7 @@ func (l *localRule) fullName(pkgNames map[*pkg]string) string {
 	return l.namePrefix + l.name_
 }
 
-func (l *localRule) def(Config) (*ruleDef, error) {
+func (l *localRule) def(interface{}) (*ruleDef, error) {
 	return l.def_, nil
 }
 

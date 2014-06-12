@@ -45,11 +45,6 @@ type Context struct {
 	requiredNinjaMicro int          // For the ninja_required_version variable
 }
 
-// A Config contains build configuration information that can affect the
-// contents of the Ninja build file is that will be generated.  The specific
-// representation of this configuration information is not defined here.
-type Config interface{}
-
 type Error struct {
 	Err error
 	Pos scanner.Position
@@ -564,7 +559,7 @@ func (c *Context) checkForDependencyCycles() (errs []error) {
 	return
 }
 
-func (c *Context) PrepareBuildActions(config Config) []error {
+func (c *Context) PrepareBuildActions(config interface{}) []error {
 	c.buildActionsReady = false
 
 	if !c.dependenciesReady {
@@ -614,7 +609,7 @@ func (c *Context) initSpecialVariables() {
 	c.requiredNinjaMicro = 0
 }
 
-func (c *Context) generateModuleBuildActions(config Config,
+func (c *Context) generateModuleBuildActions(config interface{},
 	liveGlobals *liveTracker) []error {
 
 	visited := make(map[Module]bool)
@@ -662,7 +657,7 @@ func (c *Context) generateModuleBuildActions(config Config,
 	return errs
 }
 
-func (c *Context) generateSingletonBuildActions(config Config,
+func (c *Context) generateSingletonBuildActions(config interface{},
 	liveGlobals *liveTracker) []error {
 
 	var errs []error

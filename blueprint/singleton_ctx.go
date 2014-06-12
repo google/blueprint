@@ -10,7 +10,7 @@ type Singleton interface {
 }
 
 type SingletonContext interface {
-	Config() Config
+	Config() interface{}
 
 	ModuleName(module Module) string
 	ModuleDir(module Module) string
@@ -38,7 +38,7 @@ var _ SingletonContext = (*singletonContext)(nil)
 
 type singletonContext struct {
 	context *Context
-	config  Config
+	config  interface{}
 	scope   *localScope
 
 	errs []error
@@ -46,7 +46,7 @@ type singletonContext struct {
 	actionDefs localBuildActions
 }
 
-func (s *singletonContext) Config() Config {
+func (s *singletonContext) Config() interface{} {
 	return s.config
 }
 

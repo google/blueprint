@@ -16,7 +16,7 @@ var checkFile string
 
 // topLevelBlueprintsFile is set by Main as a way to pass this information on to
 // the bootstrap build manifest generators.  This information was not passed via
-// the Config object so as to allow the caller of Main to use whatever Config
+// the config object so as to allow the caller of Main to use whatever Config
 // object it wants.
 var topLevelBlueprintsFile string
 
@@ -26,7 +26,7 @@ func init() {
 	flag.StringVar(&checkFile, "c", "", "the existing file to check against")
 }
 
-func Main(ctx *blueprint.Context, config blueprint.Config) {
+func Main(ctx *blueprint.Context, config interface{}) {
 	if !flag.Parsed() {
 		flag.Parse()
 	}

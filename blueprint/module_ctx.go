@@ -12,7 +12,7 @@ type Module interface {
 type ModuleContext interface {
 	ModuleName() string
 	ModuleDir() string
-	Config() Config
+	Config() interface{}
 
 	ModuleErrorf(fmt string, args ...interface{})
 	PropertyErrorf(property, fmt string, args ...interface{})
@@ -29,7 +29,7 @@ var _ ModuleContext = (*moduleContext)(nil)
 
 type moduleContext struct {
 	context *Context
-	config  Config
+	config  interface{}
 	module  Module
 	scope   *localScope
 	info    *moduleInfo
@@ -47,7 +47,7 @@ func (m *moduleContext) ModuleDir() string {
 	return filepath.Dir(m.info.relBlueprintFile)
 }
 
-func (m *moduleContext) Config() Config {
+func (m *moduleContext) Config() interface{} {
 	return m.config
 }
 

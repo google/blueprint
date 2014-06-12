@@ -106,7 +106,7 @@ func isBootstrapBinaryModule(module blueprint.Module) bool {
 	return isBinary
 }
 
-func generatingBootstrapper(config blueprint.Config) bool {
+func generatingBootstrapper(config interface{}) bool {
 	bootstrapConfig, ok := config.(Config)
 	if ok {
 		return bootstrapConfig.GeneratingBootstrapper()
