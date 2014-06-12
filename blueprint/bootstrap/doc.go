@@ -82,17 +82,18 @@
 //
 // The bootstrap script is a small script (or theoretically a compiled binary)
 // that is included in the source tree to begin the bootstrapping process.  It
-// is responsible for providing filling in the bootstrap Ninja file template
-// with some basic information about the Go build environemnt and the path to
-// the root source directory.  It does this by performing a simple string
-// substitution on the template file to produce a usable build.ninja file.
+// is responsible for filling in the bootstrap Ninja file template with some
+// basic information about the Go build environemnt and the path to the root
+// source directory.  It does this by performing a simple string substitution on
+// the template file to produce a usable build.ninja file.
 //
 // The Bootstrapping Process
 //
 // A bootstrap-enabled build directory has two states, each with a corresponding
 // Ninja file. The states are referred to as the "bootstrap" state and the
 // "main" state. Changing the directory to a particular state means replacing
-// the build.ninja file one that will perform the build actions for the state.
+// the build.ninja file with one that will perform the build actions for the
+// state.
 //
 // The bootstrapping process begins with the user running the bootstrap script
 // to initialize a new build directory.  The script is run from the build
@@ -122,7 +123,7 @@
 // 	- Run the bootstrap script to "copy" .bootstrap/main.ninja.in to build.ninja
 //
 // The last of these build actions results in transitioning the build directory
-// to the main build state.  In this state, the
+// to the main build state.
 //
 // The main state (potentially) performs the following actions:
 //   - Copy .bootstrap/bootstrap.ninja.in to the source bootstrap Ninja location
