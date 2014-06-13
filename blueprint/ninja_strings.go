@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-const EOF = -1
+const eof = -1
 
 var (
 	defaultEscaper = strings.NewReplacer(
@@ -55,7 +55,7 @@ func parseNinjaString(scope variableLookup, str string) (*ninjaString, error) {
 			varStart = i + 1
 			return dollarStartState, nil
 
-		case r == EOF:
+		case r == eof:
 			result.strings = append(result.strings, str[stringStart:i])
 			return nil, nil
 
@@ -85,7 +85,7 @@ func parseNinjaString(scope variableLookup, str string) (*ninjaString, error) {
 			varStart = i + 1
 			return bracketsState, nil
 
-		case r == EOF:
+		case r == eof:
 			return nil, fmt.Errorf("unexpected end of string after '$'")
 
 		default:
@@ -115,7 +115,7 @@ func parseNinjaString(scope variableLookup, str string) (*ninjaString, error) {
 			varStart = i + 1
 			return dollarState, nil
 
-		case r == EOF:
+		case r == eof:
 			// This is the end of the variable name.
 			v, err := scope.LookupVariable(str[varStart:i])
 			if err != nil {
@@ -167,7 +167,7 @@ func parseNinjaString(scope variableLookup, str string) (*ninjaString, error) {
 			stringStart = i + 1
 			return stringState, nil
 
-		case r == EOF:
+		case r == eof:
 			return nil, fmt.Errorf("unexpected end of string in variable name")
 
 		default:
@@ -186,7 +186,7 @@ func parseNinjaString(scope variableLookup, str string) (*ninjaString, error) {
 		}
 	}
 
-	_, err = state(len(str), EOF)
+	_, err = state(len(str), eof)
 	if err != nil {
 		return nil, err
 	}
