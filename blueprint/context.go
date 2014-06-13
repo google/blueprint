@@ -58,12 +58,12 @@ type localBuildActions struct {
 
 type moduleInfo struct {
 	// set during Parse
-	typeName         string
-	typ              ModuleType
-	relBlueprintFile string
-	pos              scanner.Position
-	propertyPos      map[string]scanner.Position
-	properties       struct {
+	typeName          string
+	typ               ModuleType
+	relBlueprintsFile string
+	pos               scanner.Position
+	propertyPos       map[string]scanner.Position
+	properties        struct {
 		Name string
 		Deps []string
 	}
@@ -141,7 +141,7 @@ func (c *Context) Parse(rootDir, filename string, r io.Reader) (subdirs []string
 
 	c.dependenciesReady = false
 
-	relBlueprintFile, err := filepath.Rel(rootDir, filename)
+	relBlueprintsFile, err := filepath.Rel(rootDir, filename)
 	if err != nil {
 		return nil, []error{err}
 	}
@@ -167,7 +167,7 @@ func (c *Context) Parse(rootDir, filename string, r io.Reader) (subdirs []string
 		var newErrs []error
 		switch def := def.(type) {
 		case *parser.Module:
-			newErrs = c.processModuleDef(def, relBlueprintFile)
+			newErrs = c.processModuleDef(def, relBlueprintsFile)
 
 		case *parser.Assignment:
 			var newSubdirs []string
@@ -370,7 +370,7 @@ func (c *Context) processAssignment(
 }
 
 func (c *Context) processModuleDef(moduleDef *parser.Module,
-	relBlueprintFile string) []error {
+	relBlueprintsFile string) []error {
 
 	typeName := moduleDef.Type
 	typ, ok := c.moduleTypes[typeName]
@@ -385,9 +385,9 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 
 	module, properties := typ.new()
 	info := &moduleInfo{
-		typeName:         typeName,
-		typ:              typ,
-		relBlueprintFile: relBlueprintFile,
+		typeName:          typeName,
+		typ:               typ,
+		relBlueprintsFile: relBlueprintsFile,
 	}
 
 	errs := unpackProperties(moduleDef.Properties, &info.properties,
@@ -1217,7 +1217,7 @@ func (c *Context) writeAllModuleActions(nw *ninjaWriter) error {
 		// build dir we need to output the Blueprints file locations in the
 		// comments as paths relative to the source directory.
 		relPos := info.pos
-		relPos.Filename = info.relBlueprintFile
+		relPos.Filename = info.relBlueprintsFile
 
 		infoMap := map[string]interface{}{
 			"properties": info.properties,

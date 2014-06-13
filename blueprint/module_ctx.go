@@ -44,7 +44,7 @@ func (m *moduleContext) ModuleName() string {
 }
 
 func (m *moduleContext) ModuleDir() string {
-	return filepath.Dir(m.info.relBlueprintFile)
+	return filepath.Dir(m.info.relBlueprintsFile)
 }
 
 func (m *moduleContext) Config() interface{} {

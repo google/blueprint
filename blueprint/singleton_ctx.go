@@ -57,12 +57,12 @@ func (s *singletonContext) ModuleName(module Module) string {
 
 func (s *singletonContext) ModuleDir(module Module) string {
 	info := s.context.moduleInfo[module]
-	return filepath.Dir(info.relBlueprintFile)
+	return filepath.Dir(info.relBlueprintsFile)
 }
 
 func (s *singletonContext) BlueprintFile(module Module) string {
 	info := s.context.moduleInfo[module]
-	return info.relBlueprintFile
+	return info.relBlueprintsFile
 }
 
 func (s *singletonContext) ModuleErrorf(module Module, format string,
