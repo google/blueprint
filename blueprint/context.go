@@ -19,6 +19,30 @@ var ErrBuildActionsNotReady = errors.New("build actions are not ready")
 
 const maxErrors = 10
 
+// A Context contains all the state needed to parse a set of Blueprints files
+// and generate a Ninja file.  The process of generating a Ninja file proceeds
+// through a series of four phases.  Each phase corresponds with a some methods
+// on the Context object
+//
+//         Phase                            Methods
+//      ------------      -------------------------------------------
+//   1. Registration         RegisterModuleType, RegisterSingleton
+//
+//   2. Parse                    ParseBlueprintsFiles, Parse
+//
+//   3. Generate            ResovleDependencies, PrepareBuildActions
+//
+//   4. Write                           WriteBuildFile
+//
+// The registration phase prepares the context to process Blueprints files
+// containing various types of modules.  The parse phase reads in one or more
+// Blueprints files and validates their contents against the module types that
+// have been registered.  The generate phase then analyzes the parsed Blueprints
+// contents to create an internal representation for the build actions that must
+// be performed.  This phase also performs validation of the module dependencies
+// and property values defined in the parsed Blueprints files.  Finally, the
+// write phase generates the Ninja manifest text based on the generated build
+// actions.
 type Context struct {
 	// set at instantiation
 	moduleTypes   map[string]ModuleType
@@ -45,9 +69,11 @@ type Context struct {
 	requiredNinjaMicro int          // For the ninja_required_version variable
 }
 
+// An Error describes a problem that was encountered that is related to a
+// particular location in a Blueprints file.
 type Error struct {
-	Err error
-	Pos scanner.Position
+	Err error            // the error that occurred
+	Pos scanner.Position // the relevant Blueprints file location
 }
 
 type localBuildActions struct {
@@ -88,6 +114,9 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("%s: %s", e.Pos, e.Err)
 }
 
+// NewContext creates a new Context object.  The created context initially has
+// no module types or singletons registered, so the RegisterModuleType and
+// RegisterSingleton methods must be called before it can do anything useful.
 func NewContext() *Context {
 	return &Context{
 		moduleTypes:   make(map[string]ModuleType),
@@ -97,6 +126,18 @@ func NewContext() *Context {
 	}
 }
 
+// RegisterModuleType associates a module type name (which can appear in a
+// Blueprints file) with a ModuleType object.  When the given module type name
+// is encountered in a Blueprints file during parsing, the ModuleType object
+// will be used to instantiate a new Module object to handle the build action
+// generation for the module.
+//
+// The module type names given here must be unique for the context.  Note that
+// these module type names are different from the name passed to MakeModuleType.
+// The name given here is how the module type is referenced in a Blueprints
+// file, while the name passed to MakeModuleType indicates the name of the Go
+// ModuleType object (i.e. it's used to when reporting build logic problems to
+// make finding the problematic code easier).
 func (c *Context) RegisterModuleType(name string, typ ModuleType) {
 	if _, present := c.moduleTypes[name]; present {
 		panic(errors.New("module type name is already registered"))
@@ -104,6 +145,9 @@ func (c *Context) RegisterModuleType(name string, typ ModuleType) {
 	c.moduleTypes[name] = typ
 }
 
+// RegisterSingleton registers a singleton object that will be invoked to
+// generate build actions.  Each registered singleton is invoked exactly once as
+// part of the generate phase.
 func (c *Context) RegisterSingleton(name string, singleton Singleton) {
 	if _, present := c.singletonInfo[name]; present {
 		panic(errors.New("singleton name is already registered"))
@@ -132,10 +176,30 @@ func singletonTypeName(singleton Singleton) string {
 	return typ.PkgPath() + "." + typ.Name()
 }
 
+// SetIgnoreUnknownModuleTypes sets the behavior of the context in the case
+// where it encounters an unknown module type while parsing Blueprints files. By
+// default, the context will report unknown module types as an error.  If this
+// method is called with ignoreUnknownModuleTypes set to true then the context
+// will silently ignore unknown module types.
+//
+// This method should generally not be used.  It exists to facilitate the
+// bootstrapping process.
 func (c *Context) SetIgnoreUnknownModuleTypes(ignoreUnknownModuleTypes bool) {
 	c.ignoreUnknownModuleTypes = ignoreUnknownModuleTypes
 }
 
+// Parse parses a single Blueprints file from r, creating Module objects for
+// each of the module definitions encountered.  If the Blueprints file contains
+// an assignment to the "subdirs" variable, then the subdirectories listed are
+// returned in the subdirs first return value.
+//
+// rootDir specifies the path to the root directory of the source tree, while
+// filename specifies the path to the Blueprints file.  These paths are used for
+// error reporting and for determining the module's directory.
+//
+// This method should probably not be used directly.  It is provided to simplify
+// testing.  Instead ParseBlueprintsFiles should be called to parse a set of
+// Blueprints files starting from a top-level Blueprints file.
 func (c *Context) Parse(rootDir, filename string, r io.Reader) (subdirs []string,
 	errs []error) {
 
@@ -191,6 +255,15 @@ func (c *Context) Parse(rootDir, filename string, r io.Reader) (subdirs []string
 	return subdirs, errs
 }
 
+// ParseBlueprintsFiles parses a set of Blueprints files starting with the file
+// at rootFile.  When it encounters a Blueprints file with a set of subdirs
+// listed it recursively parses any Blueprints files found in those
+// subdirectories.
+//
+// If no errors are encountered while parsing the files, the list of paths on
+// which the future output will depend is returned.  This list will include both
+// Blueprints file paths as well as directory paths for cases where wildcard
+// subdirs are found.
 func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string,
 	errs []error) {
 
@@ -433,6 +506,10 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 	return nil
 }
 
+// ResolveDependencies checks that the dependencies specified by all of the
+// modules defined in the parsed Blueprints files are valid.  This means that
+// the modules depended upon are defined and that no circular dependencies
+// exist.
 func (c *Context) ResolveDependencies() []error {
 	errs := c.resolveDependencies()
 	if len(errs) > 0 {
@@ -559,6 +636,19 @@ func (c *Context) checkForDependencyCycles() (errs []error) {
 	return
 }
 
+// PrepareBuildActions generates an internal representation of all the build
+// actions that need to be performed.  This process involves invoking the
+// GenerateBuildActions method on each of the Module objects created during the
+// parse phase and then on each of the registered Singleton objects.
+//
+// If the ResolveDependencies method has not already been called it is called
+// automatically by this method.
+//
+// The config argument is made available to all of the Module and Singleton
+// objects via the Config method on the ModuleContext and SingletonContext
+// objects passed to GenerateBuildActions.  It is also passed to the functions
+// specified via PoolFunc, RuleFunc, and VariableFunc so that they can compute
+// config-specific values.
 func (c *Context) PrepareBuildActions(config interface{}) []error {
 	c.buildActionsReady = false
 
@@ -954,6 +1044,9 @@ func (c *Context) checkForVariableReferenceCycles(
 	}
 }
 
+// WriteBuildFile writes the Ninja manifeset text for the generated build
+// actions to w.  If this is called before PrepareBuildActions successfully
+// completes then ErrBuildActionsNotReady is returned.
 func (c *Context) WriteBuildFile(w io.Writer) error {
 	if !c.buildActionsReady {
 		return ErrBuildActionsNotReady

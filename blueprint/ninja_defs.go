@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+// A Deps value indicates the dependency file format that Ninja should expect to
+// be output by a compiler.
 type Deps int
 
 const (
@@ -27,31 +29,40 @@ func (d Deps) String() string {
 	}
 }
 
+// A PoolParams object contains the set of parameters that make up a Ninja pool
+// definition.
 type PoolParams struct {
-	Comment string
-	Depth   int
+	Comment string // The comment that will appear above the definition.
+	Depth   int    // The Ninja pool depth.
 }
 
+// A RuleParams object contains the set of parameters that make up a Ninja rule
+// definition.  Each field except for Comment corresponds with a Ninja variable
+// of the same name.
 type RuleParams struct {
-	Comment        string
-	Command        string
-	Depfile        string
-	Deps           Deps
-	Description    string
-	Generator      bool
-	Pool           Pool
-	Restat         bool
-	Rspfile        string
-	RspfileContent string
+	Comment        string // The comment that will appear above the definition.
+	Command        string // The command that Ninja will run for the rule.
+	Depfile        string // The dependency file name.
+	Deps           Deps   // The format of the dependency file.
+	Description    string // The description that Ninja will print for the rule.
+	Generator      bool   // Whether the rule generates the Ninja manifest file.
+	Pool           Pool   // The Ninja pool to which the rule belongs.
+	Restat         bool   // Whether Ninja should re-stat the rule's outputs.
+	Rspfile        string // The response file.
+	RspfileContent string // The response file content.
 }
 
+// A BuildParams object contains the set of parameters that make up a Ninja
+// build statement.  Each field except for Args corresponds with a part of the
+// Ninja build statement.  The Args field contains variable names and values
+// that are set within the build statement's scope in the Ninja file.
 type BuildParams struct {
-	Rule      Rule
-	Outputs   []string
-	Inputs    []string
-	Implicits []string
-	OrderOnly []string
-	Args      map[string]string
+	Rule      Rule              // The rule to invoke.
+	Outputs   []string          // The list of output targets.
+	Inputs    []string          // The list of explicit input dependencies.
+	Implicits []string          // The list of implicit dependencies.
+	OrderOnly []string          // The list of order-only dependencies.
+	Args      map[string]string // The variable/value pairs to set.
 }
 
 // A poolDef describes a pool definition.  It does not include the name of the

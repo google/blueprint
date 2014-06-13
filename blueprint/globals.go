@@ -86,13 +86,15 @@ func callerPackage() *pkg {
 	return p
 }
 
-// Import enables access to the global Ninja rules and variables that are
-// exported by another Go package.  It may only be called from a Go package's
-// init() function.  The Go package path passed to Import must have already been
-// imported into the Go package using a Go import statement.  The imported
-// variables may then be accessed from Ninja strings as "${pkg.Variable}", while
-// the imported rules can simply be accessed as exported Go variables from the
-// package.  For example:
+// Import enables access to the exported Ninja pools, rules, and variables that
+// are defined at the package scope of another Go package.  Go's visibility
+// rules apply to these references - capitalized names indicate that something
+// is exported.  It may only be called from a Go package's init() function.  The
+// Go package path passed to Import must have already been imported into the Go
+// package using a Go import statement.  The imported variables may then be
+// accessed from Ninja strings as "${pkg.Variable}", while the imported rules
+// can simply be accessed as exported Go variables from the package.  For
+// example:
 //
 //     import (
 //         "blueprint"
@@ -111,6 +113,12 @@ func callerPackage() *pkg {
 //             Outputs: []string{"${bar.SomeVariable}"},
 //         })
 //     }
+//
+// Note that the local name used to refer to the package in Ninja variable names
+// is derived from pkgPath by extracting the last path component.  This differs
+// from Go's import declaration, which derives the local name from the package
+// clause in the imported package.  By convention these names are made to match,
+// but this is not required.
 func Import(pkgPath string) {
 	callerPkg := callerPackage()
 
@@ -125,6 +133,9 @@ func Import(pkgPath string) {
 	}
 }
 
+// ImportAs provides the same functionality as Import, but it allows the local
+// name that will be used to refer to the package to be specified explicitly.
+// It may only be called from a Go package's init() function.
 func ImportAs(as, pkgPath string) {
 	callerPkg := callerPackage()
 
@@ -150,8 +161,15 @@ type staticVariable struct {
 	value_ string
 }
 
-// StaticVariable returns a Variable that does not depend on any configuration
-// information.
+// StaticVariable returns a Variable whose value does not depend on any
+// configuration information.  It may only be called during a Go package's
+// initialization - either from the init() function or as part of a package-
+// scoped variable's initialization.
+//
+// This function is usually used to initialize a package-scoped Go variable that
+// represents a Ninja variable that will be output.  The name argument should
+// exactly match the Go variable name, and the value string may reference other
+// Ninja variables that are visible within the calling Go package.
 func StaticVariable(name, value string) Variable {
 	err := validateNinjaName(name)
 	if err != nil {
@@ -192,9 +210,19 @@ type variableFunc struct {
 }
 
 // VariableFunc returns a Variable whose value is determined by a function that
-// takes a interface{} object as input and returns either the variable value or an
-// error.
-func VariableFunc(name string, f func(interface{}) (string, error)) Variable {
+// takes a config object as input and returns either the variable value or an
+// error.  It may only be called during a Go package's initialization - either
+// from the init() function or as part of a package-scoped variable's
+// initialization.
+//
+// This function is usually used to initialize a package-scoped Go variable that
+// represents a Ninja variable that will be output.  The name argument should
+// exactly match the Go variable name, and the value string returned by f may
+// reference other Ninja variables that are visible within the calling Go
+// package.
+func VariableFunc(name string, f func(config interface{}) (string,
+	error)) Variable {
+
 	err := validateNinjaName(name)
 	if err != nil {
 		panic(err)
@@ -212,8 +240,16 @@ func VariableFunc(name string, f func(interface{}) (string, error)) Variable {
 }
 
 // VariableConfigMethod returns a Variable whose value is determined by calling
-// a method on the interface{} object.  The method must take no arguments and return
-// a single string that will be the variable's value.
+// a method on the config object.  The method must take no arguments and return
+// a single string that will be the variable's value.  It may only be called
+// during a Go package's initialization - either from the init() function or as
+// part of a package-scoped variable's initialization.
+//
+// This function is usually used to initialize a package-scoped Go variable that
+// represents a Ninja variable that will be output.  The name argument should
+// exactly match the Go variable name, and the value string returned by method
+// may reference other Ninja variables that are visible within the calling Go
+// package.
 func VariableConfigMethod(name string, method interface{}) Variable {
 	err := validateNinjaName(name)
 	if err != nil {
@@ -311,6 +347,15 @@ type staticPool struct {
 	params PoolParams
 }
 
+// StaticPool returns a Pool whose value does not depend on any configuration
+// information.  It may only be called during a Go package's initialization -
+// either from the init() function or as part of a package-scoped Go variable's
+// initialization.
+//
+// This function is usually used to initialize a package-scoped Go variable that
+// represents a Ninja pool that will be output.  The name argument should
+// exactly match the Go variable name, and the params fields may reference other
+// Ninja variables that are visible within the calling Go package.
 func StaticPool(name string, params PoolParams) Pool {
 	err := validateNinjaName(name)
 	if err != nil {
@@ -354,6 +399,16 @@ type poolFunc struct {
 	paramsFunc func(interface{}) (PoolParams, error)
 }
 
+// PoolFunc returns a Pool whose value is determined by a function that takes a
+// config object as input and returns either the pool parameters or an error. It
+// may only be called during a Go package's initialization - either from the
+// init() function or as part of a package-scoped variable's initialization.
+//
+// This function is usually used to initialize a package-scoped Go variable that
+// represents a Ninja pool that will be output.  The name argument should
+// exactly match the Go variable name, and the string fields of the PoolParams
+// returned by f may reference other Ninja variables that are visible within the
+// calling Go package.
 func PoolFunc(name string, f func(interface{}) (PoolParams, error)) Pool {
 	err := validateNinjaName(name)
 	if err != nil {
@@ -403,6 +458,24 @@ type staticRule struct {
 	scope_   *scope
 }
 
+// StaticRule returns a Rule whose value does not depend on any configuration
+// information.  It may only be called during a Go package's initialization -
+// either from the init() function or as part of a package-scoped Go variable's
+// initialization.
+//
+// This function is usually used to initialize a package-scoped Go variable that
+// represents a Ninja rule that will be output.  The name argument should
+// exactly match the Go variable name, and the params fields may reference other
+// Ninja variables that are visible within the calling Go package.
+//
+// The argNames arguments list Ninja variables that may be overridden by Ninja
+// build statements that invoke the rule.  These arguments may be referenced in
+// any of the string fields of params.  Arguments can shadow package-scoped
+// variables defined within the caller's Go package, but they may not shadow
+// those defined in another package.  Shadowing a package-scoped variable
+// results in the package-scoped variable's value being used for build
+// statements that do not override the argument.  For argument names that do not
+// shadow package-scoped variables the default value is an empty string.
 func StaticRule(name string, params RuleParams, argNames ...string) Rule {
 	pkg := callerPackage()
 
@@ -474,6 +547,25 @@ type ruleFunc struct {
 	scope_     *scope
 }
 
+// RuleFunc returns a Rule whose value is determined by a function that takes a
+// config object as input and returns either the rule parameters or an error. It
+// may only be called during a Go package's initialization - either from the
+// init() function or as part of a package-scoped variable's initialization.
+//
+// This function is usually used to initialize a package-scoped Go variable that
+// represents a Ninja rule that will be output.  The name argument should
+// exactly match the Go variable name, and the string fields of the RuleParams
+// returned by f may reference other Ninja variables that are visible within the
+// calling Go package.
+//
+// The argNames arguments list Ninja variables that may be overridden by Ninja
+// build statements that invoke the rule.  These arguments may be referenced in
+// any of the string fields of the RuleParams returned by f.  Arguments can
+// shadow package-scoped variables defined within the caller's Go package, but
+// they may not shadow those defined in another package.  Shadowing a package-
+// scoped variable results in the package-scoped variable's value being used for
+// build statements that do not override the argument.  For argument names that
+// do not shadow package-scoped variables the default value is an empty string.
 func RuleFunc(name string, f func(interface{}) (RuleParams, error),
 	argNames ...string) Rule {
 
@@ -575,6 +667,10 @@ func (r *builtinRule) isArg(argName string) bool {
 	return false
 }
 
+// A ModuleType represents a type of module that can be defined in a Blueprints
+// file.  In order for it to be used when interpreting Blueprints files, a
+// ModuleType must first be registered with a Context object via the
+// Context.RegisterModuleType method.
 type ModuleType interface {
 	pkg() *pkg
 	name() string
@@ -587,6 +683,70 @@ type moduleTypeFunc struct {
 	new_  func() (Module, interface{})
 }
 
+// MakeModuleType returns a new ModuleType object that will instantiate new
+// Module objects with the given new function.  MakeModuleType may only be
+// called during a Go package's initialization - either from the init() function
+// or as part of a package-scoped variable's initialization.
+//
+// This function is usually used to initialize a package-scoped Go ModuleType
+// variable that can then be passed to Context.RegisterModuleType.  The name
+// argument should exactly match the Go variable name.  Note that this name is
+// different than the one passed to Context.RegisterModuleType.  This name is
+// used to identify the Go object in error messages, making it easier to
+// identify problematic build logic code.  The name passed to
+// Context.RegisterModuleType is the name that appear in Blueprints files to
+// instantiate modules of this type.
+//
+// The new function passed to MakeModuleType returns two values.  The first is
+// the newly created Module object.  The second is a pointer to that Module
+// object's properties struct.  This properties struct is examined when parsing
+// a module definition of this type in a Blueprints file.  Exported fields of
+// the properties struct are automatically set to the property values specified
+// in the Blueprints file.  The properties struct field names determine the name
+// of the Blueprints file properties that are used - the Blueprints property
+// name matches that of the properties struct field name with the first letter
+// converted to lower-case.
+//
+// The fields of the properties struct must either []string, a string, or bool.
+// The Context will panic if a Module gets instantiated with a properties struct
+// containing a field that is not one these supported types.
+//
+// Any properties that appear in the Blueprints files that are not built-in
+// module properties (such as "name" and "deps") and do not have a corresponding
+// field in the returned module properties struct result in an error during the
+// Context's parse phase.
+//
+// As an example, the follow code:
+//
+//   var MyModuleType = blueprint.MakeModuleType("MyModuleType", newMyModule)
+//
+//   type myModule struct {
+//       properties struct {
+//           Foo string
+//           Bar []string
+//       }
+//   }
+//
+//   func newMyModule() (blueprint.Module, interface{}) {
+//       module := new(myModule)
+//       properties := &module.properties
+//       return module, properties
+//   }
+//
+//   func main() {
+//       ctx := blueprint.NewContext()
+//       ctx.RegisterModuleType("my_module", MyModuleType)
+//       // ...
+//   }
+//
+// would support parsing a module defined in a Blueprints file as follows:
+//
+//   my_module {
+//       name: "myName",
+//       foo:  "my foo string",
+//       bar:  ["my", "bar", "strings"],
+//   }
+//
 func MakeModuleType(name string,
 	new func() (m Module, properties interface{})) ModuleType {
 
