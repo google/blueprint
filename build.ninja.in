@@ -50,7 +50,7 @@ rule g.bootstrap.cp
     description = cp ${out}
 
 rule g.bootstrap.bootstrap
-    command = ${g.bootstrap.Bootstrap} ${in} ${g.bootstrap.BootstrapManifest}
+    command = ${g.bootstrap.Bootstrap} -i ${in}
     description = bootstrap ${in}
     generator = true
 

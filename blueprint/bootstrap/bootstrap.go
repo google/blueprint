@@ -46,7 +46,7 @@ var (
 
 	bootstrap = blueprint.StaticRule("bootstrap",
 		blueprint.RuleParams{
-			Command:     "$Bootstrap $in $BootstrapManifest",
+			Command:     "$Bootstrap -i $in",
 			Description: "bootstrap $in",
 			Generator:   true,
 		})
@@ -64,7 +64,7 @@ var (
 			// This workaround can be avoided entirely by making a simple change
 			// to Ninja that would allow it to rebuild the manifest twice rather
 			// than just once.
-			Command:     "$Bootstrap $in && ninja",
+			Command:     "$Bootstrap -i $in && ninja",
 			Description: "re-bootstrap $in",
 			Generator:   true,
 		})
