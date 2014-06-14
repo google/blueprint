@@ -92,8 +92,6 @@ func (s *singletonContext) Variable(name, value string) {
 func (s *singletonContext) Rule(name string, params RuleParams,
 	argNames ...string) Rule {
 
-	// TODO: Verify that params.Pool is accessible in this module's scope.
-
 	r, err := s.scope.AddLocalRule(name, &params, argNames...)
 	if err != nil {
 		panic(err)
@@ -105,8 +103,6 @@ func (s *singletonContext) Rule(name string, params RuleParams,
 }
 
 func (s *singletonContext) Build(params BuildParams) {
-	// TODO: Verify that params.Rule is accessible in this module's scope.
-
 	def, err := parseBuildParams(s.scope, &params)
 	if err != nil {
 		panic(err)

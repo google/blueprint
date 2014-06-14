@@ -13,8 +13,9 @@ import (
 type Variable interface {
 	pkg() *pkg
 	name() string                             // "foo"
-	fullName(pkgNames map[*pkg]string) string // "pkg.foo" or "path/to/pkg.foo"
+	fullName(pkgNames map[*pkg]string) string // "pkg.foo" or "path.to.pkg.foo"
 	value(config interface{}) (*ninjaString, error)
+	String() string
 }
 
 // A Pool represents a Ninja pool that will be written to the output .ninja
@@ -22,8 +23,9 @@ type Variable interface {
 type Pool interface {
 	pkg() *pkg
 	name() string                             // "foo"
-	fullName(pkgNames map[*pkg]string) string // "pkg.foo" or "path/to/pkg.foo"
+	fullName(pkgNames map[*pkg]string) string // "pkg.foo" or "path.to.pkg.foo"
 	def(config interface{}) (*poolDef, error)
+	String() string
 }
 
 // A Rule represents a Ninja build rule that will be written to the output
@@ -31,31 +33,32 @@ type Pool interface {
 type Rule interface {
 	pkg() *pkg
 	name() string                             // "foo"
-	fullName(pkgNames map[*pkg]string) string // "pkg.foo" or "path/to/pkg.foo"
+	fullName(pkgNames map[*pkg]string) string // "pkg.foo" or "path.to.pkg.foo"
 	def(config interface{}) (*ruleDef, error)
-	scope() *scope
+	scope() *basicScope
 	isArg(argName string) bool
+	String() string
 }
 
-type scope struct {
-	parent    *scope
+type basicScope struct {
+	parent    *basicScope
 	variables map[string]Variable
 	pools     map[string]Pool
 	rules     map[string]Rule
-	imports   map[string]*scope
+	imports   map[string]*basicScope
 }
 
-func newScope(parent *scope) *scope {
-	return &scope{
+func newScope(parent *basicScope) *basicScope {
+	return &basicScope{
 		parent:    parent,
 		variables: make(map[string]Variable),
 		pools:     make(map[string]Pool),
 		rules:     make(map[string]Rule),
-		imports:   make(map[string]*scope),
+		imports:   make(map[string]*basicScope),
 	}
 }
 
-func makeRuleScope(parent *scope, argNames map[string]bool) *scope {
+func makeRuleScope(parent *basicScope, argNames map[string]bool) *basicScope {
 	scope := newScope(parent)
 	for argName := range argNames {
 		_, err := scope.LookupVariable(argName)
@@ -83,7 +86,7 @@ func makeRuleScope(parent *scope, argNames map[string]bool) *scope {
 	return scope
 }
 
-func (s *scope) LookupVariable(name string) (Variable, error) {
+func (s *basicScope) LookupVariable(name string) (Variable, error) {
 	dotIndex := strings.IndexRune(name, '.')
 	if dotIndex >= 0 {
 		// The variable name looks like "pkg.var"
@@ -127,7 +130,52 @@ func (s *scope) LookupVariable(name string) (Variable, error) {
 	}
 }
 
-func (s *scope) lookupImportedScope(pkgName string) (*scope, error) {
+func (s *basicScope) IsRuleVisible(rule Rule) bool {
+	_, isBuiltin := rule.(*builtinRule)
+	if isBuiltin {
+		return true
+	}
+
+	name := rule.name()
+
+	for s != nil {
+		if s.rules[name] == rule {
+			return true
+		}
+
+		for _, import_ := range s.imports {
+			if import_.rules[name] == rule {
+				return true
+			}
+		}
+
+		s = s.parent
+	}
+
+	return false
+}
+
+func (s *basicScope) IsPoolVisible(pool Pool) bool {
+	name := pool.name()
+
+	for s != nil {
+		if s.pools[name] == pool {
+			return true
+		}
+
+		for _, import_ := range s.imports {
+			if import_.pools[name] == pool {
+				return true
+			}
+		}
+
+		s = s.parent
+	}
+
+	return false
+}
+
+func (s *basicScope) lookupImportedScope(pkgName string) (*basicScope, error) {
 	for ; s != nil; s = s.parent {
 		importedScope, ok := s.imports[pkgName]
 		if ok {
@@ -138,7 +186,7 @@ func (s *scope) lookupImportedScope(pkgName string) (*scope, error) {
 		"blueprint.Import()?)", pkgName)
 }
 
-func (s *scope) AddImport(name string, importedScope *scope) error {
+func (s *basicScope) AddImport(name string, importedScope *basicScope) error {
 	_, present := s.imports[name]
 	if present {
 		return fmt.Errorf("import %q is already defined in this scope", name)
@@ -147,7 +195,7 @@ func (s *scope) AddImport(name string, importedScope *scope) error {
 	return nil
 }
 
-func (s *scope) AddVariable(v Variable) error {
+func (s *basicScope) AddVariable(v Variable) error {
 	name := v.name()
 	_, present := s.variables[name]
 	if present {
@@ -157,7 +205,7 @@ func (s *scope) AddVariable(v Variable) error {
 	return nil
 }
 
-func (s *scope) AddPool(p Pool) error {
+func (s *basicScope) AddPool(p Pool) error {
 	name := p.name()
 	_, present := s.pools[name]
 	if present {
@@ -167,7 +215,7 @@ func (s *scope) AddPool(p Pool) error {
 	return nil
 }
 
-func (s *scope) AddRule(r Rule) error {
+func (s *basicScope) AddRule(r Rule) error {
 	name := r.name()
 	_, present := s.rules[name]
 	if present {
@@ -179,10 +227,10 @@ func (s *scope) AddRule(r Rule) error {
 
 type localScope struct {
 	namePrefix string
-	scope      *scope
+	scope      *basicScope
 }
 
-func newLocalScope(parent *scope, namePrefix string) *localScope {
+func newLocalScope(parent *basicScope, namePrefix string) *localScope {
 	return &localScope{
 		namePrefix: namePrefix,
 		scope:      newScope(parent),
@@ -191,6 +239,14 @@ func newLocalScope(parent *scope, namePrefix string) *localScope {
 
 func (s *localScope) LookupVariable(name string) (Variable, error) {
 	return s.scope.LookupVariable(name)
+}
+
+func (s *localScope) IsRuleVisible(rule Rule) bool {
+	return s.scope.IsRuleVisible(rule)
+}
+
+func (s *localScope) IsPoolVisible(pool Pool) bool {
+	return s.scope.IsPoolVisible(pool)
 }
 
 func (s *localScope) AddLocalVariable(name, value string) (*localVariable,
@@ -287,12 +343,16 @@ func (l *localVariable) value(interface{}) (*ninjaString, error) {
 	return l.value_, nil
 }
 
+func (l *localVariable) String() string {
+	return "<local var>:" + l.namePrefix + l.name_
+}
+
 type localRule struct {
 	namePrefix string
 	name_      string
 	def_       *ruleDef
 	argNames   map[string]bool
-	scope_     *scope
+	scope_     *basicScope
 }
 
 func (l *localRule) pkg() *pkg {
@@ -311,10 +371,14 @@ func (l *localRule) def(interface{}) (*ruleDef, error) {
 	return l.def_, nil
 }
 
-func (r *localRule) scope() *scope {
+func (r *localRule) scope() *basicScope {
 	return r.scope_
 }
 
 func (r *localRule) isArg(argName string) bool {
 	return r.argNames[argName]
+}
+
+func (r *localRule) String() string {
+	return "<local rule>:" + r.namePrefix + r.name_
 }

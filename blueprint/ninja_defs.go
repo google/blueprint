@@ -1,6 +1,7 @@
 package blueprint
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -72,7 +73,7 @@ type poolDef struct {
 	Depth   int
 }
 
-func parsePoolParams(scope variableLookup, params *PoolParams) (*poolDef,
+func parsePoolParams(scope scope, params *PoolParams) (*poolDef,
 	error) {
 
 	def := &poolDef{
@@ -107,7 +108,7 @@ type ruleDef struct {
 	Variables map[string]*ninjaString
 }
 
-func parseRuleParams(scope variableLookup, params *RuleParams) (*ruleDef,
+func parseRuleParams(scope scope, params *RuleParams) (*ruleDef,
 	error) {
 
 	r := &ruleDef{
@@ -119,6 +120,10 @@ func parseRuleParams(scope variableLookup, params *RuleParams) (*ruleDef,
 	if params.Command == "" {
 		return nil, fmt.Errorf("encountered rule params with no command " +
 			"specified")
+	}
+
+	if r.Pool != nil && !scope.IsPoolVisible(r.Pool) {
+		return nil, fmt.Errorf("Pool %s is not visible in this scope", r.Pool)
 	}
 
 	value, err := parseNinjaString(scope, params.Command)
@@ -217,13 +222,21 @@ type buildDef struct {
 	Args      map[Variable]*ninjaString
 }
 
-func parseBuildParams(scope variableLookup, params *BuildParams) (*buildDef,
+func parseBuildParams(scope scope, params *BuildParams) (*buildDef,
 	error) {
 
 	rule := params.Rule
 
 	b := &buildDef{
 		Rule: rule,
+	}
+
+	if !scope.IsRuleVisible(rule) {
+		return nil, fmt.Errorf("Rule %s is not visible in this scope", rule)
+	}
+
+	if len(params.Outputs) == 0 {
+		return nil, errors.New("Outputs param has no elements")
 	}
 
 	var err error

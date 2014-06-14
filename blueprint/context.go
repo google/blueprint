@@ -756,7 +756,7 @@ func (c *Context) generateSingletonBuildActions(config interface{},
 		// any Ninja globals and has not called Import() then we won't have an
 		// entry for it in the pkgs map.  If that's the case then the
 		// singleton's scope's parent should just be nil.
-		var singletonScope *scope
+		var singletonScope *basicScope
 		if pkg := pkgs[singletonPkgPath(info.singleton)]; pkg != nil {
 			singletonScope = pkg.scope
 		}

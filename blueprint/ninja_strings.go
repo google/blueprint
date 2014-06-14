@@ -24,8 +24,10 @@ type ninjaString struct {
 	variables []Variable
 }
 
-type variableLookup interface {
+type scope interface {
 	LookupVariable(name string) (Variable, error)
+	IsRuleVisible(rule Rule) bool
+	IsPoolVisible(pool Pool) bool
 }
 
 func simpleNinjaString(str string) *ninjaString {
@@ -37,7 +39,7 @@ func simpleNinjaString(str string) *ninjaString {
 // parseNinjaString parses an unescaped ninja string (i.e. all $<something>
 // occurrences are expected to be variables or $$) and returns a list of the
 // variable names that the string references.
-func parseNinjaString(scope variableLookup, str string) (*ninjaString, error) {
+func parseNinjaString(scope scope, str string) (*ninjaString, error) {
 	type stateFunc func(int, rune) (stateFunc, error)
 	var (
 		stringState      stateFunc
@@ -194,7 +196,7 @@ func parseNinjaString(scope variableLookup, str string) (*ninjaString, error) {
 	return &result, nil
 }
 
-func parseNinjaStrings(scope variableLookup, strs []string) ([]*ninjaString,
+func parseNinjaStrings(scope scope, strs []string) ([]*ninjaString,
 	error) {
 
 	if len(strs) == 0 {

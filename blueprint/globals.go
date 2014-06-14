@@ -13,7 +13,7 @@ type pkg struct {
 	fullName  string
 	shortName string
 	pkgPath   string
-	scope     *scope
+	scope     *basicScope
 }
 
 var pkgs = map[string]*pkg{}
@@ -202,11 +202,14 @@ func (v *staticVariable) fullName(pkgNames map[*pkg]string) string {
 func (v *staticVariable) value(interface{}) (*ninjaString, error) {
 	ninjaStr, err := parseNinjaString(v.pkg_.scope, v.value_)
 	if err != nil {
-		err = fmt.Errorf("error parsing variable %s.%s value: %s",
-			v.pkg_.pkgPath, v.name_, err)
+		err = fmt.Errorf("error parsing variable %s value: %s", v, err)
 		panic(err)
 	}
 	return ninjaStr, nil
+}
+
+func (v *staticVariable) String() string {
+	return v.pkg_.pkgPath + "." + v.name_
 }
 
 type variableFunc struct {
@@ -302,12 +305,15 @@ func (v *variableFunc) value(config interface{}) (*ninjaString, error) {
 
 	ninjaStr, err := parseNinjaString(v.pkg_.scope, value)
 	if err != nil {
-		err = fmt.Errorf("error parsing variable %s.%s value: %s",
-			v.pkg_.pkgPath, v.name_, err)
+		err = fmt.Errorf("error parsing variable %s value: %s", v, err)
 		panic(err)
 	}
 
 	return ninjaStr, nil
+}
+
+func (v *variableFunc) String() string {
+	return v.pkg_.pkgPath + "." + v.name_
 }
 
 func validateVariableMethod(name string, methodValue reflect.Value) {
@@ -353,6 +359,10 @@ func (v *argVariable) fullName(pkgNames map[*pkg]string) string {
 
 func (v *argVariable) value(config interface{}) (*ninjaString, error) {
 	return nil, errVariableIsArg
+}
+
+func (v *argVariable) String() string {
+	return "<arg>:" + v.name_
 }
 
 type staticPool struct {
@@ -402,10 +412,13 @@ func (p *staticPool) fullName(pkgNames map[*pkg]string) string {
 func (p *staticPool) def(config interface{}) (*poolDef, error) {
 	def, err := parsePoolParams(p.pkg_.scope, &p.params)
 	if err != nil {
-		panic(fmt.Errorf("error parsing PoolParams for %s.%s: %s",
-			p.pkg_.pkgPath, p.name_, err))
+		panic(fmt.Errorf("error parsing PoolParams for %s: %s", p, err))
 	}
 	return def, nil
+}
+
+func (p *staticPool) String() string {
+	return p.pkg_.pkgPath + "." + p.name_
 }
 
 type poolFunc struct {
@@ -460,10 +473,13 @@ func (p *poolFunc) def(config interface{}) (*poolDef, error) {
 	}
 	def, err := parsePoolParams(p.pkg_.scope, &params)
 	if err != nil {
-		panic(fmt.Errorf("error parsing PoolParams for %s.%s: %s",
-			p.pkg_.pkgPath, p.name_, err))
+		panic(fmt.Errorf("error parsing PoolParams for %s: %s", p, err))
 	}
 	return def, nil
+}
+
+func (p *poolFunc) String() string {
+	return p.pkg_.pkgPath + "." + p.name_
 }
 
 type staticRule struct {
@@ -471,7 +487,7 @@ type staticRule struct {
 	name_    string
 	params   RuleParams
 	argNames map[string]bool
-	scope_   *scope
+	scope_   *basicScope
 }
 
 // StaticRule returns a Rule whose value does not depend on any configuration
@@ -510,7 +526,7 @@ func StaticRule(name string, params RuleParams, argNames ...string) Rule {
 		argNamesSet[argName] = true
 	}
 
-	ruleScope := (*scope)(nil) // This will get created lazily
+	ruleScope := (*basicScope)(nil) // This will get created lazily
 
 	r := &staticRule{pkg, name, params, argNamesSet, ruleScope}
 	err = pkg.scope.AddRule(r)
@@ -536,16 +552,15 @@ func (r *staticRule) fullName(pkgNames map[*pkg]string) string {
 func (r *staticRule) def(interface{}) (*ruleDef, error) {
 	def, err := parseRuleParams(r.scope(), &r.params)
 	if err != nil {
-		panic(fmt.Errorf("error parsing RuleParams for %s.%s: %s",
-			r.pkg_.pkgPath, r.name_, err))
+		panic(fmt.Errorf("error parsing RuleParams for %s: %s", r, err))
 	}
 	return def, nil
 }
 
-func (r *staticRule) scope() *scope {
-	// We lazily create the scope so that all the global variables get declared
-	// before the args are created.  Otherwise we could incorrectly shadow a
-	// global variable with an arg variable.
+func (r *staticRule) scope() *basicScope {
+	// We lazily create the scope so that all the package-scoped variables get
+	// declared before the args are created.  Otherwise we could incorrectly
+	// shadow a package-scoped variable with an arg variable.
 	if r.scope_ == nil {
 		r.scope_ = makeRuleScope(r.pkg_.scope, r.argNames)
 	}
@@ -556,12 +571,16 @@ func (r *staticRule) isArg(argName string) bool {
 	return r.argNames[argName]
 }
 
+func (r *staticRule) String() string {
+	return r.pkg_.pkgPath + "." + r.name_
+}
+
 type ruleFunc struct {
 	pkg_       *pkg
 	name_      string
 	paramsFunc func(interface{}) (RuleParams, error)
 	argNames   map[string]bool
-	scope_     *scope
+	scope_     *basicScope
 }
 
 // RuleFunc returns a Rule whose value is determined by a function that takes a
@@ -603,7 +622,7 @@ func RuleFunc(name string, f func(interface{}) (RuleParams, error),
 		argNamesSet[argName] = true
 	}
 
-	ruleScope := (*scope)(nil) // This will get created lazily
+	ruleScope := (*basicScope)(nil) // This will get created lazily
 
 	r := &ruleFunc{pkg, name, f, argNamesSet, ruleScope}
 	err = pkg.scope.AddRule(r)
@@ -633,13 +652,12 @@ func (r *ruleFunc) def(config interface{}) (*ruleDef, error) {
 	}
 	def, err := parseRuleParams(r.scope(), &params)
 	if err != nil {
-		panic(fmt.Errorf("error parsing RuleParams for %s.%s: %s",
-			r.pkg_.pkgPath, r.name_, err))
+		panic(fmt.Errorf("error parsing RuleParams for %s: %s", r, err))
 	}
 	return def, nil
 }
 
-func (r *ruleFunc) scope() *scope {
+func (r *ruleFunc) scope() *basicScope {
 	// We lazily create the scope so that all the global variables get declared
 	// before the args are created.  Otherwise we could incorrectly shadow a
 	// global variable with an arg variable.
@@ -653,9 +671,13 @@ func (r *ruleFunc) isArg(argName string) bool {
 	return r.argNames[argName]
 }
 
+func (r *ruleFunc) String() string {
+	return r.pkg_.pkgPath + "." + r.name_
+}
+
 type builtinRule struct {
 	name_  string
-	scope_ *scope
+	scope_ *basicScope
 }
 
 func (r *builtinRule) pkg() *pkg {
@@ -674,7 +696,7 @@ func (r *builtinRule) def(config interface{}) (*ruleDef, error) {
 	return nil, errRuleIsBuiltin
 }
 
-func (r *builtinRule) scope() *scope {
+func (r *builtinRule) scope() *basicScope {
 	if r.scope_ == nil {
 		r.scope_ = makeRuleScope(nil, nil)
 	}
@@ -683,6 +705,10 @@ func (r *builtinRule) scope() *scope {
 
 func (r *builtinRule) isArg(argName string) bool {
 	return false
+}
+
+func (r *builtinRule) String() string {
+	return "<builtin>:" + r.name_
 }
 
 // A ModuleType represents a type of module that can be defined in a Blueprints

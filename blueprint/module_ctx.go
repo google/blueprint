@@ -84,8 +84,6 @@ func (m *moduleContext) Variable(name, value string) {
 func (m *moduleContext) Rule(name string, params RuleParams,
 	argNames ...string) Rule {
 
-	// TODO: Verify that params.Pool is accessible in this module's scope.
-
 	r, err := m.scope.AddLocalRule(name, &params, argNames...)
 	if err != nil {
 		panic(err)
@@ -97,8 +95,6 @@ func (m *moduleContext) Rule(name string, params RuleParams,
 }
 
 func (m *moduleContext) Build(params BuildParams) {
-	// TODO: Verify that params.Rule is accessible in this module's scope.
-
 	def, err := parseBuildParams(m.scope, &params)
 	if err != nil {
 		panic(err)
