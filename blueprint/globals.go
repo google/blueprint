@@ -200,7 +200,13 @@ func (v *staticVariable) fullName(pkgNames map[*pkg]string) string {
 }
 
 func (v *staticVariable) value(interface{}) (*ninjaString, error) {
-	return parseNinjaString(v.pkg_.scope, v.value_)
+	ninjaStr, err := parseNinjaString(v.pkg_.scope, v.value_)
+	if err != nil {
+		err = fmt.Errorf("error parsing variable %s.%s value: %s",
+			v.pkg_.pkgPath, v.name_, err)
+		panic(err)
+	}
+	return ninjaStr, nil
 }
 
 type variableFunc struct {
@@ -293,7 +299,15 @@ func (v *variableFunc) value(config interface{}) (*ninjaString, error) {
 	if err != nil {
 		return nil, err
 	}
-	return parseNinjaString(v.pkg_.scope, value)
+
+	ninjaStr, err := parseNinjaString(v.pkg_.scope, value)
+	if err != nil {
+		err = fmt.Errorf("error parsing variable %s.%s value: %s",
+			v.pkg_.pkgPath, v.name_, err)
+		panic(err)
+	}
+
+	return ninjaStr, nil
 }
 
 func validateVariableMethod(name string, methodValue reflect.Value) {
@@ -388,7 +402,8 @@ func (p *staticPool) fullName(pkgNames map[*pkg]string) string {
 func (p *staticPool) def(config interface{}) (*poolDef, error) {
 	def, err := parsePoolParams(p.pkg_.scope, &p.params)
 	if err != nil {
-		panic(fmt.Errorf("error parsing PoolParams for %s: %s", p.name_, err))
+		panic(fmt.Errorf("error parsing PoolParams for %s.%s: %s",
+			p.pkg_.pkgPath, p.name_, err))
 	}
 	return def, nil
 }
@@ -445,7 +460,8 @@ func (p *poolFunc) def(config interface{}) (*poolDef, error) {
 	}
 	def, err := parsePoolParams(p.pkg_.scope, &params)
 	if err != nil {
-		panic(fmt.Errorf("error parsing PoolParams for %s: %s", p.name_, err))
+		panic(fmt.Errorf("error parsing PoolParams for %s.%s: %s",
+			p.pkg_.pkgPath, p.name_, err))
 	}
 	return def, nil
 }
@@ -520,7 +536,8 @@ func (r *staticRule) fullName(pkgNames map[*pkg]string) string {
 func (r *staticRule) def(interface{}) (*ruleDef, error) {
 	def, err := parseRuleParams(r.scope(), &r.params)
 	if err != nil {
-		panic(fmt.Errorf("error parsing RuleParams for %s: %s", r.name_, err))
+		panic(fmt.Errorf("error parsing RuleParams for %s.%s: %s",
+			r.pkg_.pkgPath, r.name_, err))
 	}
 	return def, nil
 }
@@ -616,7 +633,8 @@ func (r *ruleFunc) def(config interface{}) (*ruleDef, error) {
 	}
 	def, err := parseRuleParams(r.scope(), &params)
 	if err != nil {
-		panic(fmt.Errorf("error parsing RuleParams for %s: %s", r.name_, err))
+		panic(fmt.Errorf("error parsing RuleParams for %s.%s: %s",
+			r.pkg_.pkgPath, r.name_, err))
 	}
 	return def, nil
 }
