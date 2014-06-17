@@ -32,6 +32,9 @@ type SingletonContext interface {
 
 	VisitAllModules(visit func(Module))
 	VisitAllModulesIf(pred func(Module) bool, visit func(Module))
+	VisitDepsDepthFirst(module Module, visit func(Module))
+	VisitDepsDepthFirstIf(module Module, pred func(Module) bool,
+		visit func(Module))
 }
 
 var _ SingletonContext = (*singletonContext)(nil)
@@ -132,4 +135,16 @@ func (s *singletonContext) VisitAllModulesIf(pred func(Module) bool,
 	visit func(Module)) {
 
 	s.context.visitAllModulesIf(pred, visit)
+}
+
+func (s *singletonContext) VisitDepsDepthFirst(module Module,
+	visit func(Module)) {
+
+	s.context.visitDepsDepthFirst(module, visit)
+}
+
+func (s *singletonContext) VisitDepsDepthFirstIf(module Module,
+	pred func(Module) bool, visit func(Module)) {
+
+	s.context.visitDepsDepthFirstIf(module, pred, visit)
 }
