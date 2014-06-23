@@ -131,9 +131,9 @@ type goPackage struct {
 
 var _ goPackageProducer = (*goPackage)(nil)
 
-func newGoPackage() (blueprint.Module, interface{}) {
+func newGoPackage() (blueprint.Module, []interface{}) {
 	module := &goPackage{}
-	return module, &module.properties
+	return module, []interface{}{&module.properties}
 }
 
 func (g *goPackage) GoPkgRoot() string {
@@ -177,9 +177,9 @@ type goBinary struct {
 	}
 }
 
-func newGoBinary() (blueprint.Module, interface{}) {
+func newGoBinary() (blueprint.Module, []interface{}) {
 	module := &goBinary{}
-	return module, &module.properties
+	return module, []interface{}{&module.properties}
 }
 
 func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {

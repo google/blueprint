@@ -25,7 +25,7 @@ func unpackProperties(propertyDefs []*parser.Property,
 				Pos: propertyDef.Pos,
 			})
 			errs = append(errs, &Error{
-				Err: fmt.Errorf("--> previous definition here"),
+				Err: fmt.Errorf("<-- previous definition here"),
 				Pos: first.property.Pos,
 			})
 			if len(errs) >= maxErrors {
@@ -83,6 +83,11 @@ func unpackStruct(structValue reflect.Value,
 	for i := 0; i < structValue.NumField(); i++ {
 		fieldValue := structValue.Field(i)
 		field := structType.Field(i)
+
+		if field.PkgPath != "" {
+			// This is an unexported field, so just skip it.
+			continue
+		}
 
 		if !fieldValue.CanSet() {
 			panic(fmt.Errorf("field %s is not settable", field.Name))

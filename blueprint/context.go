@@ -452,8 +452,12 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 			return nil
 		}
 
-		err := fmt.Errorf("unrecognized module type %q", typeName)
-		return []error{err}
+		return []error{
+			&Error{
+				Err: fmt.Errorf("unrecognized module type %q", typeName),
+				Pos: moduleDef.Pos,
+			},
+		}
 	}
 
 	module, properties := typ.new()
@@ -463,8 +467,9 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 		relBlueprintsFile: relBlueprintsFile,
 	}
 
-	errs := unpackProperties(moduleDef.Properties, &info.properties,
-		properties)
+	properties = append(properties, &info.properties)
+
+	errs := unpackProperties(moduleDef.Properties, properties...)
 	if len(errs) > 0 {
 		return errs
 	}

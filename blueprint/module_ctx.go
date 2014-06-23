@@ -11,11 +11,13 @@ type Module interface {
 
 type ModuleContext interface {
 	ModuleName() string
+	OtherModuleName(m Module) string
 	ModuleDir() string
 	Config() interface{}
 
 	ModuleErrorf(fmt string, args ...interface{})
 	PropertyErrorf(property, fmt string, args ...interface{})
+	OtherModuleErrorf(m Module, fmt string, args ...interface{})
 
 	Variable(name, value string)
 	Rule(name string, params RuleParams, argNames ...string) Rule
@@ -41,6 +43,11 @@ type moduleContext struct {
 
 func (m *moduleContext) ModuleName() string {
 	return m.info.properties.Name
+}
+
+func (m *moduleContext) OtherModuleName(module Module) string {
+	info := m.context.moduleInfo[module]
+	return info.properties.Name
 }
 
 func (m *moduleContext) ModuleDir() string {
@@ -69,6 +76,16 @@ func (m *moduleContext) PropertyErrorf(property, format string,
 	m.errs = append(m.errs, &Error{
 		Err: fmt.Errorf(format, args...),
 		Pos: pos,
+	})
+}
+
+func (m *moduleContext) OtherModuleErrorf(module Module, format string,
+	args ...interface{}) {
+
+	info := m.context.moduleInfo[module]
+	m.errs = append(m.errs, &Error{
+		Err: fmt.Errorf(format, args...),
+		Pos: info.pos,
 	})
 }
 

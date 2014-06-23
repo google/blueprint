@@ -718,13 +718,13 @@ func (r *builtinRule) String() string {
 type ModuleType interface {
 	pkg() *pkg
 	name() string
-	new() (m Module, properties interface{})
+	new() (m Module, properties []interface{})
 }
 
 type moduleTypeFunc struct {
 	pkg_  *pkg
 	name_ string
-	new_  func() (Module, interface{})
+	new_  func() (Module, []interface{})
 }
 
 // MakeModuleType returns a new ModuleType object that will instantiate new
@@ -742,14 +742,14 @@ type moduleTypeFunc struct {
 // instantiate modules of this type.
 //
 // The new function passed to MakeModuleType returns two values.  The first is
-// the newly created Module object.  The second is a pointer to that Module
-// object's properties struct.  This properties struct is examined when parsing
-// a module definition of this type in a Blueprints file.  Exported fields of
-// the properties struct are automatically set to the property values specified
-// in the Blueprints file.  The properties struct field names determine the name
-// of the Blueprints file properties that are used - the Blueprints property
-// name matches that of the properties struct field name with the first letter
-// converted to lower-case.
+// the newly created Module object.  The second is a slice of pointers to that
+// Module object's properties structs.  Each properties struct is examined when
+// parsing a module definition of this type in a Blueprints file.  Exported
+// fields of the properties structs are automatically set to the property values
+// specified in the Blueprints file.  The properties struct field names
+// determine the name of the Blueprints file properties that are used - the
+// Blueprints property name matches that of the properties struct field name
+// with the first letter converted to lower-case.
 //
 // The fields of the properties struct must either []string, a string, or bool.
 // The Context will panic if a Module gets instantiated with a properties struct
@@ -771,10 +771,10 @@ type moduleTypeFunc struct {
 //       }
 //   }
 //
-//   func newMyModule() (blueprint.Module, interface{}) {
+//   func newMyModule() (blueprint.Module, []interface{}) {
 //       module := new(myModule)
 //       properties := &module.properties
-//       return module, properties
+//       return module, []interface{}{properties}
 //   }
 //
 //   func main() {
@@ -792,7 +792,7 @@ type moduleTypeFunc struct {
 //   }
 //
 func MakeModuleType(name string,
-	new func() (m Module, properties interface{})) ModuleType {
+	new func() (m Module, propertyStructs []interface{})) ModuleType {
 
 	pkg := callerPackage()
 	return &moduleTypeFunc{pkg, name, new}
@@ -806,6 +806,6 @@ func (m *moduleTypeFunc) name() string {
 	return m.pkg_.pkgPath + "." + m.name_
 }
 
-func (m *moduleTypeFunc) new() (Module, interface{}) {
+func (m *moduleTypeFunc) new() (Module, []interface{}) {
 	return m.new_()
 }
