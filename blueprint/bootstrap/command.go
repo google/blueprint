@@ -26,7 +26,7 @@ func init() {
 	flag.StringVar(&checkFile, "c", "", "the existing file to check against")
 }
 
-func Main(ctx *blueprint.Context, config interface{}) {
+func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...string) {
 	if !flag.Parsed() {
 		flag.Parse()
 	}
@@ -46,11 +46,13 @@ func Main(ctx *blueprint.Context, config interface{}) {
 		fatalErrors(errs)
 	}
 
+	// Add extra ninja file dependencies
+	deps = append(deps, extraNinjaFileDeps...)
+
 	extraDeps, errs := ctx.PrepareBuildActions(config)
 	if len(errs) > 0 {
 		fatalErrors(errs)
 	}
-
 	deps = append(deps, extraDeps...)
 
 	buf := bytes.NewBuffer(nil)
