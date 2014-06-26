@@ -46,10 +46,12 @@ func Main(ctx *blueprint.Context, config interface{}) {
 		fatalErrors(errs)
 	}
 
-	errs = ctx.PrepareBuildActions(config)
+	extraDeps, errs := ctx.PrepareBuildActions(config)
 	if len(errs) > 0 {
 		fatalErrors(errs)
 	}
+
+	deps = append(deps, extraDeps...)
 
 	buf := bytes.NewBuffer(nil)
 	err := ctx.WriteBuildFile(buf)

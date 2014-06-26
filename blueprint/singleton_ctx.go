@@ -35,6 +35,8 @@ type SingletonContext interface {
 	VisitDepsDepthFirst(module Module, visit func(Module))
 	VisitDepsDepthFirstIf(module Module, pred func(Module) bool,
 		visit func(Module))
+
+	AddNinjaFileDeps(deps ...string)
 }
 
 var _ SingletonContext = (*singletonContext)(nil)
@@ -44,7 +46,8 @@ type singletonContext struct {
 	config  interface{}
 	scope   *localScope
 
-	errs []error
+	ninjaFileDeps []string
+	errs          []error
 
 	actionDefs localBuildActions
 }
@@ -147,4 +150,8 @@ func (s *singletonContext) VisitDepsDepthFirstIf(module Module,
 	pred func(Module) bool, visit func(Module)) {
 
 	s.context.visitDepsDepthFirstIf(module, pred, visit)
+}
+
+func (s *singletonContext) AddNinjaFileDeps(deps ...string) {
+	s.ninjaFileDeps = append(s.ninjaFileDeps, deps...)
 }

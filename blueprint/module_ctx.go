@@ -25,6 +25,8 @@ type ModuleContext interface {
 
 	VisitDepsDepthFirst(visit func(Module))
 	VisitDepsDepthFirstIf(pred func(Module) bool, visit func(Module))
+
+	AddNinjaFileDeps(deps ...string)
 }
 
 var _ ModuleContext = (*moduleContext)(nil)
@@ -36,7 +38,8 @@ type moduleContext struct {
 	scope   *localScope
 	info    *moduleInfo
 
-	errs []error
+	ninjaFileDeps []string
+	errs          []error
 
 	actionDefs localBuildActions
 }
@@ -128,4 +131,8 @@ func (m *moduleContext) VisitDepsDepthFirstIf(pred func(Module) bool,
 	visit func(Module)) {
 
 	m.context.visitDepsDepthFirstIf(m.module, pred, visit)
+}
+
+func (m *moduleContext) AddNinjaFileDeps(deps ...string) {
+	m.ninjaFileDeps = append(m.ninjaFileDeps, deps...)
 }

@@ -654,13 +654,17 @@ func (c *Context) checkForDependencyCycles() (errs []error) {
 // objects passed to GenerateBuildActions.  It is also passed to the functions
 // specified via PoolFunc, RuleFunc, and VariableFunc so that they can compute
 // config-specific values.
-func (c *Context) PrepareBuildActions(config interface{}) []error {
+//
+// The returned deps is a list of the ninja files dependencies that were added
+// by the modules and singletons via the ModuleContext.AddNinjaFileDeps() and
+// SingletonContext.AddNinjaFileDeps() methods.
+func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs []error) {
 	c.buildActionsReady = false
 
 	if !c.dependenciesReady {
 		errs := c.ResolveDependencies()
 		if len(errs) > 0 {
-			return errs
+			return nil, errs
 		}
 	}
 
@@ -668,15 +672,17 @@ func (c *Context) PrepareBuildActions(config interface{}) []error {
 
 	c.initSpecialVariables()
 
-	errs := c.generateModuleBuildActions(config, liveGlobals)
+	depsModules, errs := c.generateModuleBuildActions(config, liveGlobals)
 	if len(errs) > 0 {
-		return errs
+		return nil, errs
 	}
 
-	errs = c.generateSingletonBuildActions(config, liveGlobals)
+	depsSingletons, errs := c.generateSingletonBuildActions(config, liveGlobals)
 	if len(errs) > 0 {
-		return errs
+		return nil, errs
 	}
+
+	deps = append(depsModules, depsSingletons...)
 
 	if c.buildDir != nil {
 		liveGlobals.addNinjaStringDeps(c.buildDir)
@@ -694,7 +700,7 @@ func (c *Context) PrepareBuildActions(config interface{}) []error {
 
 	c.buildActionsReady = true
 
-	return nil
+	return deps, nil
 }
 
 func (c *Context) initSpecialVariables() {
@@ -705,10 +711,11 @@ func (c *Context) initSpecialVariables() {
 }
 
 func (c *Context) generateModuleBuildActions(config interface{},
-	liveGlobals *liveTracker) []error {
+	liveGlobals *liveTracker) ([]string, []error) {
 
 	visited := make(map[Module]bool)
 
+	var deps []string
 	var errs []error
 
 	var walk func(module Module)
@@ -738,6 +745,8 @@ func (c *Context) generateModuleBuildActions(config interface{},
 			return
 		}
 
+		deps = append(deps, mctx.ninjaFileDeps...)
+
 		newErrs := c.processLocalBuildActions(&info.actionDefs,
 			&mctx.actionDefs, liveGlobals)
 		errs = append(errs, newErrs...)
@@ -749,13 +758,15 @@ func (c *Context) generateModuleBuildActions(config interface{},
 		}
 	}
 
-	return errs
+	return deps, errs
 }
 
 func (c *Context) generateSingletonBuildActions(config interface{},
-	liveGlobals *liveTracker) []error {
+	liveGlobals *liveTracker) ([]string, []error) {
 
+	var deps []string
 	var errs []error
+
 	for name, info := range c.singletonInfo {
 		// If the package to which the singleton type belongs has not defined
 		// any Ninja globals and has not called Import() then we won't have an
@@ -783,6 +794,8 @@ func (c *Context) generateSingletonBuildActions(config interface{},
 			continue
 		}
 
+		deps = append(deps, sctx.ninjaFileDeps...)
+
 		newErrs := c.processLocalBuildActions(&info.actionDefs,
 			&sctx.actionDefs, liveGlobals)
 		errs = append(errs, newErrs...)
@@ -791,7 +804,7 @@ func (c *Context) generateSingletonBuildActions(config interface{},
 		}
 	}
 
-	return errs
+	return deps, errs
 }
 
 func (c *Context) processLocalBuildActions(out, in *localBuildActions,
