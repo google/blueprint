@@ -237,6 +237,28 @@ func newLocalScope(parent *basicScope, namePrefix string) *localScope {
 	}
 }
 
+// ReparentToCallerPackage sets the localScope's parent scope to the scope of
+// the Go package of the caller.  This allows a ModuleContext and
+// SingletonContext to be passed to a function defined in a different Go package
+// with that function having access to all of the package-scoped variables of
+// its own package.
+//
+// The skip argument has the same meaning as the skip argument of
+// runtime.Callers.
+func (s *localScope) ReparentToCallerPackage(skip int) {
+	var pkgScope *basicScope
+
+	pkgPath, _ := callerName(skip + 1)
+	pkg, ok := pkgs[pkgPath]
+	if ok {
+		pkgScope = pkg.scope
+	} else {
+		pkgScope = newScope(nil)
+	}
+
+	s.scope.parent = pkgScope
+}
+
 func (s *localScope) LookupVariable(name string) (Variable, error) {
 	return s.scope.LookupVariable(name)
 }

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"regexp"
 	"runtime"
 	"strings"
 )
@@ -17,8 +16,6 @@ type pkg struct {
 }
 
 var pkgs = map[string]*pkg{}
-
-var pkgRegexp = regexp.MustCompile(`(.*)\.init(·[0-9]+)?`)
 
 var Phony Rule = &builtinRule{
 	name_: "phony",
@@ -37,6 +34,36 @@ func pkgPathToName(pkgPath string) string {
 	return strings.Replace(pkgPath, "/", ".", -1)
 }
 
+// callerName returns the package path and function name of the calling
+// function.  The skip argument has the same meaning as the skip argument of
+// runtime.Callers.
+func callerName(skip int) (pkgPath, funcName string) {
+	var pc [1]uintptr
+	n := runtime.Callers(skip+1, pc[:])
+	if n != 1 {
+		panic("unable to get caller pc")
+	}
+
+	f := runtime.FuncForPC(pc[0])
+	fullName := f.Name()
+
+	lastDotIndex := strings.LastIndex(fullName, ".")
+	if lastDotIndex == -1 {
+		panic("unable to distinguish function name from package")
+	}
+
+	if fullName[lastDotIndex-1] == ')' {
+		// The caller is a method on some type, so it's name looks like
+		// "pkg/path.(type).method".  We need to go back one dot farther to get
+		// to the package name.
+		lastDotIndex = strings.LastIndex(fullName[:lastDotIndex], ".")
+	}
+
+	pkgPath = fullName[:lastDotIndex]
+	funcName = fullName[lastDotIndex+1:]
+	return
+}
+
 // callerPackage returns the pkg of the function that called the caller of
 // callerPackage.  The caller of callerPackage must have been called from an
 // init function of the package or callerPackage will panic.
@@ -46,22 +73,11 @@ func pkgPathToName(pkgPath string) string {
 // implementation details.  However, it allows us to ensure that it's easy to
 // determine where a definition in a .ninja file came from.
 func callerPackage() *pkg {
-	var pc [1]uintptr
-	n := runtime.Callers(3, pc[:])
-	if n != 1 {
-		panic("unable to get caller pc")
-	}
+	pkgPath, funcName := callerName(3)
 
-	f := runtime.FuncForPC(pc[0])
-	callerName := f.Name()
-
-	submatches := pkgRegexp.FindSubmatch([]byte(callerName))
-	if submatches == nil {
-		println(callerName)
+	if funcName != "init" && !strings.HasPrefix(funcName, "init·") {
 		panic("not called from an init func")
 	}
-
-	pkgPath := string(submatches[1])
 
 	pkgName := pkgPathToName(pkgPath)
 	err := validateNinjaName(pkgName)

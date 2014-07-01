@@ -87,6 +87,9 @@ func (s *singletonContext) Errorf(format string, args ...interface{}) {
 }
 
 func (s *singletonContext) Variable(name, value string) {
+	const skip = 2
+	s.scope.ReparentToCallerPackage(skip)
+
 	v, err := s.scope.AddLocalVariable(name, value)
 	if err != nil {
 		panic(err)
@@ -97,6 +100,9 @@ func (s *singletonContext) Variable(name, value string) {
 
 func (s *singletonContext) Rule(name string, params RuleParams,
 	argNames ...string) Rule {
+
+	const skip = 2
+	s.scope.ReparentToCallerPackage(skip)
 
 	r, err := s.scope.AddLocalRule(name, &params, argNames...)
 	if err != nil {
@@ -109,6 +115,9 @@ func (s *singletonContext) Rule(name string, params RuleParams,
 }
 
 func (s *singletonContext) Build(params BuildParams) {
+	const skip = 2
+	s.scope.ReparentToCallerPackage(skip)
+
 	def, err := parseBuildParams(s.scope, &params)
 	if err != nil {
 		panic(err)

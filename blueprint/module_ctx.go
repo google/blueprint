@@ -93,6 +93,9 @@ func (m *moduleContext) OtherModuleErrorf(module Module, format string,
 }
 
 func (m *moduleContext) Variable(name, value string) {
+	const skip = 2
+	m.scope.ReparentToCallerPackage(skip)
+
 	v, err := m.scope.AddLocalVariable(name, value)
 	if err != nil {
 		panic(err)
@@ -103,6 +106,9 @@ func (m *moduleContext) Variable(name, value string) {
 
 func (m *moduleContext) Rule(name string, params RuleParams,
 	argNames ...string) Rule {
+
+	const skip = 2
+	m.scope.ReparentToCallerPackage(skip)
 
 	r, err := m.scope.AddLocalRule(name, &params, argNames...)
 	if err != nil {
@@ -115,6 +121,9 @@ func (m *moduleContext) Rule(name string, params RuleParams,
 }
 
 func (m *moduleContext) Build(params BuildParams) {
+	const skip = 2
+	m.scope.ReparentToCallerPackage(skip)
+
 	def, err := parseBuildParams(m.scope, &params)
 	if err != nil {
 		panic(err)
