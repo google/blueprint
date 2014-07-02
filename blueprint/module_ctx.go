@@ -3,6 +3,7 @@ package blueprint
 import (
 	"fmt"
 	"path/filepath"
+	"text/scanner"
 )
 
 type Module interface {
@@ -15,9 +16,11 @@ type ModuleContext interface {
 	ModuleDir() string
 	Config() interface{}
 
+	Errorf(pos scanner.Position, fmt string, args ...interface{})
 	ModuleErrorf(fmt string, args ...interface{})
 	PropertyErrorf(property, fmt string, args ...interface{})
 	OtherModuleErrorf(m Module, fmt string, args ...interface{})
+	Failed() bool
 
 	Variable(name, value string)
 	Rule(name string, params RuleParams, argNames ...string) Rule
@@ -61,6 +64,15 @@ func (m *moduleContext) Config() interface{} {
 	return m.config
 }
 
+func (m *moduleContext) Errorf(pos scanner.Position, format string,
+	args ...interface{}) {
+
+	m.errs = append(m.errs, &Error{
+		Err: fmt.Errorf(format, args...),
+		Pos: pos,
+	})
+}
+
 func (m *moduleContext) ModuleErrorf(format string, args ...interface{}) {
 	m.errs = append(m.errs, &Error{
 		Err: fmt.Errorf(format, args...),
@@ -90,6 +102,10 @@ func (m *moduleContext) OtherModuleErrorf(module Module, format string,
 		Err: fmt.Errorf(format, args...),
 		Pos: info.pos,
 	})
+}
+
+func (m *moduleContext) Failed() bool {
+	return len(m.errs) > 0
 }
 
 func (m *moduleContext) Variable(name, value string) {
