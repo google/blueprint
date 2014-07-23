@@ -726,6 +726,9 @@ func (c *Context) generateModuleBuildActions(config interface{},
 		for _, dep := range info.directDeps {
 			if !visited[dep] {
 				walk(dep)
+				if len(errs) > 0 {
+					return
+				}
 			}
 		}
 
@@ -755,6 +758,9 @@ func (c *Context) generateModuleBuildActions(config interface{},
 	for _, module := range c.modules {
 		if !visited[module] {
 			walk(module)
+			if len(errs) > 0 {
+				break
+			}
 		}
 	}
 
