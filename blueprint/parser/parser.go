@@ -57,7 +57,7 @@ func newParser(r io.Reader) *parser {
 		p.errorf(msg)
 	}
 	p.scanner.Mode = scanner.ScanIdents | scanner.ScanStrings |
-		scanner.ScanComments | scanner.SkipComments
+		scanner.ScanRawStrings | scanner.ScanComments | scanner.SkipComments
 	p.next()
 	return p
 }
