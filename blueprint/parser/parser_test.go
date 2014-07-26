@@ -131,6 +131,52 @@ var validParseTestCases = []struct {
 	},
 
 	{`
+		foo {
+			stuff: {
+				isGood: true,
+				name: "bar"
+			}
+		}
+		`,
+		[]Definition{
+			&Module{
+				Type: "foo",
+				Pos:  mkpos(3, 2, 3),
+				Properties: []*Property{
+					{
+						Name: "stuff",
+						Pos:  mkpos(12, 3, 4),
+						Value: Value{
+							Type: Map,
+							Pos:  mkpos(19, 3, 11),
+							MapValue: []*Property{
+								{
+									Name: "isGood",
+									Pos:  mkpos(25, 4, 5),
+									Value: Value{
+										Type:      Bool,
+										Pos:       mkpos(33, 4, 13),
+										BoolValue: true,
+									},
+								},
+								{
+									Name: "name",
+									Pos:  mkpos(43, 5, 5),
+									Value: Value{
+										Type:        String,
+										Pos:         mkpos(49, 5, 11),
+										StringValue: "bar",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	},
+
+	{`
 		// comment
 		foo {
 			// comment

@@ -201,6 +201,8 @@ func (p *parser) parseValue() (value Value) {
 		return p.parseStringValue()
 	case '[':
 		return p.parseListValue()
+	case '{':
+		return p.parseMapValue()
 	default:
 		p.errorf("expected bool, list, or string value; found %s",
 			scanner.TokenString(p.tok))
@@ -262,12 +264,27 @@ func (p *parser) parseListValue() (value Value) {
 	return
 }
 
+func (p *parser) parseMapValue() (value Value) {
+	value.Type = Map
+	value.Pos = p.scanner.Position
+	if !p.accept('{') {
+		return
+	}
+
+	properties := p.parsePropertyList()
+	value.MapValue = properties
+
+	p.accept('}')
+	return
+}
+
 type ValueType int
 
 const (
 	Bool ValueType = iota
 	String
 	List
+	Map
 )
 
 func (p ValueType) String() string {
@@ -278,6 +295,8 @@ func (p ValueType) String() string {
 		return "string"
 	case List:
 		return "list"
+	case Map:
+		return "map"
 	default:
 		panic(fmt.Errorf("unknown value type: %d", p))
 	}
@@ -332,6 +351,7 @@ type Value struct {
 	BoolValue   bool
 	StringValue string
 	ListValue   []Value
+	MapValue    []*Property
 	Pos         scanner.Position
 }
 
@@ -348,6 +368,13 @@ func (p Value) String() string {
 		}
 		return fmt.Sprintf("@%d:%s[%s]", p.Pos.Offset, p.Pos,
 			strings.Join(valueStrings, ", "))
+	case Map:
+		propertyStrings := make([]string, len(p.MapValue))
+		for i, property := range p.MapValue {
+			propertyStrings[i] = property.String()
+		}
+		return fmt.Sprintf("@%d:%s{%s}", p.Pos.Offset, p.Pos,
+			strings.Join(propertyStrings, ", "))
 	default:
 		panic(fmt.Errorf("bad property type: %d", p.Type))
 	}
