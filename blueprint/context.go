@@ -588,7 +588,7 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 			Err: fmt.Errorf("<-- previous definition here"),
 			Pos: c.moduleInfo[first].pos,
 		})
-		if len(errs) >= maxErrors {
+		if len(errs) > 0 {
 			return errs
 		}
 	}
