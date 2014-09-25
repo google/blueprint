@@ -452,7 +452,8 @@ func listSubdirs(dir string) ([]string, error) {
 
 	var subdirs []string
 	for _, info := range infos {
-		if info.IsDir() {
+		isDotFile := strings.HasPrefix(info.Name(), ".")
+		if info.IsDir() && !isDotFile {
 			subdirs = append(subdirs, info.Name())
 		}
 	}
