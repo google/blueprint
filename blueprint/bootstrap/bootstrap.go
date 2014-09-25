@@ -78,9 +78,6 @@ var (
 		},
 		"depfile")
 
-	goPackageModule = blueprint.MakeModuleType("goPackageModule", newGoPackage)
-	goBinaryModule  = blueprint.MakeModuleType("goBinaryModule", newGoBinary)
-
 	binDir     = filepath.Join(bootstrapDir, "bin")
 	minibpFile = filepath.Join(binDir, "minibp")
 )
@@ -131,7 +128,7 @@ type goPackage struct {
 
 var _ goPackageProducer = (*goPackage)(nil)
 
-func newGoPackage() (blueprint.Module, []interface{}) {
+func newGoPackageModule() (blueprint.Module, []interface{}) {
 	module := &goPackage{}
 	return module, []interface{}{&module.properties}
 }
@@ -177,7 +174,7 @@ type goBinary struct {
 	}
 }
 
-func newGoBinary() (blueprint.Module, []interface{}) {
+func newGoBinaryModule() (blueprint.Module, []interface{}) {
 	module := &goBinary{}
 	return module, []interface{}{&module.properties}
 }
@@ -309,7 +306,7 @@ func phonyGoTarget(ctx blueprint.ModuleContext, target string, srcs []string) {
 
 type singleton struct{}
 
-func newSingleton() *singleton {
+func newSingleton() blueprint.Singleton {
 	return &singleton{}
 }
 

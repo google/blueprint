@@ -131,6 +131,9 @@ func (s *singletonContext) RequireNinjaVersion(major, minor, micro int) {
 }
 
 func (s *singletonContext) SetBuildDir(value string) {
+	const skip = 2
+	s.scope.ReparentToCallerPackage(skip)
+
 	ninjaValue, err := parseNinjaString(s.scope, value)
 	if err != nil {
 		panic(err)

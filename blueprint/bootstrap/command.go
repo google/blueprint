@@ -7,12 +7,16 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"runtime/pprof"
 	"strings"
 )
 
-var outFile string
-var depFile string
-var checkFile string
+var (
+	outFile    string
+	depFile    string
+	checkFile  string
+	cpuprofile string
+)
 
 // topLevelBlueprintsFile is set by Main as a way to pass this information on to
 // the bootstrap build manifest generators.  This information was not passed via
@@ -24,6 +28,7 @@ func init() {
 	flag.StringVar(&outFile, "o", "build.ninja.in", "the Ninja file to output")
 	flag.StringVar(&depFile, "d", "", "the dependency file to output")
 	flag.StringVar(&checkFile, "c", "", "the existing file to check against")
+	flag.StringVar(&cpuprofile, "cpuprofile", "", "write cpu profile to file")
 }
 
 func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...string) {
@@ -31,9 +36,19 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		flag.Parse()
 	}
 
-	ctx.RegisterModuleType("bootstrap_go_package", goPackageModule)
-	ctx.RegisterModuleType("bootstrap_go_binary", goBinaryModule)
-	ctx.RegisterSingleton("bootstrap", newSingleton())
+	if cpuprofile != "" {
+		f, err := os.Create(cpuprofile)
+		if err != nil {
+			fatalf("error opening cpuprofile: %s", err)
+		}
+		pprof.StartCPUProfile(f)
+		defer f.Close()
+		defer pprof.StopCPUProfile()
+	}
+
+	ctx.RegisterModuleType("bootstrap_go_package", newGoPackageModule)
+	ctx.RegisterModuleType("bootstrap_go_binary", newGoBinaryModule)
+	ctx.RegisterSingletonType("bootstrap", newSingleton)
 
 	if flag.NArg() != 1 {
 		fatalf("no Blueprints file specified")
@@ -113,8 +128,6 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 
 		f.Close()
 	}
-
-	os.Exit(0)
 }
 
 func fatalf(format string, args ...interface{}) {

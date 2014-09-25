@@ -57,7 +57,7 @@ rule g.bootstrap.bootstrap
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  blueprint
 # Type:    bootstrap_go_package
-# GoType:  blueprint/bootstrap.goPackageModule
+# Factory: blueprint/bootstrap.newGoPackageModule
 # Defined: Blueprints:1:1
 
 build .bootstrap/blueprint/obj/_go_.${g.bootstrap.GoChar}: g.bootstrap.gc $
@@ -83,7 +83,7 @@ build .bootstrap/blueprint/pkg/blueprint.a: g.bootstrap.pack $
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  blueprint-bootstrap
 # Type:    bootstrap_go_package
-# GoType:  blueprint/bootstrap.goPackageModule
+# Factory: blueprint/bootstrap.newGoPackageModule
 # Defined: Blueprints:30:1
 
 build .bootstrap/blueprint-bootstrap/obj/_go_.${g.bootstrap.GoChar}: $
@@ -105,7 +105,7 @@ build .bootstrap/blueprint-bootstrap/pkg/blueprint/bootstrap.a: $
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  blueprint-parser
 # Type:    bootstrap_go_package
-# GoType:  blueprint/bootstrap.goPackageModule
+# Factory: blueprint/bootstrap.newGoPackageModule
 # Defined: Blueprints:18:1
 
 build .bootstrap/blueprint-parser/obj/_go_.${g.bootstrap.GoChar}: $
@@ -119,7 +119,7 @@ build .bootstrap/blueprint-parser/pkg/blueprint/parser.a: g.bootstrap.pack $
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  blueprint-pathtools
 # Type:    bootstrap_go_package
-# GoType:  blueprint/bootstrap.goPackageModule
+# Factory: blueprint/bootstrap.newGoPackageModule
 # Defined: Blueprints:24:1
 
 build .bootstrap/blueprint-pathtools/obj/_go_.${g.bootstrap.GoChar}: $
@@ -134,7 +134,7 @@ build .bootstrap/blueprint-pathtools/pkg/blueprint/pathtools.a: $
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  minibp
 # Type:    bootstrap_go_binary
-# GoType:  blueprint/bootstrap.goBinaryModule
+# Factory: blueprint/bootstrap.newGoBinaryModule
 # Defined: Blueprints:41:1
 
 build .bootstrap/minibp/obj/_go_.${g.bootstrap.GoChar}: g.bootstrap.gc $
@@ -158,7 +158,7 @@ build .bootstrap/bin/minibp: g.bootstrap.cp .bootstrap/minibp/obj/a.out
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Singleton: bootstrap
-# GoType:    blueprint/bootstrap.singleton
+# Factory:   blueprint/bootstrap.newSingleton
 
 rule s.bootstrap.bigbp
     command = .bootstrap/bin/minibp -p -d .bootstrap/main.ninja.in.d -o ${out} ${in}

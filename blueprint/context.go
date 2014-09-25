@@ -27,11 +27,11 @@ const maxErrors = 10
 //
 //         Phase                            Methods
 //      ------------      -------------------------------------------
-//   1. Registration         RegisterModuleType, RegisterSingleton
+//   1. Registration         RegisterModuleType, RegisterSingletonType
 //
 //   2. Parse                    ParseBlueprintsFiles, Parse
 //
-//   3. Generate            ResovleDependencies, PrepareBuildActions
+//   3. Generate            ResolveDependencies, PrepareBuildActions
 //
 //   4. Write                           WriteBuildFile
 //
@@ -46,10 +46,10 @@ const maxErrors = 10
 // actions.
 type Context struct {
 	// set at instantiation
-	moduleTypes   map[string]ModuleType
-	modules       map[string]Module
-	moduleInfo    map[Module]*moduleInfo
-	singletonInfo map[string]*singletonInfo
+	moduleFactories map[string]ModuleFactory
+	modules         map[string]Module
+	moduleInfo      map[Module]*moduleInfo
+	singletonInfo   map[string]*singletonInfo
 
 	dependenciesReady bool // set to true on a successful ResolveDependencies
 	buildActionsReady bool // set to true on a successful PrepareBuildActions
@@ -86,7 +86,6 @@ type localBuildActions struct {
 type moduleInfo struct {
 	// set during Parse
 	typeName          string
-	typ               ModuleType
 	relBlueprintsFile string
 	pos               scanner.Position
 	propertyPos       map[string]scanner.Position
@@ -104,7 +103,8 @@ type moduleInfo struct {
 }
 
 type singletonInfo struct {
-	// set during RegisterSingleton
+	// set during RegisterSingletonType
+	factory   SingletonFactory
 	singleton Singleton
 
 	// set during PrepareBuildActions
@@ -129,48 +129,108 @@ func (e *Error) Error() string {
 }
 
 // NewContext creates a new Context object.  The created context initially has
-// no module types or singletons registered, so the RegisterModuleType and
-// RegisterSingleton methods must be called before it can do anything useful.
+// no module or singleton factories registered, so the RegisterModuleFactory and
+// RegisterSingletonFactory methods must be called before it can do anything
+// useful.
 func NewContext() *Context {
 	return &Context{
-		moduleTypes:   make(map[string]ModuleType),
-		modules:       make(map[string]Module),
-		moduleInfo:    make(map[Module]*moduleInfo),
-		singletonInfo: make(map[string]*singletonInfo),
+		moduleFactories: make(map[string]ModuleFactory),
+		modules:         make(map[string]Module),
+		moduleInfo:      make(map[Module]*moduleInfo),
+		singletonInfo:   make(map[string]*singletonInfo),
 	}
 }
+
+// A ModuleFactory function creates a new Module object.  See the
+// Context.RegisterModuleType method for details about how a registered
+// ModuleFactory is used by a Context.
+type ModuleFactory func() (m Module, propertyStructs []interface{})
 
 // RegisterModuleType associates a module type name (which can appear in a
-// Blueprints file) with a ModuleType object.  When the given module type name
-// is encountered in a Blueprints file during parsing, the ModuleType object
-// will be used to instantiate a new Module object to handle the build action
+// Blueprints file) with a Module factory function.  When the given module type
+// name is encountered in a Blueprints file during parsing, the Module factory
+// is invoked to instantiate a new Module object to handle the build action
 // generation for the module.
 //
-// The module type names given here must be unique for the context.  Note that
-// these module type names are different from the name passed to MakeModuleType.
-// The name given here is how the module type is referenced in a Blueprints
-// file, while the name passed to MakeModuleType indicates the name of the Go
-// ModuleType object (i.e. it's used to when reporting build logic problems to
-// make finding the problematic code easier).
-func (c *Context) RegisterModuleType(name string, typ ModuleType) {
-	if _, present := c.moduleTypes[name]; present {
+// The module type names given here must be unique for the context.  The factory
+// function should be a named function so that its package and name can be
+// included in the generated Ninja file for debugging purposes.
+//
+// The factory function returns two values.  The first is the newly created
+// Module object.  The second is a slice of pointers to that Module object's
+// properties structs.  Each properties struct is examined when parsing a module
+// definition of this type in a Blueprints file.  Exported fields of the
+// properties structs are automatically set to the property values specified in
+// the Blueprints file.  The properties struct field names determine the name of
+// the Blueprints file properties that are used - the Blueprints property name
+// matches that of the properties struct field name with the first letter
+// converted to lower-case.
+//
+// The fields of the properties struct must be either []string, a string, or
+// bool. The Context will panic if a Module gets instantiated with a properties
+// struct containing a field that is not one these supported types.
+//
+// Any properties that appear in the Blueprints files that are not built-in
+// module properties (such as "name" and "deps") and do not have a corresponding
+// field in the returned module properties struct result in an error during the
+// Context's parse phase.
+//
+// As an example, the follow code:
+//
+//   type myModule struct {
+//       properties struct {
+//           Foo string
+//           Bar []string
+//       }
+//   }
+//
+//   func NewMyModule() (blueprint.Module, []interface{}) {
+//       module := new(myModule)
+//       properties := &module.properties
+//       return module, []interface{}{properties}
+//   }
+//
+//   func main() {
+//       ctx := blueprint.NewContext()
+//       ctx.RegisterModuleType("my_module", NewMyModule)
+//       // ...
+//   }
+//
+// would support parsing a module defined in a Blueprints file as follows:
+//
+//   my_module {
+//       name: "myName",
+//       foo:  "my foo string",
+//       bar:  ["my", "bar", "strings"],
+//   }
+//
+func (c *Context) RegisterModuleType(name string, factory ModuleFactory) {
+	if _, present := c.moduleFactories[name]; present {
 		panic(errors.New("module type name is already registered"))
 	}
-	c.moduleTypes[name] = typ
+	c.moduleFactories[name] = factory
 }
 
-// RegisterSingleton registers a singleton object that will be invoked to
-// generate build actions.  Each registered singleton is invoked exactly once as
-// part of the generate phase.
-func (c *Context) RegisterSingleton(name string, singleton Singleton) {
+// A SingletonFactory function creates a new Singleton object.  See the
+// Context.RegisterSingletonType method for details about how a registered
+// SingletonFactory is used by a Context.
+type SingletonFactory func() Singleton
+
+// RegisterSingletonType registers a singleton type that will be invoked to
+// generate build actions.  Each registered singleton type is instantiated and
+// and invoked exactly once as part of the generate phase.
+//
+// The singleton type names given here must be unique for the context.  The
+// factory function should be a named function so that its package and name can
+// be included in the generated Ninja file for debugging purposes.
+func (c *Context) RegisterSingletonType(name string, factory SingletonFactory) {
 	if _, present := c.singletonInfo[name]; present {
 		panic(errors.New("singleton name is already registered"))
 	}
-	if singletonPkgPath(singleton) == "" {
-		panic(errors.New("singleton types must be a named type"))
-	}
+
 	c.singletonInfo[name] = &singletonInfo{
-		singleton: singleton,
+		factory:   factory,
+		singleton: factory(),
 	}
 }
 
@@ -460,7 +520,7 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 	relBlueprintsFile string) []error {
 
 	typeName := moduleDef.Type
-	typ, ok := c.moduleTypes[typeName]
+	factory, ok := c.moduleFactories[typeName]
 	if !ok {
 		if c.ignoreUnknownModuleTypes {
 			return nil
@@ -474,10 +534,9 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 		}
 	}
 
-	module, properties := typ.new()
+	module, properties := factory()
 	info := &moduleInfo{
 		typeName:          typeName,
-		typ:               typ,
 		relBlueprintsFile: relBlueprintsFile,
 	}
 
@@ -761,13 +820,17 @@ func (c *Context) generateModuleBuildActions(config interface{},
 			}
 		}
 
+		// The parent scope of the moduleContext's local scope gets overridden to be that of the
+		// calling Go package on a per-call basis.  Since the initial parent scope doesn't matter we
+		// just set it to nil.
+		scope := newLocalScope(nil, moduleNamespacePrefix(info.properties.Name))
+
 		mctx := &moduleContext{
 			context: c,
 			config:  config,
 			module:  module,
-			scope: newLocalScope(info.typ.pkg().scope,
-				moduleNamespacePrefix(info.properties.Name)),
-			info: info,
+			scope:   scope,
+			info:    info,
 		}
 
 		module.GenerateBuildActions(mctx)
@@ -803,20 +866,15 @@ func (c *Context) generateSingletonBuildActions(config interface{},
 	var errs []error
 
 	for name, info := range c.singletonInfo {
-		// If the package to which the singleton type belongs has not defined
-		// any Ninja globals and has not called Import() then we won't have an
-		// entry for it in the pkgs map.  If that's the case then the
-		// singleton's scope's parent should just be nil.
-		var singletonScope *basicScope
-		if pkg := pkgs[singletonPkgPath(info.singleton)]; pkg != nil {
-			singletonScope = pkg.scope
-		}
+		// The parent scope of the singletonContext's local scope gets overridden to be that of the
+		// calling Go package on a per-call basis.  Since the initial parent scope doesn't matter we
+		// just set it to nil.
+		scope := newLocalScope(nil, singletonNamespacePrefix(name))
 
 		sctx := &singletonContext{
 			context: c,
 			config:  config,
-			scope: newLocalScope(singletonScope,
-				singletonNamespacePrefix(name)),
+			scope:   scope,
 		}
 
 		info.singleton.GenerateBuildActions(sctx)
@@ -1365,10 +1423,15 @@ func (c *Context) writeAllModuleActions(nw *ninjaWriter) error {
 		relPos := info.pos
 		relPos.Filename = info.relBlueprintsFile
 
+		// Get the name and location of the factory function for the module.
+		factory := c.moduleFactories[info.typeName]
+		factoryFunc := runtime.FuncForPC(reflect.ValueOf(factory).Pointer())
+		factoryName := factoryFunc.Name()
+
 		infoMap := map[string]interface{}{
 			"properties": info.properties,
 			"typeName":   info.typeName,
-			"goTypeName": info.typ.name(),
+			"goFactory":  factoryName,
 			"pos":        relPos,
 		}
 		err = headerTemplate.Execute(buf, infoMap)
@@ -1419,10 +1482,15 @@ func (c *Context) writeAllSingletonActions(nw *ninjaWriter) error {
 	for _, name := range singletonNames {
 		info := c.singletonInfo[name]
 
+		// Get the name of the factory function for the module.
+		factory := info.factory
+		factoryFunc := runtime.FuncForPC(reflect.ValueOf(factory).Pointer())
+		factoryName := factoryFunc.Name()
+
 		buf.Reset()
 		infoMap := map[string]interface{}{
-			"name":       name,
-			"goTypeName": singletonTypeName(info.singleton),
+			"name":      name,
+			"goFactory": factoryName,
 		}
 		err = headerTemplate.Execute(buf, infoMap)
 		if err != nil {
@@ -1531,11 +1599,11 @@ they were generated by the following Go packages:
 var moduleHeaderTemplate = `# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 Module:  {{.properties.Name}}
 Type:    {{.typeName}}
-GoType:  {{.goTypeName}}
+Factory: {{.goFactory}}
 Defined: {{.pos}}
 `
 
 var singletonHeaderTemplate = `# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 Singleton: {{.name}}
-GoType:    {{.goTypeName}}
+Factory:   {{.goFactory}}
 `
