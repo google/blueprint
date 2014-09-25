@@ -33,26 +33,26 @@ g.bootstrap.packCmd = ${g.bootstrap.goToolDir}/pack
 
 builddir = .bootstrap
 
-rule g.bootstrap.gc
-    command = GOROOT='${g.bootstrap.GoRoot}' ${g.bootstrap.gcCmd} -o ${out} -p ${pkgPath} -complete ${incFlags} ${in}
-    description = ${g.bootstrap.GoChar}g ${out}
-
-rule g.bootstrap.pack
-    command = GOROOT='${g.bootstrap.GoRoot}' ${g.bootstrap.packCmd} grcP ${prefix} ${out} ${in}
-    description = pack ${out}
-
-rule g.bootstrap.link
-    command = GOROOT='${g.bootstrap.GoRoot}' ${g.bootstrap.linkCmd} -o ${out} ${libDirFlags} ${in}
-    description = ${g.bootstrap.GoChar}l ${out}
+rule g.bootstrap.bootstrap
+    command = ${g.bootstrap.Bootstrap} -i ${in}
+    description = bootstrap ${in}
+    generator = true
 
 rule g.bootstrap.cp
     command = cp ${in} ${out}
     description = cp ${out}
 
-rule g.bootstrap.bootstrap
-    command = ${g.bootstrap.Bootstrap} -i ${in}
-    description = bootstrap ${in}
-    generator = true
+rule g.bootstrap.gc
+    command = GOROOT='${g.bootstrap.GoRoot}' ${g.bootstrap.gcCmd} -o ${out} -p ${pkgPath} -complete ${incFlags} ${in}
+    description = ${g.bootstrap.GoChar}g ${out}
+
+rule g.bootstrap.link
+    command = GOROOT='${g.bootstrap.GoRoot}' ${g.bootstrap.linkCmd} -o ${out} ${libDirFlags} ${in}
+    description = ${g.bootstrap.GoChar}l ${out}
+
+rule g.bootstrap.pack
+    command = GOROOT='${g.bootstrap.GoRoot}' ${g.bootstrap.packCmd} grcP ${prefix} ${out} ${in}
+    description = pack ${out}
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  blueprint

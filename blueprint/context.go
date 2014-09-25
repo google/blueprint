@@ -68,6 +68,9 @@ type Context struct {
 	requiredNinjaMajor int          // For the ninja_required_version variable
 	requiredNinjaMinor int          // For the ninja_required_version variable
 	requiredNinjaMicro int          // For the ninja_required_version variable
+
+	// set lazily by sortedModuleNames
+	cachedSortedModuleNames []string
 }
 
 // An Error describes a problem that was encountered that is related to a
@@ -995,8 +998,22 @@ func (c *Context) visitDepsDepthFirstIf(module Module, pred func(Module) bool,
 	}
 }
 
+func (c *Context) sortedModuleNames() []string {
+	if c.cachedSortedModuleNames == nil {
+		c.cachedSortedModuleNames = make([]string, 0, len(c.modules))
+		for moduleName := range c.modules {
+			c.cachedSortedModuleNames = append(c.cachedSortedModuleNames,
+				moduleName)
+		}
+		sort.Strings(c.cachedSortedModuleNames)
+	}
+
+	return c.cachedSortedModuleNames
+}
+
 func (c *Context) visitAllModules(visit func(Module)) {
-	for _, module := range c.modules {
+	for _, moduleName := range c.sortedModuleNames() {
+		module := c.modules[moduleName]
 		visit(module)
 	}
 }
@@ -1004,7 +1021,8 @@ func (c *Context) visitAllModules(visit func(Module)) {
 func (c *Context) visitAllModulesIf(pred func(Module) bool,
 	visit func(Module)) {
 
-	for _, module := range c.modules {
+	for _, moduleName := range c.sortedModuleNames() {
+		module := c.modules[moduleName]
 		if pred(module) {
 			visit(module)
 		}
@@ -1210,17 +1228,35 @@ func (c *Context) WriteBuildFile(w io.Writer) error {
 	return nil
 }
 
+type pkgAssociation struct {
+	PkgName string
+	PkgPath string
+}
+
+type pkgAssociationSorter struct {
+	pkgs []pkgAssociation
+}
+
+func (s *pkgAssociationSorter) Len() int {
+	return len(s.pkgs)
+}
+
+func (s *pkgAssociationSorter) Less(i, j int) bool {
+	iName := s.pkgs[i].PkgName
+	jName := s.pkgs[j].PkgName
+	return iName < jName
+}
+
+func (s *pkgAssociationSorter) Swap(i, j int) {
+	s.pkgs[i], s.pkgs[j] = s.pkgs[j], s.pkgs[i]
+}
+
 func (c *Context) writeBuildFileHeader(nw *ninjaWriter) error {
 	headerTemplate := template.New("fileHeader")
 	_, err := headerTemplate.Parse(fileHeaderTemplate)
 	if err != nil {
 		// This is a programming error.
 		panic(err)
-	}
-
-	type pkgAssociation struct {
-		PkgName string
-		PkgPath string
 	}
 
 	var pkgs []pkgAssociation
@@ -1238,6 +1274,8 @@ func (c *Context) writeBuildFileHeader(nw *ninjaWriter) error {
 	for i := range pkgs {
 		pkgs[i].PkgName += strings.Repeat(" ", maxNameLen-len(pkgs[i].PkgName))
 	}
+
+	sort.Sort(&pkgAssociationSorter{pkgs})
 
 	params := map[string]interface{}{
 		"Pkgs": pkgs,
@@ -1279,23 +1317,27 @@ func (c *Context) writeBuildDir(nw *ninjaWriter) error {
 	return nil
 }
 
-type variableSorter struct {
-	pkgNames  map[*pkg]string
-	variables []Variable
+type globalEntity interface {
+	fullName(pkgNames map[*pkg]string) string
 }
 
-func (v *variableSorter) Len() int {
-	return len(v.variables)
+type globalEntitySorter struct {
+	pkgNames map[*pkg]string
+	entities []globalEntity
 }
 
-func (v *variableSorter) Less(i, j int) bool {
-	iName := v.variables[i].fullName(v.pkgNames)
-	jName := v.variables[j].fullName(v.pkgNames)
+func (s *globalEntitySorter) Len() int {
+	return len(s.entities)
+}
+
+func (s *globalEntitySorter) Less(i, j int) bool {
+	iName := s.entities[i].fullName(s.pkgNames)
+	jName := s.entities[j].fullName(s.pkgNames)
 	return iName < jName
 }
 
-func (v *variableSorter) Swap(i, j int) {
-	v.variables[i], v.variables[j] = v.variables[j], v.variables[i]
+func (s *globalEntitySorter) Swap(i, j int) {
+	s.entities[i], s.entities[j] = s.entities[j], s.entities[i]
 }
 
 func (c *Context) writeGlobalVariables(nw *ninjaWriter) error {
@@ -1329,14 +1371,15 @@ func (c *Context) writeGlobalVariables(nw *ninjaWriter) error {
 		return nil
 	}
 
-	globalVariables := make([]Variable, 0, len(c.globalVariables))
-	for v := range c.globalVariables {
-		globalVariables = append(globalVariables, v)
+	globalVariables := make([]globalEntity, 0, len(c.globalVariables))
+	for variable := range c.globalVariables {
+		globalVariables = append(globalVariables, variable)
 	}
 
-	sort.Sort(&variableSorter{c.pkgNames, globalVariables})
+	sort.Sort(&globalEntitySorter{c.pkgNames, globalVariables})
 
-	for _, v := range globalVariables {
+	for _, entity := range globalVariables {
+		v := entity.(Variable)
 		if !visited[v] {
 			err := walk(v)
 			if err != nil {
@@ -1349,8 +1392,17 @@ func (c *Context) writeGlobalVariables(nw *ninjaWriter) error {
 }
 
 func (c *Context) writeGlobalPools(nw *ninjaWriter) error {
-	for pool, def := range c.globalPools {
+	globalPools := make([]globalEntity, 0, len(c.globalPools))
+	for pool := range c.globalPools {
+		globalPools = append(globalPools, pool)
+	}
+
+	sort.Sort(&globalEntitySorter{c.pkgNames, globalPools})
+
+	for _, entity := range globalPools {
+		pool := entity.(Pool)
 		name := pool.fullName(c.pkgNames)
+		def := c.globalPools[pool]
 		err := def.WriteTo(nw, name)
 		if err != nil {
 			return err
@@ -1366,8 +1418,17 @@ func (c *Context) writeGlobalPools(nw *ninjaWriter) error {
 }
 
 func (c *Context) writeGlobalRules(nw *ninjaWriter) error {
-	for rule, def := range c.globalRules {
+	globalRules := make([]globalEntity, 0, len(c.globalRules))
+	for rule := range c.globalRules {
+		globalRules = append(globalRules, rule)
+	}
+
+	sort.Sort(&globalEntitySorter{c.pkgNames, globalRules})
+
+	for _, entity := range globalRules {
+		rule := entity.(Rule)
 		name := rule.fullName(c.pkgNames)
+		def := c.globalRules[rule]
 		err := def.WriteTo(nw, name, c.pkgNames)
 		if err != nil {
 			return err
