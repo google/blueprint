@@ -606,8 +606,12 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 // modules defined in the parsed Blueprints files are valid.  This means that
 // the modules depended upon are defined and that no circular dependencies
 // exist.
-func (c *Context) ResolveDependencies() []error {
-	errs := c.resolveDependencies()
+//
+// The config argument is made available to all of the DynamicDependerModule
+// objects via the Config method on the DynamicDependerModuleContext objects
+// passed to their DynamicDependencies method.
+func (c *Context) ResolveDependencies(config interface{}) []error {
+	errs := c.resolveDependencies(config)
 	if len(errs) > 0 {
 		return errs
 	}
@@ -621,12 +625,62 @@ func (c *Context) ResolveDependencies() []error {
 	return nil
 }
 
+// moduleDepNames returns the sorted list of dependency names for a given
+// module.  If the module implements the DynamicDependerModule interface then
+// this set consists of the union of those module names listed in its "deps"
+// property and those returned by its DynamicDependencies method.  Otherwise it
+// is simply those names listed in its "deps" property.
+func (c *Context) moduleDepNames(info *moduleInfo,
+	config interface{}) ([]string, []error) {
+
+	depNamesSet := make(map[string]bool)
+
+	for _, depName := range info.properties.Deps {
+		depNamesSet[depName] = true
+	}
+
+	module := c.modules[info.properties.Name]
+	dynamicDepender, ok := module.(DynamicDependerModule)
+	if ok {
+		ddmctx := &dynamicDependerModuleContext{
+			context: c,
+			config:  config,
+			info:    info,
+		}
+
+		dynamicDeps := dynamicDepender.DynamicDependencies(ddmctx)
+
+		if len(ddmctx.errs) > 0 {
+			return nil, ddmctx.errs
+		}
+
+		for _, depName := range dynamicDeps {
+			depNamesSet[depName] = true
+		}
+	}
+
+	// We need to sort the dependency names to ensure deterministic Ninja file
+	// output from one run to the next.
+	depNames := make([]string, 0, len(depNamesSet))
+	for depName := range depNamesSet {
+		depNames = append(depNames, depName)
+	}
+	sort.Strings(depNames)
+
+	return depNames, nil
+}
+
 // resolveDependencies populates the moduleInfo.directDeps list for every
 // module.  In doing so it checks for missing dependencies and self-dependant
 // modules.
-func (c *Context) resolveDependencies() (errs []error) {
+func (c *Context) resolveDependencies(config interface{}) (errs []error) {
 	for _, info := range c.moduleInfo {
-		depNames := info.properties.Deps
+		depNames, newErrs := c.moduleDepNames(info, config)
+		if len(newErrs) > 0 {
+			errs = append(errs, newErrs...)
+			continue
+		}
+
 		info.directDeps = make([]Module, 0, len(depNames))
 		depsPos := info.propertyPos["deps"]
 
@@ -753,7 +807,7 @@ func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs [
 	c.buildActionsReady = false
 
 	if !c.dependenciesReady {
-		errs := c.ResolveDependencies()
+		errs := c.ResolveDependencies(config)
 		if len(errs) > 0 {
 			return nil, errs
 		}
@@ -829,11 +883,13 @@ func (c *Context) generateModuleBuildActions(config interface{},
 		scope := newLocalScope(nil, moduleNamespacePrefix(info.properties.Name))
 
 		mctx := &moduleContext{
-			context: c,
-			config:  config,
-			module:  module,
-			scope:   scope,
-			info:    info,
+			dynamicDependerModuleContext: dynamicDependerModuleContext{
+				context: c,
+				config:  config,
+				info:    info,
+			},
+			module: module,
+			scope:  scope,
 		}
 
 		module.GenerateBuildActions(mctx)
