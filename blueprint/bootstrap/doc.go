@@ -127,7 +127,8 @@
 //
 // The main state (potentially) performs the following actions:
 //   - Copy .bootstrap/bootstrap.ninja.in to the source bootstrap Ninja location
-//   - Run the bootstrap script to "copy" the source bootstrap Ninja file to build.ninja
+//   - Run the bootstrap script to "copy" the source bootstrap Ninja file to
+//     build.ninja
 //   - Build all the non-bootstrap modules defined in Blueprints files
 //
 // Updating the Bootstrap Ninja File Template
