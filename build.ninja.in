@@ -72,9 +72,10 @@ build .bootstrap/blueprint/obj/_go_.${g.bootstrap.GoChar}: g.bootstrap.gc $
         ${g.bootstrap.SrcDir}/blueprint/scope.go $
         ${g.bootstrap.SrcDir}/blueprint/singleton_ctx.go $
         ${g.bootstrap.SrcDir}/blueprint/unpack.go | $
-        .bootstrap/blueprint-parser/pkg/blueprint/parser.a
+        .bootstrap/blueprint-parser/pkg/blueprint/parser.a $
+        .bootstrap/blueprint-proptools/pkg/blueprint/proptools.a
     pkgPath = blueprint
-    incFlags = -I .bootstrap/blueprint-parser/pkg
+    incFlags = -I .bootstrap/blueprint-parser/pkg -I .bootstrap/blueprint-proptools/pkg
 
 build .bootstrap/blueprint/pkg/blueprint.a: g.bootstrap.pack $
         .bootstrap/blueprint/obj/_go_.${g.bootstrap.GoChar}
@@ -84,7 +85,7 @@ build .bootstrap/blueprint/pkg/blueprint.a: g.bootstrap.pack $
 # Module:  blueprint-bootstrap
 # Type:    bootstrap_go_package
 # Factory: blueprint/bootstrap.newGoPackageModule
-# Defined: Blueprints:36:1
+# Defined: Blueprints:37:1
 
 build .bootstrap/blueprint-bootstrap/obj/_go_.${g.bootstrap.GoChar}: $
         g.bootstrap.gc ${g.bootstrap.SrcDir}/blueprint/bootstrap/bootstrap.go $
@@ -92,10 +93,11 @@ build .bootstrap/blueprint-bootstrap/obj/_go_.${g.bootstrap.GoChar}: $
         ${g.bootstrap.SrcDir}/blueprint/bootstrap/config.go $
         ${g.bootstrap.SrcDir}/blueprint/bootstrap/doc.go | $
         .bootstrap/blueprint-parser/pkg/blueprint/parser.a $
+        .bootstrap/blueprint-proptools/pkg/blueprint/proptools.a $
         .bootstrap/blueprint/pkg/blueprint.a $
         .bootstrap/blueprint-pathtools/pkg/blueprint/pathtools.a
     pkgPath = blueprint/bootstrap
-    incFlags = -I .bootstrap/blueprint-parser/pkg -I .bootstrap/blueprint/pkg -I .bootstrap/blueprint-pathtools/pkg
+    incFlags = -I .bootstrap/blueprint-parser/pkg -I .bootstrap/blueprint-proptools/pkg -I .bootstrap/blueprint/pkg -I .bootstrap/blueprint-pathtools/pkg
 
 build .bootstrap/blueprint-bootstrap/pkg/blueprint/bootstrap.a: $
         g.bootstrap.pack $
@@ -106,7 +108,7 @@ build .bootstrap/blueprint-bootstrap/pkg/blueprint/bootstrap.a: $
 # Module:  blueprint-parser
 # Type:    bootstrap_go_package
 # Factory: blueprint/bootstrap.newGoPackageModule
-# Defined: Blueprints:18:1
+# Defined: Blueprints:19:1
 
 build .bootstrap/blueprint-parser/obj/_go_.${g.bootstrap.GoChar}: $
         g.bootstrap.gc ${g.bootstrap.SrcDir}/blueprint/parser/parser.go
@@ -120,7 +122,7 @@ build .bootstrap/blueprint-parser/pkg/blueprint/parser.a: g.bootstrap.pack $
 # Module:  blueprint-pathtools
 # Type:    bootstrap_go_package
 # Factory: blueprint/bootstrap.newGoPackageModule
-# Defined: Blueprints:24:1
+# Defined: Blueprints:25:1
 
 build .bootstrap/blueprint-pathtools/obj/_go_.${g.bootstrap.GoChar}: $
         g.bootstrap.gc ${g.bootstrap.SrcDir}/blueprint/pathtools/lists.go
@@ -135,7 +137,7 @@ build .bootstrap/blueprint-pathtools/pkg/blueprint/pathtools.a: $
 # Module:  blueprint-proptools
 # Type:    bootstrap_go_package
 # Factory: blueprint/bootstrap.newGoPackageModule
-# Defined: Blueprints:30:1
+# Defined: Blueprints:31:1
 
 build .bootstrap/blueprint-proptools/obj/_go_.${g.bootstrap.GoChar}: $
         g.bootstrap.gc ${g.bootstrap.SrcDir}/blueprint/proptools/proptools.go
@@ -150,16 +152,17 @@ build .bootstrap/blueprint-proptools/pkg/blueprint/proptools.a: $
 # Module:  minibp
 # Type:    bootstrap_go_binary
 # Factory: blueprint/bootstrap.newGoBinaryModule
-# Defined: Blueprints:47:1
+# Defined: Blueprints:48:1
 
 build .bootstrap/minibp/obj/_go_.${g.bootstrap.GoChar}: g.bootstrap.gc $
         ${g.bootstrap.SrcDir}/blueprint/bootstrap/minibp/main.go | $
         .bootstrap/blueprint-parser/pkg/blueprint/parser.a $
+        .bootstrap/blueprint-proptools/pkg/blueprint/proptools.a $
         .bootstrap/blueprint/pkg/blueprint.a $
         .bootstrap/blueprint-pathtools/pkg/blueprint/pathtools.a $
         .bootstrap/blueprint-bootstrap/pkg/blueprint/bootstrap.a
     pkgPath = minibp
-    incFlags = -I .bootstrap/blueprint-parser/pkg -I .bootstrap/blueprint/pkg -I .bootstrap/blueprint-pathtools/pkg -I .bootstrap/blueprint-bootstrap/pkg
+    incFlags = -I .bootstrap/blueprint-parser/pkg -I .bootstrap/blueprint-proptools/pkg -I .bootstrap/blueprint/pkg -I .bootstrap/blueprint-pathtools/pkg -I .bootstrap/blueprint-bootstrap/pkg
 
 build .bootstrap/minibp/obj/minibp.a: g.bootstrap.pack $
         .bootstrap/minibp/obj/_go_.${g.bootstrap.GoChar}
@@ -167,7 +170,7 @@ build .bootstrap/minibp/obj/minibp.a: g.bootstrap.pack $
 
 build .bootstrap/minibp/obj/a.out: g.bootstrap.link $
         .bootstrap/minibp/obj/minibp.a
-    libDirFlags = -L .bootstrap/blueprint-parser/pkg -L .bootstrap/blueprint/pkg -L .bootstrap/blueprint-pathtools/pkg -L .bootstrap/blueprint-bootstrap/pkg
+    libDirFlags = -L .bootstrap/blueprint-parser/pkg -L .bootstrap/blueprint-proptools/pkg -L .bootstrap/blueprint/pkg -L .bootstrap/blueprint-pathtools/pkg -L .bootstrap/blueprint-bootstrap/pkg
 
 build .bootstrap/bin/minibp: g.bootstrap.cp .bootstrap/minibp/obj/a.out
 

@@ -1,6 +1,7 @@
 bootstrap_go_package {
     name:    "blueprint",
-    deps:    ["blueprint-parser"],
+    deps:    ["blueprint-parser",
+              "blueprint-proptools"],
     pkgPath: "blueprint",
     srcs:    ["blueprint/context.go",
               "blueprint/live_tracker.go",

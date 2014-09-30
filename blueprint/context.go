@@ -531,17 +531,20 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 		relBlueprintsFile: relBlueprintsFile,
 	}
 
-	properties = append(properties, &info.properties)
+	props := []interface{}{
+		&info.properties,
+	}
+	properties = append(props, properties...)
 
-	errs := unpackProperties(moduleDef.Properties, properties...)
+	propertyMap, errs := unpackProperties(moduleDef.Properties, properties...)
 	if len(errs) > 0 {
 		return errs
 	}
 
 	info.pos = moduleDef.Pos
 	info.propertyPos = make(map[string]scanner.Position)
-	for _, propertyDef := range moduleDef.Properties {
-		info.propertyPos[propertyDef.Name] = propertyDef.Pos
+	for name, propertyDef := range propertyMap {
+		info.propertyPos[name] = propertyDef.Pos
 	}
 
 	name := info.properties.Name

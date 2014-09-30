@@ -2,6 +2,7 @@ package blueprint
 
 import (
 	"blueprint/parser"
+	"blueprint/proptools"
 	"bytes"
 	"reflect"
 	"testing"
@@ -50,7 +51,9 @@ var validUnpackTestCases = []struct {
 
 	{`
 		m {
-			name: "abc",
+			nested: {
+				name: "abc",
+			}
 		}
 		`,
 		struct {
@@ -66,7 +69,25 @@ var validUnpackTestCases = []struct {
 
 	{`
 		m {
-			foo: "abc",
+			nested: {
+				name: "def",
+			}
+		}
+		`,
+		struct {
+			Nested interface{}
+		}{
+			Nested: &struct{ Name string }{
+				Name: "def",
+			},
+		},
+	},
+
+	{`
+		m {
+			nested: {
+				foo: "abc",
+			},
 			bar: false,
 			baz: ["def", "ghi"],
 		}
@@ -101,9 +122,9 @@ func TestUnpackProperties(t *testing.T) {
 		}
 
 		module := defs[0].(*parser.Module)
-		propertiesType := reflect.TypeOf(testCase.output)
-		properties := reflect.New(propertiesType)
-		errs = unpackProperties(module.Properties, properties.Interface())
+		properties := proptools.CloneProperties(reflect.ValueOf(testCase.output))
+		proptools.ZeroProperties(properties.Elem())
+		_, errs = unpackProperties(module.Properties, properties.Interface())
 		if len(errs) != 0 {
 			t.Errorf("test case: %s", testCase.input)
 			t.Errorf("unexpected unpack errors:")
