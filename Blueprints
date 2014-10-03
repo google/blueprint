@@ -28,6 +28,12 @@ bootstrap_go_package {
 }
 
 bootstrap_go_package {
+    name:    "blueprint-proptools",
+    pkgPath: "blueprint/proptools",
+    srcs:    ["blueprint/proptools/proptools.go"],
+}
+
+bootstrap_go_package {
     name:    "blueprint-bootstrap",
     deps:    ["blueprint",
               "blueprint-pathtools"],
