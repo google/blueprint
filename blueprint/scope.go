@@ -11,9 +11,9 @@ import (
 // to the output .ninja file.  A variable may contain references to other global
 // Ninja variables, but circular variable references are not allowed.
 type Variable interface {
-	pkg() *pkg
-	name() string                             // "foo"
-	fullName(pkgNames map[*pkg]string) string // "pkg.foo" or "path.to.pkg.foo"
+	packageContext() *PackageContext
+	name() string                                        // "foo"
+	fullName(pkgNames map[*PackageContext]string) string // "pkg.foo" or "path.to.pkg.foo"
 	value(config interface{}) (*ninjaString, error)
 	String() string
 }
@@ -21,9 +21,9 @@ type Variable interface {
 // A Pool represents a Ninja pool that will be written to the output .ninja
 // file.
 type Pool interface {
-	pkg() *pkg
-	name() string                             // "foo"
-	fullName(pkgNames map[*pkg]string) string // "pkg.foo" or "path.to.pkg.foo"
+	packageContext() *PackageContext
+	name() string                                        // "foo"
+	fullName(pkgNames map[*PackageContext]string) string // "pkg.foo" or "path.to.pkg.foo"
 	def(config interface{}) (*poolDef, error)
 	String() string
 }
@@ -31,9 +31,9 @@ type Pool interface {
 // A Rule represents a Ninja build rule that will be written to the output
 // .ninja file.
 type Rule interface {
-	pkg() *pkg
-	name() string                             // "foo"
-	fullName(pkgNames map[*pkg]string) string // "pkg.foo" or "path.to.pkg.foo"
+	packageContext() *PackageContext
+	name() string                                        // "foo"
+	fullName(pkgNames map[*PackageContext]string) string // "pkg.foo" or "path.to.pkg.foo"
 	def(config interface{}) (*ruleDef, error)
 	scope() *basicScope
 	isArg(argName string) bool
@@ -237,26 +237,12 @@ func newLocalScope(parent *basicScope, namePrefix string) *localScope {
 	}
 }
 
-// ReparentToCallerPackage sets the localScope's parent scope to the scope of
-// the Go package of the caller.  This allows a ModuleContext and
-// SingletonContext to be passed to a function defined in a different Go package
-// with that function having access to all of the package-scoped variables of
-// its own package.
-//
-// The skip argument has the same meaning as the skip argument of
-// runtime.Callers.
-func (s *localScope) ReparentToCallerPackage(skip int) {
-	var pkgScope *basicScope
-
-	pkgPath, _ := callerName(skip + 1)
-	pkg, ok := pkgs[pkgPath]
-	if ok {
-		pkgScope = pkg.scope
-	} else {
-		pkgScope = newScope(nil)
-	}
-
-	s.scope.parent = pkgScope
+// ReparentTo sets the localScope's parent scope to the scope of the given
+// package context.  This allows a ModuleContext and SingletonContext to call
+// a function defined in a different Go package and have that function retain
+// access to all of the package-scoped variables of its own package.
+func (s *localScope) ReparentTo(pctx *PackageContext) {
+	s.scope.parent = pctx.scope
 }
 
 func (s *localScope) LookupVariable(name string) (Variable, error) {
@@ -349,7 +335,7 @@ type localVariable struct {
 	value_     *ninjaString
 }
 
-func (l *localVariable) pkg() *pkg {
+func (l *localVariable) packageContext() *PackageContext {
 	return nil
 }
 
@@ -357,7 +343,7 @@ func (l *localVariable) name() string {
 	return l.name_
 }
 
-func (l *localVariable) fullName(pkgNames map[*pkg]string) string {
+func (l *localVariable) fullName(pkgNames map[*PackageContext]string) string {
 	return l.namePrefix + l.name_
 }
 
@@ -377,7 +363,7 @@ type localRule struct {
 	scope_     *basicScope
 }
 
-func (l *localRule) pkg() *pkg {
+func (l *localRule) packageContext() *PackageContext {
 	return nil
 }
 
@@ -385,7 +371,7 @@ func (l *localRule) name() string {
 	return l.name_
 }
 
-func (l *localRule) fullName(pkgNames map[*pkg]string) string {
+func (l *localRule) fullName(pkgNames map[*PackageContext]string) string {
 	return l.namePrefix + l.name_
 }
 

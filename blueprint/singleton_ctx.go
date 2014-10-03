@@ -19,16 +19,16 @@ type SingletonContext interface {
 	ModuleErrorf(module Module, format string, args ...interface{})
 	Errorf(format string, args ...interface{})
 
-	Variable(name, value string)
-	Rule(name string, params RuleParams, argNames ...string) Rule
-	Build(params BuildParams)
+	Variable(pctx *PackageContext, name, value string)
+	Rule(pctx *PackageContext, name string, params RuleParams, argNames ...string) Rule
+	Build(pctx *PackageContext, params BuildParams)
 	RequireNinjaVersion(major, minor, micro int)
 
 	// SetBuildDir sets the value of the top-level "builddir" Ninja variable
 	// that controls where Ninja stores its build log files.  This value can be
 	// set at most one time for a single build.  Setting it multiple times (even
 	// across different singletons) will result in a panic.
-	SetBuildDir(value string)
+	SetBuildDir(pctx *PackageContext, value string)
 
 	VisitAllModules(visit func(Module))
 	VisitAllModulesIf(pred func(Module) bool, visit func(Module))
@@ -86,9 +86,8 @@ func (s *singletonContext) Errorf(format string, args ...interface{}) {
 	s.errs = append(s.errs, fmt.Errorf(format, args...))
 }
 
-func (s *singletonContext) Variable(name, value string) {
-	const skip = 2
-	s.scope.ReparentToCallerPackage(skip)
+func (s *singletonContext) Variable(pctx *PackageContext, name, value string) {
+	s.scope.ReparentTo(pctx)
 
 	v, err := s.scope.AddLocalVariable(name, value)
 	if err != nil {
@@ -98,11 +97,10 @@ func (s *singletonContext) Variable(name, value string) {
 	s.actionDefs.variables = append(s.actionDefs.variables, v)
 }
 
-func (s *singletonContext) Rule(name string, params RuleParams,
-	argNames ...string) Rule {
+func (s *singletonContext) Rule(pctx *PackageContext, name string,
+	params RuleParams, argNames ...string) Rule {
 
-	const skip = 2
-	s.scope.ReparentToCallerPackage(skip)
+	s.scope.ReparentTo(pctx)
 
 	r, err := s.scope.AddLocalRule(name, &params, argNames...)
 	if err != nil {
@@ -114,9 +112,8 @@ func (s *singletonContext) Rule(name string, params RuleParams,
 	return r
 }
 
-func (s *singletonContext) Build(params BuildParams) {
-	const skip = 2
-	s.scope.ReparentToCallerPackage(skip)
+func (s *singletonContext) Build(pctx *PackageContext, params BuildParams) {
+	s.scope.ReparentTo(pctx)
 
 	def, err := parseBuildParams(s.scope, &params)
 	if err != nil {
@@ -130,9 +127,8 @@ func (s *singletonContext) RequireNinjaVersion(major, minor, micro int) {
 	s.context.requireNinjaVersion(major, minor, micro)
 }
 
-func (s *singletonContext) SetBuildDir(value string) {
-	const skip = 2
-	s.scope.ReparentToCallerPackage(skip)
+func (s *singletonContext) SetBuildDir(pctx *PackageContext, value string) {
+	s.scope.ReparentTo(pctx)
 
 	ninjaValue, err := parseNinjaString(s.scope, value)
 	if err != nil {

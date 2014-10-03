@@ -58,7 +58,7 @@ type Context struct {
 	ignoreUnknownModuleTypes bool
 
 	// set during PrepareBuildActions
-	pkgNames        map[*pkg]string
+	pkgNames        map[*PackageContext]string
 	globalVariables map[Variable]*ninjaString
 	globalPools     map[Pool]*poolDef
 	globalRules     map[Rule]*ruleDef
@@ -1107,59 +1107,59 @@ func (c *Context) setBuildDir(value *ninjaString) {
 }
 
 func (c *Context) makeUniquePackageNames(
-	liveGlobals *liveTracker) map[*pkg]string {
+	liveGlobals *liveTracker) map[*PackageContext]string {
 
-	pkgs := make(map[string]*pkg)
-	pkgNames := make(map[*pkg]string)
-	longPkgNames := make(map[*pkg]bool)
+	pkgs := make(map[string]*PackageContext)
+	pkgNames := make(map[*PackageContext]string)
+	longPkgNames := make(map[*PackageContext]bool)
 
-	processPackage := func(pkg *pkg) {
-		if pkg == nil {
+	processPackage := func(pctx *PackageContext) {
+		if pctx == nil {
 			// This is a built-in rule and has no package.
 			return
 		}
-		if _, ok := pkgNames[pkg]; ok {
+		if _, ok := pkgNames[pctx]; ok {
 			// We've already processed this package.
 			return
 		}
 
-		otherPkg, present := pkgs[pkg.shortName]
+		otherPkg, present := pkgs[pctx.shortName]
 		if present {
 			// Short name collision.  Both this package and the one that's
 			// already there need to use their full names.  We leave the short
 			// name in pkgNames for now so future collisions still get caught.
-			longPkgNames[pkg] = true
+			longPkgNames[pctx] = true
 			longPkgNames[otherPkg] = true
 		} else {
 			// No collision so far.  Tentatively set the package's name to be
 			// its short name.
-			pkgNames[pkg] = pkg.shortName
+			pkgNames[pctx] = pctx.shortName
 		}
 	}
 
 	// We try to give all packages their short name, but when we get collisions
 	// we need to use the full unique package name.
 	for v, _ := range liveGlobals.variables {
-		processPackage(v.pkg())
+		processPackage(v.packageContext())
 	}
 	for p, _ := range liveGlobals.pools {
-		processPackage(p.pkg())
+		processPackage(p.packageContext())
 	}
 	for r, _ := range liveGlobals.rules {
-		processPackage(r.pkg())
+		processPackage(r.packageContext())
 	}
 
 	// Add the packages that had collisions using their full unique names.  This
 	// will overwrite any short names that were added in the previous step.
-	for pkg := range longPkgNames {
-		pkgNames[pkg] = pkg.fullName
+	for pctx := range longPkgNames {
+		pkgNames[pctx] = pctx.fullName
 	}
 
 	return pkgNames
 }
 
 func (c *Context) checkForVariableReferenceCycles(
-	variables map[Variable]*ninjaString, pkgNames map[*pkg]string) {
+	variables map[Variable]*ninjaString, pkgNames map[*PackageContext]string) {
 
 	visited := make(map[Variable]bool)  // variables that were already checked
 	checking := make(map[Variable]bool) // variables actively being checked
@@ -1375,11 +1375,11 @@ func (c *Context) writeBuildDir(nw *ninjaWriter) error {
 }
 
 type globalEntity interface {
-	fullName(pkgNames map[*pkg]string) string
+	fullName(pkgNames map[*PackageContext]string) string
 }
 
 type globalEntitySorter struct {
-	pkgNames map[*pkg]string
+	pkgNames map[*PackageContext]string
 	entities []globalEntity
 }
 

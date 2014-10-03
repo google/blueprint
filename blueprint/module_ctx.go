@@ -96,9 +96,9 @@ type ModuleContext interface {
 	OtherModuleName(m Module) string
 	OtherModuleErrorf(m Module, fmt string, args ...interface{})
 
-	Variable(name, value string)
-	Rule(name string, params RuleParams, argNames ...string) Rule
-	Build(params BuildParams)
+	Variable(pctx *PackageContext, name, value string)
+	Rule(pctx *PackageContext, name string, params RuleParams, argNames ...string) Rule
+	Build(pctx *PackageContext, params BuildParams)
 
 	VisitDepsDepthFirst(visit func(Module))
 	VisitDepsDepthFirstIf(pred func(Module) bool, visit func(Module))
@@ -188,9 +188,8 @@ func (m *moduleContext) OtherModuleErrorf(module Module, format string,
 	})
 }
 
-func (m *moduleContext) Variable(name, value string) {
-	const skip = 2
-	m.scope.ReparentToCallerPackage(skip)
+func (m *moduleContext) Variable(pctx *PackageContext, name, value string) {
+	m.scope.ReparentTo(pctx)
 
 	v, err := m.scope.AddLocalVariable(name, value)
 	if err != nil {
@@ -200,11 +199,10 @@ func (m *moduleContext) Variable(name, value string) {
 	m.actionDefs.variables = append(m.actionDefs.variables, v)
 }
 
-func (m *moduleContext) Rule(name string, params RuleParams,
-	argNames ...string) Rule {
+func (m *moduleContext) Rule(pctx *PackageContext, name string,
+	params RuleParams, argNames ...string) Rule {
 
-	const skip = 2
-	m.scope.ReparentToCallerPackage(skip)
+	m.scope.ReparentTo(pctx)
 
 	r, err := m.scope.AddLocalRule(name, &params, argNames...)
 	if err != nil {
@@ -216,9 +214,8 @@ func (m *moduleContext) Rule(name string, params RuleParams,
 	return r
 }
 
-func (m *moduleContext) Build(params BuildParams) {
-	const skip = 2
-	m.scope.ReparentToCallerPackage(skip)
+func (m *moduleContext) Build(pctx *PackageContext, params BuildParams) {
+	m.scope.ReparentTo(pctx)
 
 	def, err := parseBuildParams(m.scope, &params)
 	if err != nil {

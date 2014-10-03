@@ -62,13 +62,13 @@ rule g.bootstrap.pack
 
 build .bootstrap/blueprint/obj/_go_.${g.bootstrap.GoChar}: g.bootstrap.gc $
         ${g.bootstrap.SrcDir}/blueprint/context.go $
-        ${g.bootstrap.SrcDir}/blueprint/globals.go $
         ${g.bootstrap.SrcDir}/blueprint/live_tracker.go $
         ${g.bootstrap.SrcDir}/blueprint/mangle.go $
         ${g.bootstrap.SrcDir}/blueprint/module_ctx.go $
         ${g.bootstrap.SrcDir}/blueprint/ninja_defs.go $
         ${g.bootstrap.SrcDir}/blueprint/ninja_strings.go $
         ${g.bootstrap.SrcDir}/blueprint/ninja_writer.go $
+        ${g.bootstrap.SrcDir}/blueprint/package_ctx.go $
         ${g.bootstrap.SrcDir}/blueprint/scope.go $
         ${g.bootstrap.SrcDir}/blueprint/singleton_ctx.go $
         ${g.bootstrap.SrcDir}/blueprint/unpack.go | $

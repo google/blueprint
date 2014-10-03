@@ -8,14 +8,76 @@ import (
 	"strings"
 )
 
-type pkg struct {
+// A PackageContext provides a way to create package-scoped Ninja pools,
+// rules, and variables.  A Go package should create a single unexported
+// package-scoped PackageContext variable that it uses to create all package-
+// scoped Ninja object definitions.  This PackageContext object should then be
+// passed to all calls to define module- or singleton-specific Ninja
+// definitions.  For example:
+//
+//     package blah
+//
+//     import (
+//         "blueprint"
+//     )
+//
+//     var (
+//         pctx = NewPackageContext("path/to/blah")
+//
+//         myPrivateVar = pctx.StaticVariable("myPrivateVar", "abcdef")
+//         MyExportedVar = pctx.StaticVariable("MyExportedVar", "$myPrivateVar 123456!")
+//
+//         SomeRule = pctx.StaticRule(...)
+//     )
+//
+//     // ...
+//
+//     func (m *MyModule) GenerateBuildActions(ctx blueprint.Module) {
+//         ctx.Build(pctx, blueprint.BuildParams{
+//             Rule:    SomeRule,
+//             Outputs: []string{"$myPrivateVar"},
+//         })
+//     }
+type PackageContext struct {
 	fullName  string
 	shortName string
 	pkgPath   string
 	scope     *basicScope
 }
 
-var pkgs = map[string]*pkg{}
+var packageContexts = map[string]*PackageContext{}
+
+// NewPackageContext creates a PackageContext object for a given package.  The
+// pkgPath argument should always be set to the full path used to import the
+// package.  This function may only be called from a Go package's init()
+// function or as part of a package-scoped variable initialization.
+func NewPackageContext(pkgPath string) *PackageContext {
+	checkCalledFromInit()
+
+	if _, present := packageContexts[pkgPath]; present {
+		panic(fmt.Errorf("package %q already has a package context"))
+	}
+
+	pkgName := pkgPathToName(pkgPath)
+	err := validateNinjaName(pkgName)
+	if err != nil {
+		panic(err)
+	}
+
+	i := strings.LastIndex(pkgPath, "/")
+	shortName := pkgPath[i+1:]
+
+	p := &PackageContext{
+		fullName:  pkgName,
+		shortName: shortName,
+		pkgPath:   pkgPath,
+		scope:     newScope(nil),
+	}
+
+	packageContexts[pkgPath] = p
+
+	return p
+}
 
 var Phony Rule = &builtinRule{
 	name_: "phony",
@@ -24,24 +86,29 @@ var Phony Rule = &builtinRule{
 var errRuleIsBuiltin = errors.New("the rule is a built-in")
 var errVariableIsArg = errors.New("argument variables have no value")
 
-// We make a Ninja-friendly name out of a Go package name by replaceing all the
-// '/' characters with '.'.  We assume the results are unique, though this is
-// not 100% guaranteed for Go package names that already contain '.' characters.
-// Disallowing package names with '.' isn't reasonable since many package names
-// contain the name of the hosting site (e.g. "code.google.com").  In practice
-// this probably isn't really a problem.
-func pkgPathToName(pkgPath string) string {
-	return strings.Replace(pkgPath, "/", ".", -1)
+// checkCalledFromInit panics if a Go package's init function is not on the
+// call stack.
+func checkCalledFromInit() {
+	for skip := 3; ; skip++ {
+		_, funcName, ok := callerName(skip)
+		if !ok {
+			panic("not called from an init func")
+		}
+
+		if funcName == "init" || strings.HasPrefix(funcName, "init·") {
+			return
+		}
+	}
 }
 
 // callerName returns the package path and function name of the calling
 // function.  The skip argument has the same meaning as the skip argument of
 // runtime.Callers.
-func callerName(skip int) (pkgPath, funcName string) {
+func callerName(skip int) (pkgPath, funcName string, ok bool) {
 	var pc [1]uintptr
 	n := runtime.Callers(skip+1, pc[:])
 	if n != 1 {
-		panic("unable to get caller pc")
+		return "", "", false
 	}
 
 	f := runtime.FuncForPC(pc[0])
@@ -61,70 +128,46 @@ func callerName(skip int) (pkgPath, funcName string) {
 
 	pkgPath = fullName[:lastDotIndex]
 	funcName = fullName[lastDotIndex+1:]
+	ok = true
 	return
 }
 
-// callerPackage returns the pkg of the function that called the caller of
-// callerPackage.  The caller of callerPackage must have been called from an
-// init function of the package or callerPackage will panic.
-//
-// Looking for the package's init function on the call stack and using that to
-// determine its package name is unfortunately dependent upon Go runtime
-// implementation details.  However, it allows us to ensure that it's easy to
-// determine where a definition in a .ninja file came from.
-func callerPackage() *pkg {
-	pkgPath, funcName := callerName(3)
-
-	if funcName != "init" && !strings.HasPrefix(funcName, "init·") {
-		panic("not called from an init func")
-	}
-
-	pkgName := pkgPathToName(pkgPath)
-	err := validateNinjaName(pkgName)
-	if err != nil {
-		panic(err)
-	}
-
-	i := strings.LastIndex(pkgPath, "/")
-	shortName := pkgPath[i+1:]
-
-	p, ok := pkgs[pkgPath]
-	if !ok {
-		p = &pkg{
-			fullName:  pkgName,
-			shortName: shortName,
-			pkgPath:   pkgPath,
-			scope:     newScope(nil),
-		}
-		pkgs[pkgPath] = p
-	}
-
-	return p
+// pkgPathToName makes a Ninja-friendly name out of a Go package name by
+// replaceing all the '/' characters with '.'.  We assume the results are
+// unique, though this is not 100% guaranteed for Go package names that
+// already contain '.' characters. Disallowing package names with '.' isn't
+// reasonable since many package names contain the name of the hosting site
+// (e.g. "code.google.com").  In practice this probably isn't really a
+// problem.
+func pkgPathToName(pkgPath string) string {
+	return strings.Replace(pkgPath, "/", ".", -1)
 }
 
-// Import enables access to the exported Ninja pools, rules, and variables that
-// are defined at the package scope of another Go package.  Go's visibility
-// rules apply to these references - capitalized names indicate that something
-// is exported.  It may only be called from a Go package's init() function.  The
-// Go package path passed to Import must have already been imported into the Go
-// package using a Go import statement.  The imported variables may then be
-// accessed from Ninja strings as "${pkg.Variable}", while the imported rules
-// can simply be accessed as exported Go variables from the package.  For
-// example:
+// Import enables access to the exported Ninja pools, rules, and variables
+// that are defined at the package scope of another Go package.  Go's
+// visibility rules apply to these references - capitalized names indicate
+// that something is exported.  It may only be called from a Go package's
+// init() function.  The Go package path passed to Import must have already
+// been imported into the Go package using a Go import statement.  The
+// imported variables may then be accessed from Ninja strings as
+// "${pkg.Variable}", while the imported rules can simply be accessed as
+// exported Go variables from the package.  For example:
 //
 //     import (
 //         "blueprint"
 //         "foo/bar"
 //     )
 //
+//     var pctx = NewPackagePath("blah")
+//
 //     func init() {
-//         blueprint.Import("foo/bar")
+//         pctx.Import("foo/bar")
 //     }
 //
 //     ...
 //
 //     func (m *MyModule) GenerateBuildActions(ctx blueprint.Module) {
-//         ctx.Build(blueprint.BuildParams{
+//         ctx.Build(pctx, blueprint.BuildParams{
 //             Rule:    bar.SomeRule,
 //             Outputs: []string{"${bar.SomeVariable}"},
 //         })
@@ -135,15 +178,14 @@ func callerPackage() *pkg {
 // from Go's import declaration, which derives the local name from the package
 // clause in the imported package.  By convention these names are made to match,
 // but this is not required.
-func Import(pkgPath string) {
-	callerPkg := callerPackage()
-
-	importPkg, ok := pkgs[pkgPath]
+func (p *PackageContext) Import(pkgPath string) {
+	checkCalledFromInit()
+	importPkg, ok := packageContexts[pkgPath]
 	if !ok {
-		panic(fmt.Errorf("package %q has no Blueprints definitions", pkgPath))
+		panic(fmt.Errorf("package %q has no context", pkgPath))
 	}
 
-	err := callerPkg.scope.AddImport(importPkg.shortName, importPkg.scope)
+	err := p.scope.AddImport(importPkg.shortName, importPkg.scope)
 	if err != nil {
 		panic(err)
 	}
@@ -152,12 +194,11 @@ func Import(pkgPath string) {
 // ImportAs provides the same functionality as Import, but it allows the local
 // name that will be used to refer to the package to be specified explicitly.
 // It may only be called from a Go package's init() function.
-func ImportAs(as, pkgPath string) {
-	callerPkg := callerPackage()
-
-	importPkg, ok := pkgs[pkgPath]
+func (p *PackageContext) ImportAs(as, pkgPath string) {
+	checkCalledFromInit()
+	importPkg, ok := packageContexts[pkgPath]
 	if !ok {
-		panic(fmt.Errorf("package %q has no Blueprints definitions", pkgPath))
+		panic(fmt.Errorf("package %q has no context", pkgPath))
 	}
 
 	err := validateNinjaName(as)
@@ -165,14 +206,14 @@ func ImportAs(as, pkgPath string) {
 		panic(err)
 	}
 
-	err = callerPkg.scope.AddImport(as, importPkg.scope)
+	err = p.scope.AddImport(as, importPkg.scope)
 	if err != nil {
 		panic(err)
 	}
 }
 
 type staticVariable struct {
-	pkg_   *pkg
+	pctx   *PackageContext
 	name_  string
 	value_ string
 }
@@ -186,16 +227,15 @@ type staticVariable struct {
 // represents a Ninja variable that will be output.  The name argument should
 // exactly match the Go variable name, and the value string may reference other
 // Ninja variables that are visible within the calling Go package.
-func StaticVariable(name, value string) Variable {
+func (p *PackageContext) StaticVariable(name, value string) Variable {
+	checkCalledFromInit()
 	err := validateNinjaName(name)
 	if err != nil {
 		panic(err)
 	}
 
-	pkg := callerPackage()
-
-	v := &staticVariable{pkg, name, value}
-	err = pkg.scope.AddVariable(v)
+	v := &staticVariable{p, name, value}
+	err = p.scope.AddVariable(v)
 	if err != nil {
 		panic(err)
 	}
@@ -203,20 +243,20 @@ func StaticVariable(name, value string) Variable {
 	return v
 }
 
-func (v *staticVariable) pkg() *pkg {
-	return v.pkg_
+func (v *staticVariable) packageContext() *PackageContext {
+	return v.pctx
 }
 
 func (v *staticVariable) name() string {
 	return v.name_
 }
 
-func (v *staticVariable) fullName(pkgNames map[*pkg]string) string {
-	return packageNamespacePrefix(pkgNames[v.pkg_]) + v.name_
+func (v *staticVariable) fullName(pkgNames map[*PackageContext]string) string {
+	return packageNamespacePrefix(pkgNames[v.pctx]) + v.name_
 }
 
 func (v *staticVariable) value(interface{}) (*ninjaString, error) {
-	ninjaStr, err := parseNinjaString(v.pkg_.scope, v.value_)
+	ninjaStr, err := parseNinjaString(v.pctx.scope, v.value_)
 	if err != nil {
 		err = fmt.Errorf("error parsing variable %s value: %s", v, err)
 		panic(err)
@@ -225,11 +265,11 @@ func (v *staticVariable) value(interface{}) (*ninjaString, error) {
 }
 
 func (v *staticVariable) String() string {
-	return v.pkg_.pkgPath + "." + v.name_
+	return v.pctx.pkgPath + "." + v.name_
 }
 
 type variableFunc struct {
-	pkg_   *pkg
+	pctx   *PackageContext
 	name_  string
 	value_ func(interface{}) (string, error)
 }
@@ -245,18 +285,18 @@ type variableFunc struct {
 // exactly match the Go variable name, and the value string returned by f may
 // reference other Ninja variables that are visible within the calling Go
 // package.
-func VariableFunc(name string, f func(config interface{}) (string,
-	error)) Variable {
+func (p *PackageContext) VariableFunc(name string,
+	f func(config interface{}) (string, error)) Variable {
+
+	checkCalledFromInit()
 
 	err := validateNinjaName(name)
 	if err != nil {
 		panic(err)
 	}
 
-	pkg := callerPackage()
-
-	v := &variableFunc{pkg, name, f}
-	err = pkg.scope.AddVariable(v)
+	v := &variableFunc{p, name, f}
+	err = p.scope.AddVariable(v)
 	if err != nil {
 		panic(err)
 	}
@@ -275,13 +315,15 @@ func VariableFunc(name string, f func(config interface{}) (string,
 // exactly match the Go variable name, and the value string returned by method
 // may reference other Ninja variables that are visible within the calling Go
 // package.
-func VariableConfigMethod(name string, method interface{}) Variable {
+func (p *PackageContext) VariableConfigMethod(name string,
+	method interface{}) Variable {
+
+	checkCalledFromInit()
+
 	err := validateNinjaName(name)
 	if err != nil {
 		panic(err)
 	}
-
-	pkg := callerPackage()
 
 	methodValue := reflect.ValueOf(method)
 	validateVariableMethod(name, methodValue)
@@ -292,8 +334,8 @@ func VariableConfigMethod(name string, method interface{}) Variable {
 		return resultStr, nil
 	}
 
-	v := &variableFunc{pkg, name, fun}
-	err = pkg.scope.AddVariable(v)
+	v := &variableFunc{p, name, fun}
+	err = p.scope.AddVariable(v)
 	if err != nil {
 		panic(err)
 	}
@@ -301,16 +343,16 @@ func VariableConfigMethod(name string, method interface{}) Variable {
 	return v
 }
 
-func (v *variableFunc) pkg() *pkg {
-	return v.pkg_
+func (v *variableFunc) packageContext() *PackageContext {
+	return v.pctx
 }
 
 func (v *variableFunc) name() string {
 	return v.name_
 }
 
-func (v *variableFunc) fullName(pkgNames map[*pkg]string) string {
-	return packageNamespacePrefix(pkgNames[v.pkg_]) + v.name_
+func (v *variableFunc) fullName(pkgNames map[*PackageContext]string) string {
+	return packageNamespacePrefix(pkgNames[v.pctx]) + v.name_
 }
 
 func (v *variableFunc) value(config interface{}) (*ninjaString, error) {
@@ -319,7 +361,7 @@ func (v *variableFunc) value(config interface{}) (*ninjaString, error) {
 		return nil, err
 	}
 
-	ninjaStr, err := parseNinjaString(v.pkg_.scope, value)
+	ninjaStr, err := parseNinjaString(v.pctx.scope, value)
 	if err != nil {
 		err = fmt.Errorf("error parsing variable %s value: %s", v, err)
 		panic(err)
@@ -329,7 +371,7 @@ func (v *variableFunc) value(config interface{}) (*ninjaString, error) {
 }
 
 func (v *variableFunc) String() string {
-	return v.pkg_.pkgPath + "." + v.name_
+	return v.pctx.pkgPath + "." + v.name_
 }
 
 func validateVariableMethod(name string, methodValue reflect.Value) {
@@ -361,7 +403,7 @@ type argVariable struct {
 	name_ string
 }
 
-func (v *argVariable) pkg() *pkg {
+func (v *argVariable) packageContext() *PackageContext {
 	panic("this should not be called")
 }
 
@@ -369,7 +411,7 @@ func (v *argVariable) name() string {
 	return v.name_
 }
 
-func (v *argVariable) fullName(pkgNames map[*pkg]string) string {
+func (v *argVariable) fullName(pkgNames map[*PackageContext]string) string {
 	return v.name_
 }
 
@@ -382,7 +424,7 @@ func (v *argVariable) String() string {
 }
 
 type staticPool struct {
-	pkg_   *pkg
+	pctx   *PackageContext
 	name_  string
 	params PoolParams
 }
@@ -396,37 +438,37 @@ type staticPool struct {
 // represents a Ninja pool that will be output.  The name argument should
 // exactly match the Go variable name, and the params fields may reference other
 // Ninja variables that are visible within the calling Go package.
-func StaticPool(name string, params PoolParams) Pool {
+func (p *PackageContext) StaticPool(name string, params PoolParams) Pool {
+	checkCalledFromInit()
+
 	err := validateNinjaName(name)
 	if err != nil {
 		panic(err)
 	}
 
-	pkg := callerPackage()
-
-	p := &staticPool{pkg, name, params}
-	err = pkg.scope.AddPool(p)
+	pool := &staticPool{p, name, params}
+	err = p.scope.AddPool(pool)
 	if err != nil {
 		panic(err)
 	}
 
-	return p
+	return pool
 }
 
-func (p *staticPool) pkg() *pkg {
-	return p.pkg_
+func (p *staticPool) packageContext() *PackageContext {
+	return p.pctx
 }
 
 func (p *staticPool) name() string {
 	return p.name_
 }
 
-func (p *staticPool) fullName(pkgNames map[*pkg]string) string {
-	return packageNamespacePrefix(pkgNames[p.pkg_]) + p.name_
+func (p *staticPool) fullName(pkgNames map[*PackageContext]string) string {
+	return packageNamespacePrefix(pkgNames[p.pctx]) + p.name_
 }
 
 func (p *staticPool) def(config interface{}) (*poolDef, error) {
-	def, err := parsePoolParams(p.pkg_.scope, &p.params)
+	def, err := parsePoolParams(p.pctx.scope, &p.params)
 	if err != nil {
 		panic(fmt.Errorf("error parsing PoolParams for %s: %s", p, err))
 	}
@@ -434,11 +476,11 @@ func (p *staticPool) def(config interface{}) (*poolDef, error) {
 }
 
 func (p *staticPool) String() string {
-	return p.pkg_.pkgPath + "." + p.name_
+	return p.pctx.pkgPath + "." + p.name_
 }
 
 type poolFunc struct {
-	pkg_       *pkg
+	pctx       *PackageContext
 	name_      string
 	paramsFunc func(interface{}) (PoolParams, error)
 }
@@ -453,33 +495,35 @@ type poolFunc struct {
 // exactly match the Go variable name, and the string fields of the PoolParams
 // returned by f may reference other Ninja variables that are visible within the
 // calling Go package.
-func PoolFunc(name string, f func(interface{}) (PoolParams, error)) Pool {
+func (p *PackageContext) PoolFunc(name string, f func(interface{}) (PoolParams,
+	error)) Pool {
+
+	checkCalledFromInit()
+
 	err := validateNinjaName(name)
 	if err != nil {
 		panic(err)
 	}
 
-	pkg := callerPackage()
-
-	p := &poolFunc{pkg, name, f}
-	err = pkg.scope.AddPool(p)
+	pool := &poolFunc{p, name, f}
+	err = p.scope.AddPool(pool)
 	if err != nil {
 		panic(err)
 	}
 
-	return p
+	return pool
 }
 
-func (p *poolFunc) pkg() *pkg {
-	return p.pkg_
+func (p *poolFunc) packageContext() *PackageContext {
+	return p.pctx
 }
 
 func (p *poolFunc) name() string {
 	return p.name_
 }
 
-func (p *poolFunc) fullName(pkgNames map[*pkg]string) string {
-	return packageNamespacePrefix(pkgNames[p.pkg_]) + p.name_
+func (p *poolFunc) fullName(pkgNames map[*PackageContext]string) string {
+	return packageNamespacePrefix(pkgNames[p.pctx]) + p.name_
 }
 
 func (p *poolFunc) def(config interface{}) (*poolDef, error) {
@@ -487,7 +531,7 @@ func (p *poolFunc) def(config interface{}) (*poolDef, error) {
 	if err != nil {
 		return nil, err
 	}
-	def, err := parsePoolParams(p.pkg_.scope, &params)
+	def, err := parsePoolParams(p.pctx.scope, &params)
 	if err != nil {
 		panic(fmt.Errorf("error parsing PoolParams for %s: %s", p, err))
 	}
@@ -495,11 +539,11 @@ func (p *poolFunc) def(config interface{}) (*poolDef, error) {
 }
 
 func (p *poolFunc) String() string {
-	return p.pkg_.pkgPath + "." + p.name_
+	return p.pctx.pkgPath + "." + p.name_
 }
 
 type staticRule struct {
-	pkg_     *pkg
+	pctx     *PackageContext
 	name_    string
 	params   RuleParams
 	argNames map[string]bool
@@ -524,8 +568,10 @@ type staticRule struct {
 // results in the package-scoped variable's value being used for build
 // statements that do not override the argument.  For argument names that do not
 // shadow package-scoped variables the default value is an empty string.
-func StaticRule(name string, params RuleParams, argNames ...string) Rule {
-	pkg := callerPackage()
+func (p *PackageContext) StaticRule(name string, params RuleParams,
+	argNames ...string) Rule {
+
+	checkCalledFromInit()
 
 	err := validateNinjaName(name)
 	if err != nil {
@@ -544,8 +590,8 @@ func StaticRule(name string, params RuleParams, argNames ...string) Rule {
 
 	ruleScope := (*basicScope)(nil) // This will get created lazily
 
-	r := &staticRule{pkg, name, params, argNamesSet, ruleScope}
-	err = pkg.scope.AddRule(r)
+	r := &staticRule{p, name, params, argNamesSet, ruleScope}
+	err = p.scope.AddRule(r)
 	if err != nil {
 		panic(err)
 	}
@@ -553,16 +599,16 @@ func StaticRule(name string, params RuleParams, argNames ...string) Rule {
 	return r
 }
 
-func (r *staticRule) pkg() *pkg {
-	return r.pkg_
+func (r *staticRule) packageContext() *PackageContext {
+	return r.pctx
 }
 
 func (r *staticRule) name() string {
 	return r.name_
 }
 
-func (r *staticRule) fullName(pkgNames map[*pkg]string) string {
-	return packageNamespacePrefix(pkgNames[r.pkg_]) + r.name_
+func (r *staticRule) fullName(pkgNames map[*PackageContext]string) string {
+	return packageNamespacePrefix(pkgNames[r.pctx]) + r.name_
 }
 
 func (r *staticRule) def(interface{}) (*ruleDef, error) {
@@ -578,7 +624,7 @@ func (r *staticRule) scope() *basicScope {
 	// declared before the args are created.  Otherwise we could incorrectly
 	// shadow a package-scoped variable with an arg variable.
 	if r.scope_ == nil {
-		r.scope_ = makeRuleScope(r.pkg_.scope, r.argNames)
+		r.scope_ = makeRuleScope(r.pctx.scope, r.argNames)
 	}
 	return r.scope_
 }
@@ -588,11 +634,11 @@ func (r *staticRule) isArg(argName string) bool {
 }
 
 func (r *staticRule) String() string {
-	return r.pkg_.pkgPath + "." + r.name_
+	return r.pctx.pkgPath + "." + r.name_
 }
 
 type ruleFunc struct {
-	pkg_       *pkg
+	pctx       *PackageContext
 	name_      string
 	paramsFunc func(interface{}) (RuleParams, error)
 	argNames   map[string]bool
@@ -618,10 +664,10 @@ type ruleFunc struct {
 // scoped variable results in the package-scoped variable's value being used for
 // build statements that do not override the argument.  For argument names that
 // do not shadow package-scoped variables the default value is an empty string.
-func RuleFunc(name string, f func(interface{}) (RuleParams, error),
-	argNames ...string) Rule {
+func (p *PackageContext) RuleFunc(name string, f func(interface{}) (RuleParams,
+	error), argNames ...string) Rule {
 
-	pkg := callerPackage()
+	checkCalledFromInit()
 
 	err := validateNinjaName(name)
 	if err != nil {
@@ -640,25 +686,25 @@ func RuleFunc(name string, f func(interface{}) (RuleParams, error),
 
 	ruleScope := (*basicScope)(nil) // This will get created lazily
 
-	r := &ruleFunc{pkg, name, f, argNamesSet, ruleScope}
-	err = pkg.scope.AddRule(r)
+	rule := &ruleFunc{p, name, f, argNamesSet, ruleScope}
+	err = p.scope.AddRule(rule)
 	if err != nil {
 		panic(err)
 	}
 
-	return r
+	return rule
 }
 
-func (r *ruleFunc) pkg() *pkg {
-	return r.pkg_
+func (r *ruleFunc) packageContext() *PackageContext {
+	return r.pctx
 }
 
 func (r *ruleFunc) name() string {
 	return r.name_
 }
 
-func (r *ruleFunc) fullName(pkgNames map[*pkg]string) string {
-	return packageNamespacePrefix(pkgNames[r.pkg_]) + r.name_
+func (r *ruleFunc) fullName(pkgNames map[*PackageContext]string) string {
+	return packageNamespacePrefix(pkgNames[r.pctx]) + r.name_
 }
 
 func (r *ruleFunc) def(config interface{}) (*ruleDef, error) {
@@ -678,7 +724,7 @@ func (r *ruleFunc) scope() *basicScope {
 	// before the args are created.  Otherwise we could incorrectly shadow a
 	// global variable with an arg variable.
 	if r.scope_ == nil {
-		r.scope_ = makeRuleScope(r.pkg_.scope, r.argNames)
+		r.scope_ = makeRuleScope(r.pctx.scope, r.argNames)
 	}
 	return r.scope_
 }
@@ -688,7 +734,7 @@ func (r *ruleFunc) isArg(argName string) bool {
 }
 
 func (r *ruleFunc) String() string {
-	return r.pkg_.pkgPath + "." + r.name_
+	return r.pctx.pkgPath + "." + r.name_
 }
 
 type builtinRule struct {
@@ -696,7 +742,7 @@ type builtinRule struct {
 	scope_ *basicScope
 }
 
-func (r *builtinRule) pkg() *pkg {
+func (r *builtinRule) packageContext() *PackageContext {
 	return nil
 }
 
@@ -704,7 +750,7 @@ func (r *builtinRule) name() string {
 	return r.name_
 }
 
-func (r *builtinRule) fullName(pkgNames map[*pkg]string) string {
+func (r *builtinRule) fullName(pkgNames map[*PackageContext]string) string {
 	return r.name_
 }
 

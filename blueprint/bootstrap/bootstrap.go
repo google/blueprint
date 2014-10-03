@@ -11,11 +11,13 @@ import (
 const bootstrapDir = ".bootstrap"
 
 var (
-	gcCmd   = blueprint.StaticVariable("gcCmd", "$goToolDir/${GoChar}g")
-	packCmd = blueprint.StaticVariable("packCmd", "$goToolDir/pack")
-	linkCmd = blueprint.StaticVariable("linkCmd", "$goToolDir/${GoChar}l")
+	pctx = blueprint.NewPackageContext("blueprint/bootstrap")
 
-	gc = blueprint.StaticRule("gc",
+	gcCmd   = pctx.StaticVariable("gcCmd", "$goToolDir/${GoChar}g")
+	packCmd = pctx.StaticVariable("packCmd", "$goToolDir/pack")
+	linkCmd = pctx.StaticVariable("linkCmd", "$goToolDir/${GoChar}l")
+
+	gc = pctx.StaticRule("gc",
 		blueprint.RuleParams{
 			Command: "GOROOT='$GoRoot' $gcCmd -o $out -p $pkgPath -complete " +
 				"$incFlags $in",
@@ -23,35 +25,35 @@ var (
 		},
 		"pkgPath", "incFlags")
 
-	pack = blueprint.StaticRule("pack",
+	pack = pctx.StaticRule("pack",
 		blueprint.RuleParams{
 			Command:     "GOROOT='$GoRoot' $packCmd grcP $prefix $out $in",
 			Description: "pack $out",
 		},
 		"prefix")
 
-	link = blueprint.StaticRule("link",
+	link = pctx.StaticRule("link",
 		blueprint.RuleParams{
 			Command:     "GOROOT='$GoRoot' $linkCmd -o $out $libDirFlags $in",
 			Description: "${GoChar}l $out",
 		},
 		"libDirFlags")
 
-	cp = blueprint.StaticRule("cp",
+	cp = pctx.StaticRule("cp",
 		blueprint.RuleParams{
 			Command:     "cp $in $out",
 			Description: "cp $out",
 		},
 		"generator")
 
-	bootstrap = blueprint.StaticRule("bootstrap",
+	bootstrap = pctx.StaticRule("bootstrap",
 		blueprint.RuleParams{
 			Command:     "$Bootstrap -i $in",
 			Description: "bootstrap $in",
 			Generator:   true,
 		})
 
-	rebootstrap = blueprint.StaticRule("rebootstrap",
+	rebootstrap = pctx.StaticRule("rebootstrap",
 		blueprint.RuleParams{
 			// Ninja only re-invokes itself once when it regenerates a .ninja
 			// file.  For the re-bootstrap process we need that to happen twice,
@@ -70,7 +72,7 @@ var (
 		})
 
 	// Work around a Ninja issue.  See https://github.com/martine/ninja/pull/634
-	phony = blueprint.StaticRule("phony",
+	phony = pctx.StaticRule("phony",
 		blueprint.RuleParams{
 			Command:     "# phony $out",
 			Description: "phony $out",
@@ -209,14 +211,14 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 			linkArgs["libDirFlags"] = strings.Join(libDirFlags, " ")
 		}
 
-		ctx.Build(blueprint.BuildParams{
+		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:    link,
 			Outputs: []string{aoutFile},
 			Inputs:  []string{archiveFile},
 			Args:    linkArgs,
 		})
 
-		ctx.Build(blueprint.BuildParams{
+		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:    cp,
 			Outputs: []string{binaryFile},
 			Inputs:  []string{aoutFile},
@@ -254,7 +256,7 @@ func buildGoPackage(ctx blueprint.ModuleContext, pkgRoot string,
 		gcArgs["incFlags"] = strings.Join(incFlags, " ")
 	}
 
-	ctx.Build(blueprint.BuildParams{
+	ctx.Build(pctx, blueprint.BuildParams{
 		Rule:      gc,
 		Outputs:   []string{objFile},
 		Inputs:    srcFiles,
@@ -262,7 +264,7 @@ func buildGoPackage(ctx blueprint.ModuleContext, pkgRoot string,
 		Args:      gcArgs,
 	})
 
-	ctx.Build(blueprint.BuildParams{
+	ctx.Build(pctx, blueprint.BuildParams{
 		Rule:    pack,
 		Outputs: []string{archiveFile},
 		Inputs:  []string{objFile},
@@ -284,7 +286,7 @@ func phonyGoTarget(ctx blueprint.ModuleContext, target string, srcs []string) {
 	moduleDir := ctx.ModuleDir()
 	srcs = pathtools.PrefixPaths(srcs, filepath.Join("$SrcDir", moduleDir))
 
-	ctx.Build(blueprint.BuildParams{
+	ctx.Build(pctx, blueprint.BuildParams{
 		Rule:      phony,
 		Outputs:   []string{target},
 		Inputs:    srcs,
@@ -297,7 +299,7 @@ func phonyGoTarget(ctx blueprint.ModuleContext, target string, srcs []string) {
 	// for each source file, which will cause Ninja to treat it as dirty if its
 	// missing.
 	for _, src := range srcs {
-		ctx.Build(blueprint.BuildParams{
+		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:    blueprint.Phony,
 			Outputs: []string{src},
 		})
@@ -364,7 +366,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// file.  Otherwise we occasionally get "warning: bad deps log signature
 		// or version; starting over" messages from Ninja, presumably because
 		// two Ninja processes try to write to the same log concurrently.
-		ctx.SetBuildDir(bootstrapDir)
+		ctx.SetBuildDir(pctx, bootstrapDir)
 
 		// We generate the depfile here that includes the dependencies for all
 		// the Blueprints files that contribute to generating the big build
@@ -373,7 +375,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// bootstrap.  Because the re-bootstrap rule's output is "build.ninja"
 		// we need to force the depfile to have that as its "make target"
 		// (recall that depfiles use a subset of the Makefile syntax).
-		bigbp := ctx.Rule("bigbp",
+		bigbp := ctx.Rule(pctx, "bigbp",
 			blueprint.RuleParams{
 				Command: fmt.Sprintf("%s %s -d %s -o $out $in",
 					primaryBuilderFile, primaryBuilderExtraFlags,
@@ -382,7 +384,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 				Depfile:     mainNinjaDepFile,
 			})
 
-		ctx.Build(blueprint.BuildParams{
+		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:      bigbp,
 			Outputs:   []string{mainNinjaFile},
 			Inputs:    []string{topLevelBlueprints},
@@ -397,12 +399,12 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// We also need to add an implicit dependency on bootstrapNinjaFile so
 		// that it gets generated as part of the bootstrap process.
 		notAFile := filepath.Join(bootstrapDir, "notAFile")
-		ctx.Build(blueprint.BuildParams{
+		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:    blueprint.Phony,
 			Outputs: []string{notAFile},
 		})
 
-		ctx.Build(blueprint.BuildParams{
+		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:      bootstrap,
 			Outputs:   []string{"build.ninja"},
 			Inputs:    []string{mainNinjaFile},
@@ -415,7 +417,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// file's mtime to match that of the current one.  If they're different
 		// then the new file will have a newer timestamp than the current one
 		// and it will trigger a reboostrap by the non-boostrap build manifest.
-		minibp := ctx.Rule("minibp",
+		minibp := ctx.Rule(pctx, "minibp",
 			blueprint.RuleParams{
 				Command: fmt.Sprintf("%s -c $checkFile -d $out.d -o $out $in",
 					minibpFile),
@@ -425,7 +427,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			},
 			"checkFile")
 
-		ctx.Build(blueprint.BuildParams{
+		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:      minibp,
 			Outputs:   []string{bootstrapNinjaFile},
 			Inputs:    []string{topLevelBlueprints},
@@ -445,7 +447,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// On top of that we need to use the depfile generated by the bigbp
 		// rule.  We do this by depending on that file and then setting up a
 		// phony rule to generate it that uses the depfile.
-		ctx.Build(blueprint.BuildParams{
+		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:    rebootstrap,
 			Outputs: []string{"build.ninja"},
 			Inputs:  []string{"$BootstrapManifest"},
@@ -456,7 +458,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			},
 		})
 
-		ctx.Build(blueprint.BuildParams{
+		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:    phony,
 			Outputs: []string{mainNinjaFile},
 			Inputs:  []string{topLevelBlueprints},
@@ -470,7 +472,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// the current bootstrap manifest.  We enable the Ninja "generator"
 		// behavior so that Ninja doesn't invoke this build just because it's
 		// missing a command line log entry for the bootstrap manifest.
-		ctx.Build(blueprint.BuildParams{
+		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:    cp,
 			Outputs: []string{"$BootstrapManifest"},
 			Inputs:  []string{bootstrapNinjaFile},
@@ -483,7 +485,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			// This is a standalone Blueprint build, so we copy the minibp
 			// binary to the "bin" directory to make it easier to find.
 			finalMinibp := filepath.Join("bin", primaryBuilderName)
-			ctx.Build(blueprint.BuildParams{
+			ctx.Build(pctx, blueprint.BuildParams{
 				Rule:    cp,
 				Inputs:  []string{primaryBuilderFile},
 				Outputs: []string{finalMinibp},
