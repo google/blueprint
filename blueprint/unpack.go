@@ -13,69 +13,7 @@ type packedProperty struct {
 	unpacked bool
 }
 
-type valueHandler interface {
-	assignBool(value reflect.Value, data bool)
-	assignString(value reflect.Value, data string)
-	assignValue(value reflect.Value, data reflect.Value)
-}
-
-type valueSetter struct {
-}
-
-func (v *valueSetter) assignBool(value reflect.Value, data bool) {
-	value.SetBool(data)
-}
-
-func (v *valueSetter) assignString(value reflect.Value, data string) {
-	value.SetString(data)
-}
-
-func (v *valueSetter) assignValue(value reflect.Value, data reflect.Value) {
-	value.Set(data)
-}
-
-type valueMerger struct {
-}
-
-func (v *valueMerger) assignBool(value reflect.Value, data bool) {
-	// when merging bools, the original value is replaced
-	value.SetBool(data)
-}
-
-func (v *valueMerger) assignString(value reflect.Value, data string) {
-	value.SetString(value.String() + data)
-}
-
-func (v *valueMerger) assignValue(value reflect.Value, data reflect.Value) {
-	// this should never happen
-	if value.Kind() != data.Kind() {
-		panic("attempting to merge values of different kinds")
-	} 
-
-	if value.Kind() == reflect.Slice {
-		value.Set(reflect.AppendSlice(value, data))
-	} else if value.Kind() == reflect.Map {
-		for _, key := range data.MapKeys() {
-			value.SetMapIndex(key, data.MapIndex(key))
-		}
-	}
-}
-
 func unpackProperties(propertyDefs []*parser.Property,
-	propertiesStructs ...interface{}) (errs []error) {
-
-	setter := new(valueSetter);
-	return unpackPropertiesWithHandler(setter, propertyDefs, propertiesStructs...)
-}
-
-func mergeProperties(propertyDefs []*parser.Property,
-	propertiesStructs ...interface{}) (errs []error) {
-
-	merger := new(valueMerger);
-	return unpackPropertiesWithHandler(merger, propertyDefs, propertiesStructs...)
-}
-
-func unpackPropertiesWithHandler(handler valueHandler, propertyDefs []*parser.Property,
 	propertiesStructs ...interface{}) (errs []error) {
 
 	propertyMap := make(map[string]*packedProperty)
@@ -113,7 +51,7 @@ func unpackPropertiesWithHandler(handler valueHandler, propertyDefs []*parser.Pr
 			panic("properties must be a pointer to a struct")
 		}
 
-		newErrs := unpackStruct(propertiesValue, propertyMap, handler)
+		newErrs := unpackStruct(propertiesValue, propertyMap)
 		errs = append(errs, newErrs...)
 
 		if len(errs) >= maxErrors {
@@ -137,7 +75,7 @@ func unpackPropertiesWithHandler(handler valueHandler, propertyDefs []*parser.Pr
 }
 
 func unpackStruct(structValue reflect.Value,
-	propertyMap map[string]*packedProperty, handler valueHandler) []error {
+	propertyMap map[string]*packedProperty) []error {
 
 	structType := structValue.Type()
 
@@ -166,20 +104,12 @@ func unpackStruct(structValue reflect.Value,
 				panic(fmt.Errorf("field %s is a non-string slice", field.Name))
 			}
 		case reflect.Struct:
-			newErrs := unpackStruct(fieldValue, propertyMap, handler)
+			newErrs := unpackStruct(fieldValue, propertyMap)
 			errs = append(errs, newErrs...)
 			if len(errs) >= maxErrors {
 				return errs
 			}
 			continue // This field doesn't correspond to a specific property.
-		case reflect.Map:
-			fieldType := field.Type
-			if fieldType.Key().Kind() != reflect.String {
-				panic(fmt.Errorf("field %s uses a non-string key", field.Name))
-			}
-			if fieldType.Elem().Kind() != reflect.TypeOf(([]*parser.Property)(nil)).Kind() {
-				panic(fmt.Errorf("field %s uses a non-parser.Property value", field.Name))
-			}
 		default:
 			panic(fmt.Errorf("unsupported kind for field %s: %s",
 				field.Name, kind))
@@ -198,13 +128,11 @@ func unpackStruct(structValue reflect.Value,
 		var newErrs []error
 		switch kind := fieldValue.Kind(); kind {
 		case reflect.Bool:
-			newErrs = unpackBool(fieldValue, packedProperty.property, handler)
+			newErrs = unpackBool(fieldValue, packedProperty.property)
 		case reflect.String:
-			newErrs = unpackString(fieldValue, packedProperty.property, handler)
+			newErrs = unpackString(fieldValue, packedProperty.property)
 		case reflect.Slice:
-			newErrs = unpackSlice(fieldValue, packedProperty.property, handler)
-		case reflect.Map:
-			newErrs = unpackMap(fieldValue, packedProperty.property, handler)
+			newErrs = unpackSlice(fieldValue, packedProperty.property)
 		}
 		errs = append(errs, newErrs...)
 		if len(errs) >= maxErrors {
@@ -215,7 +143,7 @@ func unpackStruct(structValue reflect.Value,
 	return errs
 }
 
-func unpackBool(boolValue reflect.Value, property *parser.Property, handler valueHandler) []error {
+func unpackBool(boolValue reflect.Value, property *parser.Property) []error {
 	if property.Value.Type != parser.Bool {
 		return []error{
 			fmt.Errorf("%s: can't assign %s value to %s property %q",
@@ -223,12 +151,12 @@ func unpackBool(boolValue reflect.Value, property *parser.Property, handler valu
 				property.Name),
 		}
 	}
-	handler.assignBool(boolValue, property.Value.BoolValue)
+	boolValue.SetBool(property.Value.BoolValue)
 	return nil
 }
 
 func unpackString(stringValue reflect.Value,
-	property *parser.Property, handler valueHandler) []error {
+	property *parser.Property) []error {
 
 	if property.Value.Type != parser.String {
 		return []error{
@@ -237,13 +165,11 @@ func unpackString(stringValue reflect.Value,
 				property.Name),
 		}
 	}
-	handler.assignString(stringValue, property.Value.StringValue)
+	stringValue.SetString(property.Value.StringValue)
 	return nil
 }
 
-func unpackSlice(sliceValue reflect.Value, property *parser.Property,
-	handler valueHandler) []error {
-
+func unpackSlice(sliceValue reflect.Value, property *parser.Property) []error {
 	if property.Value.Type != parser.List {
 		return []error{
 			fmt.Errorf("%s: can't assign %s value to %s property %q",
@@ -261,31 +187,8 @@ func unpackSlice(sliceValue reflect.Value, property *parser.Property,
 		list = append(list, value.StringValue)
 	}
 
-	handler.assignValue(sliceValue, reflect.ValueOf(list))
+	sliceValue.Set(reflect.ValueOf(list))
 	return nil
-}
-
-func unpackMap(mapValue reflect.Value, property *parser.Property,
-	handler valueHandler) []error {
-
-	if property.Value.Type != parser.Map {
-		return []error{
-			fmt.Errorf("%s: can't assign %s value to %s property %q",
-				property.Value.Pos, property.Value.Type, parser.Map,
-				property.Name),
-		}
-	}
-
-	m := make(map[string][]*parser.Property)
-	for _, p := range property.Value.MapValue {
-		if p.Value.Type != parser.Map {
-			panic("non-map value found in map")
-		}
-		m[p.Name] = p.Value.MapValue
-	}
-
-	handler.assignValue(mapValue, reflect.ValueOf(m))
-	return nil;
 }
 
 func propertyNameForField(field reflect.StructField) string {

@@ -93,9 +93,8 @@ type moduleInfo struct {
 	pos               scanner.Position
 	propertyPos       map[string]scanner.Position
 	properties        struct {
-		Name    string
-		Deps    []string
-		Targets map[string][]*parser.Property
+		Name string
+		Deps []string
 	}
 
 	// set during ResolveDependencies
@@ -112,18 +111,6 @@ type singletonInfo struct {
 
 	// set during PrepareBuildActions
 	actionDefs localBuildActions
-}
-
-type TargetSelector interface {
-	SelectTarget() string
-}
-
-// Default target selector that simply returns the host OS name
-type goosTargetSelector struct {
-}
-
-func (g *goosTargetSelector) SelectTarget() string {
-	return runtime.GOOS
 }
 
 func (e *Error) Error() string {
@@ -549,21 +536,6 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 	errs := unpackProperties(moduleDef.Properties, properties...)
 	if len(errs) > 0 {
 		return errs
-	}
-
-	var targetName string
-	if selector, ok := module.(TargetSelector); ok {
-		targetName = selector.SelectTarget()
-	} else {
-		defaultSelector := goosTargetSelector{}
-		targetName = defaultSelector.SelectTarget()
-	}
-
-	if targetProperties, ok := info.properties.Targets[targetName]; ok {
-		errs = mergeProperties(targetProperties, properties...)
-		if len(errs) > 0 {
-			return errs
-		}
 	}
 
 	info.pos = moduleDef.Pos
