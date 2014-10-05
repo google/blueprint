@@ -237,8 +237,9 @@ func validateNinjaName(name string) error {
 			(r == '-') ||
 			(r == '.')
 		if !valid {
+
 			return fmt.Errorf("%q contains an invalid Ninja name character "+
-				"at byte offset %d", name, i)
+				"%q at byte offset %d", name, r, i)
 		}
 	}
 	return nil
