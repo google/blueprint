@@ -115,6 +115,11 @@ func parseNinjaString(scope scope, str string) (*ninjaString, error) {
 
 			result.variables = append(result.variables, v)
 			varStart = i + 1
+
+			// We always have a string in between variables, even if it's an
+			// empty one.
+			result.strings = append(result.strings, "")
+
 			return dollarState, nil
 
 		case r == eof:

@@ -6,33 +6,40 @@ import (
 )
 
 var ninjaParseTestCases = []struct {
-	input  string
-	output []string
-	err    string
+	input string
+	vars  []string
+	strs  []string
+	err   string
 }{
 	{
-		input:  "abc def $ghi jkl",
-		output: []string{"ghi"},
+		input: "abc def $ghi jkl",
+		vars:  []string{"ghi"},
+		strs:  []string{"abc def ", " jkl"},
 	},
 	{
-		input:  "abc def $ghi$jkl",
-		output: []string{"ghi", "jkl"},
+		input: "abc def $ghi$jkl",
+		vars:  []string{"ghi", "jkl"},
+		strs:  []string{"abc def ", "", ""},
 	},
 	{
-		input:  "foo $012_-345xyz_! bar",
-		output: []string{"012_-345xyz_"},
+		input: "foo $012_-345xyz_! bar",
+		vars:  []string{"012_-345xyz_"},
+		strs:  []string{"foo ", "! bar"},
 	},
 	{
-		input:  "foo ${012_-345xyz_} bar",
-		output: []string{"012_-345xyz_"},
+		input: "foo ${012_-345xyz_} bar",
+		vars:  []string{"012_-345xyz_"},
+		strs:  []string{"foo ", " bar"},
 	},
 	{
-		input:  "foo ${012_-345xyz_} bar",
-		output: []string{"012_-345xyz_"},
+		input: "foo ${012_-345xyz_} bar",
+		vars:  []string{"012_-345xyz_"},
+		strs:  []string{"foo ", " bar"},
 	},
 	{
-		input:  "foo $$ bar",
-		output: nil,
+		input: "foo $$ bar",
+		vars:  nil,
+		strs:  []string{"foo $$ bar"},
 	},
 	{
 		input: "foo $ bar",
@@ -60,7 +67,7 @@ func TestParseNinjaString(t *testing.T) {
 	for _, testCase := range ninjaParseTestCases {
 		scope := newLocalScope(nil, "namespace")
 		var expectedVars []Variable
-		for _, varName := range testCase.output {
+		for _, varName := range testCase.vars {
 			v, err := scope.LookupVariable(varName)
 			if err != nil {
 				v, err = scope.AddLocalVariable(varName, "")
@@ -72,11 +79,19 @@ func TestParseNinjaString(t *testing.T) {
 		}
 
 		output, err := parseNinjaString(scope, testCase.input)
-		if err == nil && !reflect.DeepEqual(output.variables, expectedVars) {
-			t.Errorf("incorrect output:")
-			t.Errorf("     input: %q", testCase.input)
-			t.Errorf("  expected: %#v", testCase.output)
-			t.Errorf("       got: %#v", output)
+		if err == nil {
+			if !reflect.DeepEqual(output.variables, expectedVars) {
+				t.Errorf("incorrect variable list:")
+				t.Errorf("     input: %q", testCase.input)
+				t.Errorf("  expected: %#v", testCase.vars)
+				t.Errorf("       got: %#v", output.variables)
+			}
+			if !reflect.DeepEqual(output.strings, testCase.strs) {
+				t.Errorf("incorrect string list:")
+				t.Errorf("     input: %q", testCase.input)
+				t.Errorf("  expected: %#v", testCase.strs)
+				t.Errorf("       got: %#v", output.strings)
+			}
 		}
 		var errStr string
 		if err != nil {
