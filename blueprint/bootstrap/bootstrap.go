@@ -4,7 +4,9 @@ import (
 	"blueprint"
 	"blueprint/pathtools"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -16,6 +18,28 @@ var (
 	gcCmd   = pctx.StaticVariable("gcCmd", "$goToolDir/${GoChar}g")
 	packCmd = pctx.StaticVariable("packCmd", "$goToolDir/pack")
 	linkCmd = pctx.StaticVariable("linkCmd", "$goToolDir/${GoChar}l")
+
+	// Ninja only reinvokes itself once when it regenerates a .ninja file. For
+	// the re-bootstrap process we need that to happen more than once, so we
+	// invoke an additional Ninja process from the rebootstrap rule.
+	// Unfortunately this seems to cause "warning: bad deps log signature or
+	// version; starting over" messages from Ninja. This warning can be
+	// avoided by having the bootstrap and non-bootstrap build manifests have
+	// a different builddir (so they use different log files).
+	//
+	// This workaround can be avoided entirely by making a simple change to
+	// Ninja that would allow it to rebuild the manifest multiple times rather
+	// than just once.  If the Ninja being used is capable of this, then the
+	// workaround we're doing can be disabled by setting the
+	// BLUEPRINT_NINJA_HAS_MULTIPASS environment variable to a true value.
+	runChildNinja = pctx.VariableFunc("runChildNinja",
+		func(config interface{}) (string, error) {
+			if ninjaHasMultipass(config) {
+				return "", nil
+			} else {
+				return " && ninja", nil
+			}
+		})
 
 	gc = pctx.StaticRule("gc",
 		blueprint.RuleParams{
@@ -55,18 +79,7 @@ var (
 
 	rebootstrap = pctx.StaticRule("rebootstrap",
 		blueprint.RuleParams{
-			// Ninja only re-invokes itself once when it regenerates a .ninja
-			// file.  For the re-bootstrap process we need that to happen twice,
-			// so we invoke ninja ourselves once from this.  Unfortunately this
-			// seems to cause "warning: bad deps log signature or version;
-			// starting over" messages from Ninja.  This warning can be avoided
-			// by having the bootstrap and non-bootstrap build manifests have a
-			// different builddir (so they use different log files).
-			//
-			// This workaround can be avoided entirely by making a simple change
-			// to Ninja that would allow it to rebuild the manifest twice rather
-			// than just once.
-			Command:     "$Bootstrap -i $in && ninja",
+			Command:     "$Bootstrap -i $in$runChildNinja",
 			Description: "re-bootstrap $in",
 			Generator:   true,
 		})
@@ -111,6 +124,17 @@ func generatingBootstrapper(config interface{}) bool {
 		return bootstrapConfig.GeneratingBootstrapper()
 	}
 	return false
+}
+
+// ninjaHasMultipass returns true if Ninja will perform multiple passes
+// that can regenerate the build manifest.
+func ninjaHasMultipass(config interface{}) bool {
+	envString := os.Getenv("BLUEPRINT_NINJA_HAS_MULTIPASS")
+	envValue, err := strconv.ParseBool(envString)
+	if err != nil {
+		return false
+	}
+	return envValue
 }
 
 // A goPackage is a module for building Go packages.
