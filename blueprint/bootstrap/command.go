@@ -2,13 +2,13 @@ package bootstrap
 
 import (
 	"blueprint"
+	"blueprint/deptools"
 	"bytes"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"runtime/pprof"
-	"strings"
 )
 
 var (
@@ -115,18 +115,10 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	}
 
 	if depFile != "" {
-		f, err := os.Create(depFile)
-		if err != nil {
-			fatalf("error creating depfile: %s", err)
-		}
-
-		_, err = fmt.Fprintf(f, "%s: \\\n %s\n", outFile,
-			strings.Join(deps, " \\\n "))
+		err := deptools.WriteDepFile(depFile, outFile, deps)
 		if err != nil {
 			fatalf("error writing depfile: %s", err)
 		}
-
-		f.Close()
 	}
 }
 
