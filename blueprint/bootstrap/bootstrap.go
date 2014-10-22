@@ -236,10 +236,11 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 		}
 
 		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:    link,
-			Outputs: []string{aoutFile},
-			Inputs:  []string{archiveFile},
-			Args:    linkArgs,
+			Rule:      link,
+			Outputs:   []string{aoutFile},
+			Inputs:    []string{archiveFile},
+			Implicits: []string{"$linkCmd"},
+			Args:      linkArgs,
 		})
 
 		ctx.Build(pctx, blueprint.BuildParams{
@@ -262,14 +263,14 @@ func buildGoPackage(ctx blueprint.ModuleContext, pkgRoot string,
 	objFile := filepath.Join(objDir, "_go_.$GoChar")
 
 	var incFlags []string
-	var depTargets []string
+	deps := []string{"$gcCmd"}
 	ctx.VisitDepsDepthFirstIf(isGoPackageProducer,
 		func(module blueprint.Module) {
 			dep := module.(goPackageProducer)
 			incDir := dep.GoPkgRoot()
 			target := dep.GoPackageTarget()
 			incFlags = append(incFlags, "-I "+incDir)
-			depTargets = append(depTargets, target)
+			deps = append(deps, target)
 		})
 
 	gcArgs := map[string]string{
@@ -284,14 +285,15 @@ func buildGoPackage(ctx blueprint.ModuleContext, pkgRoot string,
 		Rule:      gc,
 		Outputs:   []string{objFile},
 		Inputs:    srcFiles,
-		Implicits: depTargets,
+		Implicits: deps,
 		Args:      gcArgs,
 	})
 
 	ctx.Build(pctx, blueprint.BuildParams{
-		Rule:    pack,
-		Outputs: []string{archiveFile},
-		Inputs:  []string{objFile},
+		Rule:      pack,
+		Outputs:   []string{archiveFile},
+		Inputs:    []string{objFile},
+		Implicits: []string{"$packCmd"},
 		Args: map[string]string{
 			"prefix": pkgRoot,
 		},
