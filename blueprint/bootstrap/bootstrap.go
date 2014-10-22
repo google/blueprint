@@ -16,7 +16,6 @@ var (
 	pctx = blueprint.NewPackageContext("blueprint/bootstrap")
 
 	gcCmd   = pctx.StaticVariable("gcCmd", "$goToolDir/${GoChar}g")
-	packCmd = pctx.StaticVariable("packCmd", "$goToolDir/pack")
 	linkCmd = pctx.StaticVariable("linkCmd", "$goToolDir/${GoChar}l")
 
 	// Ninja only reinvokes itself once when it regenerates a .ninja file. For
@@ -44,17 +43,10 @@ var (
 	gc = pctx.StaticRule("gc",
 		blueprint.RuleParams{
 			Command: "GOROOT='$GoRoot' $gcCmd -o $out -p $pkgPath -complete " +
-				"$incFlags $in",
+				"$incFlags -pack $in",
 			Description: "${GoChar}g $out",
 		},
 		"pkgPath", "incFlags")
-
-	pack = pctx.StaticRule("pack",
-		blueprint.RuleParams{
-			Command:     "GOROOT='$GoRoot' $packCmd grcP $prefix $out $in",
-			Description: "pack $out",
-		},
-		"prefix")
 
 	link = pctx.StaticRule("link",
 		blueprint.RuleParams{
@@ -259,9 +251,6 @@ func buildGoPackage(ctx blueprint.ModuleContext, pkgRoot string,
 	srcDir := srcDir(ctx)
 	srcFiles := pathtools.PrefixPaths(srcs, srcDir)
 
-	objDir := objDir(ctx)
-	objFile := filepath.Join(objDir, "_go_.$GoChar")
-
 	var incFlags []string
 	deps := []string{"$gcCmd"}
 	ctx.VisitDepsDepthFirstIf(isGoPackageProducer,
@@ -283,20 +272,10 @@ func buildGoPackage(ctx blueprint.ModuleContext, pkgRoot string,
 
 	ctx.Build(pctx, blueprint.BuildParams{
 		Rule:      gc,
-		Outputs:   []string{objFile},
+		Outputs:   []string{archiveFile},
 		Inputs:    srcFiles,
 		Implicits: deps,
 		Args:      gcArgs,
-	})
-
-	ctx.Build(pctx, blueprint.BuildParams{
-		Rule:      pack,
-		Outputs:   []string{archiveFile},
-		Inputs:    []string{objFile},
-		Implicits: []string{"$packCmd"},
-		Args: map[string]string{
-			"prefix": pkgRoot,
-		},
 	})
 }
 
