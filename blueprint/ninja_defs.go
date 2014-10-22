@@ -3,6 +3,7 @@ package blueprint
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -202,8 +203,14 @@ func (r *ruleDef) WriteTo(nw *ninjaWriter, name string,
 		}
 	}
 
-	for name, value := range r.Variables {
-		err = nw.ScopedAssign(name, value.Value(pkgNames))
+	var keys []string
+	for k := range r.Variables {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, name := range keys {
+		err = nw.ScopedAssign(name, r.Variables[name].Value(pkgNames))
 		if err != nil {
 			return err
 		}
@@ -301,9 +308,20 @@ func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*PackageContext]string)
 		return err
 	}
 
+	args := make(map[string]string)
+
 	for argVar, value := range b.Args {
-		name := argVar.fullName(pkgNames)
-		err = nw.ScopedAssign(name, value.Value(pkgNames))
+		args[argVar.fullName(pkgNames)] = value.Value(pkgNames)
+	}
+
+	var keys []string
+	for k := range args {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, name := range keys {
+		err = nw.ScopedAssign(name, args[name])
 		if err != nil {
 			return err
 		}
