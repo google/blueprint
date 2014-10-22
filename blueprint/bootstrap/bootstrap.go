@@ -93,8 +93,8 @@ var (
 		},
 		"depfile")
 
-	binDir     = filepath.Join(bootstrapDir, "bin")
-	minibpFile = filepath.Join(binDir, "minibp")
+	BinDir     = filepath.Join(bootstrapDir, "bin")
+	minibpFile = filepath.Join(BinDir, "minibp")
 )
 
 type goPackageProducer interface {
@@ -211,7 +211,7 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 		objDir      = objDir(ctx)
 		archiveFile = filepath.Join(objDir, name+".a")
 		aoutFile    = filepath.Join(objDir, "a.out")
-		binaryFile  = filepath.Join(binDir, name)
+		binaryFile  = filepath.Join(BinDir, name)
 	)
 
 	// We only actually want to build the builder modules if we're running as
@@ -341,9 +341,13 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	// creating the binary that we'll use to generate the non-bootstrap
 	// build.ninja file.
 	var primaryBuilders []*goBinary
+	var allGoBinaries []string
 	ctx.VisitAllModulesIf(isBootstrapBinaryModule,
 		func(module blueprint.Module) {
 			binaryModule := module.(*goBinary)
+			binaryModuleName := ctx.ModuleName(binaryModule)
+			binaryModulePath := filepath.Join(BinDir, binaryModuleName)
+			allGoBinaries = append(allGoBinaries, binaryModulePath)
 			if binaryModule.properties.PrimaryBuilder {
 				primaryBuilders = append(primaryBuilders, binaryModule)
 			}
@@ -370,7 +374,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		return
 	}
 
-	primaryBuilderFile := filepath.Join(binDir, primaryBuilderName)
+	primaryBuilderFile := filepath.Join(BinDir, primaryBuilderName)
 
 	// Get the filename of the top-level Blueprints file to pass to minibp.
 	// This comes stored in a global variable that's set by Main.
@@ -412,7 +416,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			Rule:      bigbp,
 			Outputs:   []string{mainNinjaFile},
 			Inputs:    []string{topLevelBlueprints},
-			Implicits: []string{primaryBuilderFile},
+			Implicits: allGoBinaries,
 		})
 
 		// When the current build.ninja file is a bootstrapper, we always want
