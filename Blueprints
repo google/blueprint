@@ -31,7 +31,8 @@ bootstrap_go_package {
 bootstrap_go_package {
     name:    "blueprint-pathtools",
     pkgPath: "blueprint/pathtools",
-    srcs:    ["blueprint/pathtools/lists.go"],
+    srcs:    ["blueprint/pathtools/lists.go",
+              "blueprint/pathtools/glob.go"],
 }
 
 bootstrap_go_package {
