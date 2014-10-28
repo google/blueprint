@@ -1205,6 +1205,42 @@ func (c *Context) checkForVariableReferenceCycles(
 	}
 }
 
+// AllTargets returns a map all the build target names to the rule used to build
+// them.  This is the same information that is output by running 'ninja -t
+// targets all'.  If this is called before PrepareBuildActions successfully
+// completes then ErrbuildActionsNotReady is returned.
+func (c *Context) AllTargets() (map[string]string, error) {
+	if !c.buildActionsReady {
+		return nil, ErrBuildActionsNotReady
+	}
+
+	targets := map[string]string{}
+
+	// Collect all the module build targets.
+	for _, info := range c.moduleInfo {
+		for _, buildDef := range info.actionDefs.buildDefs {
+			ruleName := buildDef.Rule.fullName(c.pkgNames)
+			for _, output := range buildDef.Outputs {
+				outputValue := output.Value(c.pkgNames)
+				targets[outputValue] = ruleName
+			}
+		}
+	}
+
+	// Collect all the singleton build targets.
+	for _, info := range c.singletonInfo {
+		for _, buildDef := range info.actionDefs.buildDefs {
+			ruleName := buildDef.Rule.fullName(c.pkgNames)
+			for _, output := range buildDef.Outputs {
+				outputValue := output.Value(c.pkgNames)
+				targets[outputValue] = ruleName
+			}
+		}
+	}
+
+	return targets, nil
+}
+
 // WriteBuildFile writes the Ninja manifeset text for the generated build
 // actions to w.  If this is called before PrepareBuildActions successfully
 // completes then ErrBuildActionsNotReady is returned.

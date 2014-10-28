@@ -120,6 +120,11 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 			fatalf("error writing depfile: %s", err)
 		}
 	}
+
+	err = removeAbandonedFiles(ctx, config)
+	if err != nil {
+		fatalf("error removing abandoned files: %s", err)
+	}
 }
 
 func fatalf(format string, args ...interface{}) {

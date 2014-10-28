@@ -48,6 +48,7 @@ bootstrap_go_package {
               "blueprint-pathtools"],
     pkgPath: "blueprint/bootstrap",
     srcs:    ["blueprint/bootstrap/bootstrap.go",
+              "blueprint/bootstrap/cleanup.go",
               "blueprint/bootstrap/command.go",
               "blueprint/bootstrap/config.go",
               "blueprint/bootstrap/doc.go"],
