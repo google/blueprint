@@ -84,6 +84,7 @@ type DynamicDependerModuleContext interface {
 	ModuleDir() string
 	Config() interface{}
 
+	ContainsProperty(name string) bool
 	Errorf(pos scanner.Position, fmt string, args ...interface{})
 	ModuleErrorf(fmt string, args ...interface{})
 	PropertyErrorf(property, fmt string, args ...interface{})
@@ -117,6 +118,11 @@ type dynamicDependerModuleContext struct {
 
 func (d *dynamicDependerModuleContext) ModuleName() string {
 	return d.info.properties.Name
+}
+
+func (d *dynamicDependerModuleContext) ContainsProperty(name string) bool {
+	_, ok := d.info.propertyPos[name]
+	return ok
 }
 
 func (d *dynamicDependerModuleContext) ModuleDir() string {
