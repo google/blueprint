@@ -21,7 +21,8 @@ func Glob(pattern string) (matches, dirs []string, err error) {
 			dirElems := strings.Split(dir, string(filepath.Separator))
 
 			for _, index := range wildIndices {
-				dirs = append(dirs, filepath.Join(dirElems[:index]...))
+				dirs = append(dirs, strings.Join(dirElems[:index],
+					string(filepath.Separator)))
 			}
 		}
 	}
