@@ -227,6 +227,7 @@ type buildDef struct {
 	Implicits []*ninjaString
 	OrderOnly []*ninjaString
 	Args      map[Variable]*ninjaString
+	Optional  bool
 }
 
 func parseBuildParams(scope scope, params *BuildParams) (*buildDef,
@@ -325,6 +326,10 @@ func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*PackageContext]string)
 		if err != nil {
 			return err
 		}
+	}
+
+	if !b.Optional {
+		nw.Default(outputs...)
 	}
 
 	return nil
