@@ -23,7 +23,11 @@ func PrefixPaths(paths []string, prefix string) []string {
 func ReplaceExtensions(paths []string, extension string) []string {
 	result := make([]string, len(paths))
 	for i, path := range paths {
-		result[i] = replaceRegexp.ReplaceAllString(path, "."+extension)
+		result[i] = ReplaceExtension(path, extension)
 	}
 	return result
+}
+
+func ReplaceExtension(path string, extension string) string {
+	return replaceRegexp.ReplaceAllString(path, "."+extension)
 }
