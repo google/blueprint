@@ -65,6 +65,7 @@ type BuildParams struct {
 	Implicits []string          // The list of implicit dependencies.
 	OrderOnly []string          // The list of order-only dependencies.
 	Args      map[string]string // The variable/value pairs to set.
+	Optional  bool              // Skip outputting a default statement
 }
 
 // A poolDef describes a pool definition.  It does not include the name of the
@@ -267,6 +268,8 @@ func parseBuildParams(scope scope, params *BuildParams) (*buildDef,
 	if err != nil {
 		return nil, fmt.Errorf("error parsing OrderOnly param: %s", err)
 	}
+
+	b.Optional = params.Optional
 
 	argNameScope := rule.scope()
 
