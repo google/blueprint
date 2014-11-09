@@ -4,17 +4,17 @@ var (
 	// These variables are the only configuration needed by the boostrap
 	// modules.  They are always set to the variable name enclosed in "@@" so
 	// that their values can be easily replaced in the generated Ninja file.
-	SrcDir            = pctx.StaticVariable("SrcDir", "@@SrcDir@@")
-	GoRoot            = pctx.StaticVariable("GoRoot", "@@GoRoot@@")
-	GoOS              = pctx.StaticVariable("GoOS", "@@GoOS@@")
-	GoArch            = pctx.StaticVariable("GoArch", "@@GoArch@@")
-	GoChar            = pctx.StaticVariable("GoChar", "@@GoChar@@")
-	Bootstrap         = pctx.StaticVariable("Bootstrap", "@@Bootstrap@@")
-	BootstrapManifest = pctx.StaticVariable("BootstrapManifest",
+	srcDir            = pctx.StaticVariable("srcDir", "@@SrcDir@@")
+	goRoot            = pctx.StaticVariable("goRoot", "@@GoRoot@@")
+	goOS              = pctx.StaticVariable("goOS", "@@GoOS@@")
+	goArch            = pctx.StaticVariable("goArch", "@@GoArch@@")
+	goChar            = pctx.StaticVariable("goChar", "@@GoChar@@")
+	bootstrapCmd      = pctx.StaticVariable("bootstrapCmd", "@@Bootstrap@@")
+	bootstrapManifest = pctx.StaticVariable("bootstrapManifest",
 		"@@BootstrapManifest@@")
 
 	goToolDir = pctx.StaticVariable("goToolDir",
-		"$GoRoot/pkg/tool/${GoOS}_$GoArch")
+		"$goRoot/pkg/tool/${goOS}_$goArch")
 )
 
 type Config interface {

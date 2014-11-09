@@ -15,8 +15,8 @@ const bootstrapDir = ".bootstrap"
 var (
 	pctx = blueprint.NewPackageContext("blueprint/bootstrap")
 
-	gcCmd   = pctx.StaticVariable("gcCmd", "$goToolDir/${GoChar}g")
-	linkCmd = pctx.StaticVariable("linkCmd", "$goToolDir/${GoChar}l")
+	gcCmd   = pctx.StaticVariable("gcCmd", "$goToolDir/${goChar}g")
+	linkCmd = pctx.StaticVariable("linkCmd", "$goToolDir/${goChar}l")
 
 	// Ninja only reinvokes itself once when it regenerates a .ninja file. For
 	// the re-bootstrap process we need that to happen more than once, so we
@@ -42,16 +42,16 @@ var (
 
 	gc = pctx.StaticRule("gc",
 		blueprint.RuleParams{
-			Command: "GOROOT='$GoRoot' $gcCmd -o $out -p $pkgPath -complete " +
+			Command: "GOROOT='$goRoot' $gcCmd -o $out -p $pkgPath -complete " +
 				"$incFlags -pack $in",
-			Description: "${GoChar}g $out",
+			Description: "${goChar}g $out",
 		},
 		"pkgPath", "incFlags")
 
 	link = pctx.StaticRule("link",
 		blueprint.RuleParams{
-			Command:     "GOROOT='$GoRoot' $linkCmd -o $out $libDirFlags $in",
-			Description: "${GoChar}l $out",
+			Command:     "GOROOT='$goRoot' $linkCmd -o $out $libDirFlags $in",
+			Description: "${goChar}l $out",
 		},
 		"libDirFlags")
 
@@ -64,14 +64,14 @@ var (
 
 	bootstrap = pctx.StaticRule("bootstrap",
 		blueprint.RuleParams{
-			Command:     "$Bootstrap -i $in",
+			Command:     "$bootstrapCmd -i $in",
 			Description: "bootstrap $in",
 			Generator:   true,
 		})
 
 	rebootstrap = pctx.StaticRule("rebootstrap",
 		blueprint.RuleParams{
-			Command:     "$Bootstrap -i $in$runChildNinja",
+			Command:     "$bootstrapCmd -i $in$runChildNinja",
 			Description: "re-bootstrap $in",
 			Generator:   true,
 		})
@@ -200,7 +200,7 @@ func newGoBinaryModule() (blueprint.Module, []interface{}) {
 func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 	var (
 		name        = ctx.ModuleName()
-		objDir      = objDir(ctx)
+		objDir      = moduleObjDir(ctx)
 		archiveFile = filepath.Join(objDir, name+".a")
 		aoutFile    = filepath.Join(objDir, "a.out")
 		binaryFile  = filepath.Join(BinDir, name)
@@ -248,7 +248,7 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 func buildGoPackage(ctx blueprint.ModuleContext, pkgRoot string,
 	pkgPath string, archiveFile string, srcs []string) {
 
-	srcDir := srcDir(ctx)
+	srcDir := moduleSrcDir(ctx)
 	srcFiles := pathtools.PrefixPaths(srcs, srcDir)
 
 	var incFlags []string
@@ -289,7 +289,7 @@ func phonyGoTarget(ctx blueprint.ModuleContext, target string, srcs []string) {
 		})
 
 	moduleDir := ctx.ModuleDir()
-	srcs = pathtools.PrefixPaths(srcs, filepath.Join("$SrcDir", moduleDir))
+	srcs = pathtools.PrefixPaths(srcs, filepath.Join("$srcDir", moduleDir))
 
 	ctx.Build(pctx, blueprint.BuildParams{
 		Rule:      phony,
@@ -359,7 +359,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 	// Get the filename of the top-level Blueprints file to pass to minibp.
 	// This comes stored in a global variable that's set by Main.
-	topLevelBlueprints := filepath.Join("$SrcDir",
+	topLevelBlueprints := filepath.Join("$srcDir",
 		filepath.Base(topLevelBlueprintsFile))
 
 	mainNinjaFile := filepath.Join(bootstrapDir, "main.ninja.in")
@@ -417,7 +417,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			Rule:      bootstrap,
 			Outputs:   []string{"build.ninja"},
 			Inputs:    []string{mainNinjaFile},
-			Implicits: []string{"$Bootstrap", notAFile, bootstrapNinjaFile},
+			Implicits: []string{"$bootstrapCmd", notAFile, bootstrapNinjaFile},
 		})
 
 		// Rebuild the bootstrap Ninja file using the minibp that we just built.
@@ -442,7 +442,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			Inputs:    []string{topLevelBlueprints},
 			Implicits: []string{minibpFile},
 			Args: map[string]string{
-				"checkFile": "$BootstrapManifest",
+				"checkFile": "$bootstrapManifest",
 			},
 		})
 	} else {
@@ -459,9 +459,9 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:    rebootstrap,
 			Outputs: []string{"build.ninja"},
-			Inputs:  []string{"$BootstrapManifest"},
+			Inputs:  []string{"$bootstrapManifest"},
 			Implicits: []string{
-				"$Bootstrap",
+				"$bootstrapCmd",
 				primaryBuilderFile,
 				mainNinjaFile,
 			},
@@ -483,7 +483,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// missing a command line log entry for the bootstrap manifest.
 		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:    cp,
-			Outputs: []string{"$BootstrapManifest"},
+			Outputs: []string{"$bootstrapManifest"},
 			Inputs:  []string{bootstrapNinjaFile},
 			Args: map[string]string{
 				"generator": "true",
@@ -510,13 +510,13 @@ func packageRoot(ctx blueprint.ModuleContext) string {
 	return filepath.Join(bootstrapDir, ctx.ModuleName(), "pkg")
 }
 
-// srcDir returns the path of the directory that all source file paths are
+// moduleSrcDir returns the path of the directory that all source file paths are
 // specified relative to.
-func srcDir(ctx blueprint.ModuleContext) string {
-	return filepath.Join("$SrcDir", ctx.ModuleDir())
+func moduleSrcDir(ctx blueprint.ModuleContext) string {
+	return filepath.Join("$srcDir", ctx.ModuleDir())
 }
 
-// objDir returns the module-specific object directory path.
-func objDir(ctx blueprint.ModuleContext) string {
+// moduleObjDir returns the module-specific object directory path.
+func moduleObjDir(ctx blueprint.ModuleContext) string {
 	return filepath.Join(bootstrapDir, ctx.ModuleName(), "obj")
 }
