@@ -233,6 +233,15 @@ func (n *ninjaString) ValueWithEscaper(pkgNames map[*PackageContext]string,
 	return str
 }
 
+func (n *ninjaString) Eval(variables map[Variable]*ninjaString) string {
+	str := n.strings[0]
+	for i, v := range n.variables {
+		value := variables[v].Eval(variables)
+		str += value + n.strings[i+1]
+	}
+	return str
+}
+
 func validateNinjaName(name string) error {
 	for i, r := range name {
 		valid := (r >= 'a' && r <= 'z') ||
