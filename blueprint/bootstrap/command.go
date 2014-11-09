@@ -8,14 +8,16 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"runtime/pprof"
 )
 
 var (
-	outFile    string
-	depFile    string
-	checkFile  string
-	cpuprofile string
+	outFile      string
+	depFile      string
+	checkFile    string
+	manifestFile string
+	cpuprofile   string
 )
 
 // topLevelBlueprintsFile is set by Main as a way to pass this information on to
@@ -28,6 +30,7 @@ func init() {
 	flag.StringVar(&outFile, "o", "build.ninja.in", "the Ninja file to output")
 	flag.StringVar(&depFile, "d", "", "the dependency file to output")
 	flag.StringVar(&checkFile, "c", "", "the existing file to check against")
+	flag.StringVar(&manifestFile, "m", "", "the bootstrap manifest file")
 	flag.StringVar(&cpuprofile, "cpuprofile", "", "write cpu profile to file")
 }
 
@@ -121,7 +124,8 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		}
 	}
 
-	err = removeAbandonedFiles(ctx, config)
+	srcDir := filepath.Dir(topLevelBlueprintsFile)
+	err = removeAbandonedFiles(ctx, config, srcDir, manifestFile)
 	if err != nil {
 		fatalf("error removing abandoned files: %s", err)
 	}

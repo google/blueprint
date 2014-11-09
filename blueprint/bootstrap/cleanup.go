@@ -15,15 +15,26 @@ const logFileName = ".ninja_log"
 
 // removeAbandonedFiles removes any files that appear in the Ninja log that are
 // not currently build targets.
-func removeAbandonedFiles(ctx *blueprint.Context, config interface{}) error {
+func removeAbandonedFiles(ctx *blueprint.Context, config interface{},
+	srcDir, manifestFile string) error {
+
 	buildDir := "."
 	if generatingBootstrapper(config) {
 		buildDir = bootstrapDir
 	}
 
-	targets, err := ctx.AllTargets()
+	targetRules, err := ctx.AllTargets()
 	if err != nil {
-		fatalf("error determining target list: %s", err)
+		return fmt.Errorf("error determining target list: %s", err)
+	}
+
+	replacer := strings.NewReplacer(
+		"@@SrcDir@@", srcDir,
+		"@@BootstrapManifest@@", manifestFile)
+	targets := make(map[string]bool)
+	for target := range targetRules {
+		replacedTarget := replacer.Replace(target)
+		targets[replacedTarget] = true
 	}
 
 	filePaths, err := parseNinjaLog(buildDir)
@@ -32,7 +43,7 @@ func removeAbandonedFiles(ctx *blueprint.Context, config interface{}) error {
 	}
 
 	for _, filePath := range filePaths {
-		_, isTarget := targets[filePath]
+		isTarget := targets[filePath]
 		if !isTarget {
 			err = removeFileAndEmptyDirs(filePath)
 			if err != nil {

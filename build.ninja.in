@@ -175,12 +175,12 @@ default .bootstrap/bin/minibp
 # Factory:   blueprint/bootstrap.newSingleton
 
 rule s.bootstrap.bigbp
-    command = .bootstrap/bin/minibp -p -d .bootstrap/main.ninja.in.d -o ${out} ${in}
+    command = .bootstrap/bin/minibp -p -d .bootstrap/main.ninja.in.d -m ${g.bootstrap.bootstrapManifest} -o ${out} ${in}
     depfile = .bootstrap/main.ninja.in.d
     description = minibp ${out}
 
 rule s.bootstrap.minibp
-    command = .bootstrap/bin/minibp -c ${checkFile} -d ${out}.d -o ${out} ${in}
+    command = .bootstrap/bin/minibp -c ${checkFile} -m ${g.bootstrap.bootstrapManifest} -d ${out}.d -o ${out} ${in}
     depfile = ${out}.d
     description = minibp ${out}
     generator = true

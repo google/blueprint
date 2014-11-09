@@ -386,9 +386,9 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// (recall that depfiles use a subset of the Makefile syntax).
 		bigbp := ctx.Rule(pctx, "bigbp",
 			blueprint.RuleParams{
-				Command: fmt.Sprintf("%s %s -d %s -o $out $in",
-					primaryBuilderFile, primaryBuilderExtraFlags,
-					mainNinjaDepFile),
+				Command: fmt.Sprintf("%s %s -d %s -m $bootstrapManifest "+
+					"-o $out $in", primaryBuilderFile,
+					primaryBuilderExtraFlags, mainNinjaDepFile),
 				Description: fmt.Sprintf("%s $out", primaryBuilderName),
 				Depfile:     mainNinjaDepFile,
 			})
@@ -428,8 +428,8 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// and it will trigger a reboostrap by the non-boostrap build manifest.
 		minibp := ctx.Rule(pctx, "minibp",
 			blueprint.RuleParams{
-				Command: fmt.Sprintf("%s -c $checkFile -d $out.d -o $out $in",
-					minibpFile),
+				Command: fmt.Sprintf("%s -c $checkFile -m $bootstrapManifest "+
+					"-d $out.d -o $out $in", minibpFile),
 				Description: "minibp $out",
 				Generator:   true,
 				Depfile:     "$out.d",
