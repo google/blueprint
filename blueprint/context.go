@@ -793,6 +793,11 @@ func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs [
 
 	c.initSpecialVariables()
 
+	errs = c.preGenerateModuleBuildActions(config)
+	if len(errs) > 0 {
+		return nil, errs
+	}
+
 	depsModules, errs := c.generateModuleBuildActions(config, liveGlobals)
 	if len(errs) > 0 {
 		return nil, errs
@@ -831,6 +836,55 @@ func (c *Context) initSpecialVariables() {
 	c.requiredNinjaMicro = 0
 }
 
+func (c *Context) preGenerateModuleBuildActions(config interface{}) (errs []error) {
+
+	visited := make(map[Module]bool)
+
+	var walk func(module Module)
+	walk = func(module Module) {
+		visited[module] = true
+
+		info := c.moduleInfo[module]
+		for _, dep := range info.directDeps {
+			if !visited[dep] {
+				walk(dep)
+				if len(errs) > 0 {
+					return
+				}
+			}
+		}
+
+		if preGenerateModule, ok := module.(preGenerateModule); ok {
+			mctx := &preModuleContext{
+				dynamicDependerModuleContext: dynamicDependerModuleContext{
+					context: c,
+					config:  config,
+					info:    info,
+				},
+				module: module,
+			}
+
+			preGenerateModule.PreGenerateBuildActions(mctx)
+
+			if len(mctx.errs) > 0 {
+				errs = append(errs, mctx.errs...)
+				return
+			}
+		}
+	}
+
+	for _, module := range c.modules {
+		if !visited[module] {
+			walk(module)
+			if len(errs) > 0 {
+				break
+			}
+		}
+	}
+
+	return
+}
+
 func (c *Context) generateModuleBuildActions(config interface{},
 	liveGlobals *liveTracker) ([]string, []error) {
 
@@ -859,13 +913,15 @@ func (c *Context) generateModuleBuildActions(config interface{},
 		scope := newLocalScope(nil, moduleNamespacePrefix(info.properties.Name))
 
 		mctx := &moduleContext{
-			dynamicDependerModuleContext: dynamicDependerModuleContext{
-				context: c,
-				config:  config,
-				info:    info,
+			preModuleContext: preModuleContext{
+				dynamicDependerModuleContext: dynamicDependerModuleContext{
+					context: c,
+					config:  config,
+					info:    info,
+				},
+				module: module,
 			},
-			module: module,
-			scope:  scope,
+			scope: scope,
 		}
 
 		module.GenerateBuildActions(mctx)

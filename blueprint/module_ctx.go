@@ -64,6 +64,13 @@ type Module interface {
 	GenerateBuildActions(ModuleContext)
 }
 
+type preGenerateModule interface {
+	// PreGenerateBuildActions is called by the Context that created the Module
+	// during its generate phase, before calling GenerateBuildActions on
+	// any module.  It should not touch any Ninja build actions.
+	PreGenerateBuildActions(PreModuleContext)
+}
+
 // A DynamicDependerModule is a Module that may add dependencies that do not
 // appear in its "deps" property.  Any Module that implements this interface
 // will have its DynamicDependencies method called by the Context that created
@@ -91,18 +98,22 @@ type DynamicDependerModuleContext interface {
 	Failed() bool
 }
 
-type ModuleContext interface {
+type PreModuleContext interface {
 	DynamicDependerModuleContext
 
 	OtherModuleName(m Module) string
 	OtherModuleErrorf(m Module, fmt string, args ...interface{})
 
+	VisitDepsDepthFirst(visit func(Module))
+	VisitDepsDepthFirstIf(pred func(Module) bool, visit func(Module))
+}
+
+type ModuleContext interface {
+	PreModuleContext
+
 	Variable(pctx *PackageContext, name, value string)
 	Rule(pctx *PackageContext, name string, params RuleParams, argNames ...string) Rule
 	Build(pctx *PackageContext, params BuildParams)
-
-	VisitDepsDepthFirst(visit func(Module))
-	VisitDepsDepthFirstIf(pred func(Module) bool, visit func(Module))
 
 	AddNinjaFileDeps(deps ...string)
 }
@@ -169,22 +180,19 @@ func (d *dynamicDependerModuleContext) Failed() bool {
 	return len(d.errs) > 0
 }
 
-var _ ModuleContext = (*moduleContext)(nil)
+var _ PreModuleContext = (*preModuleContext)(nil)
 
-type moduleContext struct {
+type preModuleContext struct {
 	dynamicDependerModuleContext
-	module        Module
-	scope         *localScope
-	ninjaFileDeps []string
-	actionDefs    localBuildActions
+	module Module
 }
 
-func (m *moduleContext) OtherModuleName(module Module) string {
+func (m *preModuleContext) OtherModuleName(module Module) string {
 	info := m.context.moduleInfo[module]
 	return info.properties.Name
 }
 
-func (m *moduleContext) OtherModuleErrorf(module Module, format string,
+func (m *preModuleContext) OtherModuleErrorf(module Module, format string,
 	args ...interface{}) {
 
 	info := m.context.moduleInfo[module]
@@ -192,6 +200,25 @@ func (m *moduleContext) OtherModuleErrorf(module Module, format string,
 		Err: fmt.Errorf(format, args...),
 		Pos: info.pos,
 	})
+}
+
+func (m *preModuleContext) VisitDepsDepthFirst(visit func(Module)) {
+	m.context.visitDepsDepthFirst(m.module, visit)
+}
+
+func (m *preModuleContext) VisitDepsDepthFirstIf(pred func(Module) bool,
+	visit func(Module)) {
+
+	m.context.visitDepsDepthFirstIf(m.module, pred, visit)
+}
+
+var _ ModuleContext = (*moduleContext)(nil)
+
+type moduleContext struct {
+	preModuleContext
+	scope         *localScope
+	ninjaFileDeps []string
+	actionDefs    localBuildActions
 }
 
 func (m *moduleContext) Variable(pctx *PackageContext, name, value string) {
@@ -229,16 +256,6 @@ func (m *moduleContext) Build(pctx *PackageContext, params BuildParams) {
 	}
 
 	m.actionDefs.buildDefs = append(m.actionDefs.buildDefs, def)
-}
-
-func (m *moduleContext) VisitDepsDepthFirst(visit func(Module)) {
-	m.context.visitDepsDepthFirst(m.module, visit)
-}
-
-func (m *moduleContext) VisitDepsDepthFirstIf(pred func(Module) bool,
-	visit func(Module)) {
-
-	m.context.visitDepsDepthFirstIf(m.module, pred, visit)
 }
 
 func (m *moduleContext) AddNinjaFileDeps(deps ...string) {
