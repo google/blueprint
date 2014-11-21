@@ -233,13 +233,20 @@ func (n *ninjaString) ValueWithEscaper(pkgNames map[*PackageContext]string,
 	return str
 }
 
-func (n *ninjaString) Eval(variables map[Variable]*ninjaString) string {
+func (n *ninjaString) Eval(variables map[Variable]*ninjaString) (string, error) {
 	str := n.strings[0]
 	for i, v := range n.variables {
-		value := variables[v].Eval(variables)
+		variable, ok := variables[v]
+		if !ok {
+			return "", fmt.Errorf("no such global variable: %s", v)
+		}
+		value, err := variable.Eval(variables)
+		if err != nil {
+			return "", err
+		}
 		str += value + n.strings[i+1]
 	}
-	return str
+	return str, nil
 }
 
 func validateNinjaName(name string) error {

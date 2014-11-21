@@ -1277,7 +1277,10 @@ func (c *Context) AllTargets() (map[string]string, error) {
 		for _, buildDef := range info.actionDefs.buildDefs {
 			ruleName := buildDef.Rule.fullName(c.pkgNames)
 			for _, output := range buildDef.Outputs {
-				outputValue := output.Eval(c.globalVariables)
+				outputValue, err := output.Eval(c.globalVariables)
+				if err != nil {
+					return nil, err
+				}
 				targets[outputValue] = ruleName
 			}
 		}
@@ -1288,7 +1291,10 @@ func (c *Context) AllTargets() (map[string]string, error) {
 		for _, buildDef := range info.actionDefs.buildDefs {
 			ruleName := buildDef.Rule.fullName(c.pkgNames)
 			for _, output := range buildDef.Outputs {
-				outputValue := output.Eval(c.globalVariables)
+				outputValue, err := output.Eval(c.globalVariables)
+				if err != nil {
+		    			return nil, err
+				}
 				targets[outputValue] = ruleName
 			}
 		}
