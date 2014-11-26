@@ -1068,12 +1068,12 @@ func (c *Context) visitDepsDepthFirstIf(module Module, pred func(Module) bool,
 	walk = func(m Module) {
 		info := c.moduleInfo[m]
 		visited[m] = true
-		if pred(m) {
-			for _, dep := range info.directDeps {
-				if !visited[dep] {
-					walk(dep)
-				}
+		for _, dep := range info.directDeps {
+			if !visited[dep] {
+				walk(dep)
 			}
+		}
+		if pred(m) {
 			visit(m)
 		}
 	}
