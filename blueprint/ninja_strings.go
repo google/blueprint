@@ -36,169 +36,177 @@ func simpleNinjaString(str string) *ninjaString {
 	}
 }
 
+type parseState struct {
+	scope       scope
+	str         string
+	stringStart int
+	varStart    int
+	result      *ninjaString
+}
+
+type stateFunc func(*parseState, int, rune) (stateFunc, error)
+
 // parseNinjaString parses an unescaped ninja string (i.e. all $<something>
 // occurrences are expected to be variables or $$) and returns a list of the
 // variable names that the string references.
 func parseNinjaString(scope scope, str string) (*ninjaString, error) {
-	type stateFunc func(int, rune) (stateFunc, error)
-	var (
-		stringState      stateFunc
-		dollarStartState stateFunc
-		dollarState      stateFunc
-		bracketsState    stateFunc
-	)
+	result := &ninjaString{}
 
-	var stringStart, varStart int
-	var result ninjaString
-
-	stringState = func(i int, r rune) (stateFunc, error) {
-		switch {
-		case r == '$':
-			varStart = i + 1
-			return dollarStartState, nil
-
-		case r == eof:
-			result.strings = append(result.strings, str[stringStart:i])
-			return nil, nil
-
-		default:
-			return stringState, nil
-		}
+	parseState := &parseState{
+		scope:  scope,
+		str:    str,
+		result: result,
 	}
 
-	dollarStartState = func(i int, r rune) (stateFunc, error) {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z',
-			r >= '0' && r <= '9', r == '_', r == '-':
-			// The beginning of a of the variable name.  Output the string and
-			// keep going.
-			result.strings = append(result.strings, str[stringStart:i-1])
-			return dollarState, nil
-
-		case r == '$':
-			// Just a "$$".  Go back to stringState without changing
-			// stringStart.
-			return stringState, nil
-
-		case r == '{':
-			// This is a bracketted variable name (e.g. "${blah.blah}").  Output
-			// the string and keep going.
-			result.strings = append(result.strings, str[stringStart:i-1])
-			varStart = i + 1
-			return bracketsState, nil
-
-		case r == eof:
-			return nil, fmt.Errorf("unexpected end of string after '$'")
-
-		default:
-			// This was some arbitrary character following a dollar sign,
-			// which is not allowed.
-			return nil, fmt.Errorf("invalid character after '$' at byte "+
-				"offset %d", i)
-		}
-	}
-
-	dollarState = func(i int, r rune) (stateFunc, error) {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z',
-			r >= '0' && r <= '9', r == '_', r == '-':
-			// A part of the variable name.  Keep going.
-			return dollarState, nil
-
-		case r == '$':
-			// A dollar after the variable name (e.g. "$blah$").  Output the
-			// variable we have and start a new one.
-			v, err := scope.LookupVariable(str[varStart:i])
-			if err != nil {
-				return nil, err
-			}
-
-			result.variables = append(result.variables, v)
-			varStart = i + 1
-
-			// We always have a string in between variables, even if it's an
-			// empty one.
-			result.strings = append(result.strings, "")
-
-			return dollarState, nil
-
-		case r == eof:
-			// This is the end of the variable name.
-			v, err := scope.LookupVariable(str[varStart:i])
-			if err != nil {
-				return nil, err
-			}
-
-			result.variables = append(result.variables, v)
-
-			// We always end with a string, even if it's an empty one.
-			result.strings = append(result.strings, "")
-
-			return nil, nil
-
-		default:
-			// We've just gone past the end of the variable name, so record what
-			// we have.
-			v, err := scope.LookupVariable(str[varStart:i])
-			if err != nil {
-				return nil, err
-			}
-
-			result.variables = append(result.variables, v)
-			stringStart = i
-			return stringState, nil
-		}
-	}
-
-	bracketsState = func(i int, r rune) (stateFunc, error) {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z',
-			r >= '0' && r <= '9', r == '_', r == '-', r == '.':
-			// A part of the variable name.  Keep going.
-			return bracketsState, nil
-
-		case r == '}':
-			if varStart == i {
-				// The brackets were immediately closed.  That's no good.
-				return nil, fmt.Errorf("empty variable name at byte offset %d",
-					i)
-			}
-
-			// This is the end of the variable name.
-			v, err := scope.LookupVariable(str[varStart:i])
-			if err != nil {
-				return nil, err
-			}
-
-			result.variables = append(result.variables, v)
-			stringStart = i + 1
-			return stringState, nil
-
-		case r == eof:
-			return nil, fmt.Errorf("unexpected end of string in variable name")
-
-		default:
-			// This character isn't allowed in a variable name.
-			return nil, fmt.Errorf("invalid character in variable name at "+
-				"byte offset %d", i)
-		}
-	}
-
-	state := stringState
+	state := parseStringState
 	var err error
-	for i, r := range str {
-		state, err = state(i, r)
+	for i := 0; i < len(str); i++ {
+		r := rune(str[i])
+		state, err = state(parseState, i, r)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	_, err = state(len(str), eof)
+	_, err = state(parseState, len(parseState.str), eof)
 	if err != nil {
 		return nil, err
 	}
 
-	return &result, nil
+	return result, nil
+}
+
+func parseStringState(state *parseState, i int, r rune) (stateFunc, error) {
+	switch {
+	case r == '$':
+		state.varStart = i + 1
+		return parseDollarStartState, nil
+
+	case r == eof:
+		state.result.strings = append(state.result.strings, state.str[state.stringStart:i])
+		return nil, nil
+
+	default:
+		return parseStringState, nil
+	}
+}
+
+func parseDollarStartState(state *parseState, i int, r rune) (stateFunc, error) {
+	switch {
+	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z',
+		r >= '0' && r <= '9', r == '_', r == '-':
+		// The beginning of a of the variable name.  Output the string and
+		// keep going.
+		state.result.strings = append(state.result.strings, state.str[state.stringStart:i-1])
+		return parseDollarState, nil
+
+	case r == '$':
+		// Just a "$$".  Go back to parseStringState without changing
+		// state.stringStart.
+		return parseStringState, nil
+
+	case r == '{':
+		// This is a bracketted variable name (e.g. "${blah.blah}").  Output
+		// the string and keep going.
+		state.result.strings = append(state.result.strings, state.str[state.stringStart:i-1])
+		state.varStart = i + 1
+		return parseBracketsState, nil
+
+	case r == eof:
+		return nil, fmt.Errorf("unexpected end of string after '$'")
+
+	default:
+		// This was some arbitrary character following a dollar sign,
+		// which is not allowed.
+		return nil, fmt.Errorf("invalid character after '$' at byte "+
+			"offset %d", i)
+	}
+}
+
+func parseDollarState(state *parseState, i int, r rune) (stateFunc, error) {
+	switch {
+	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z',
+		r >= '0' && r <= '9', r == '_', r == '-':
+		// A part of the variable name.  Keep going.
+		return parseDollarState, nil
+
+	case r == '$':
+		// A dollar after the variable name (e.g. "$blah$").  Output the
+		// variable we have and start a new one.
+		v, err := state.scope.LookupVariable(state.str[state.varStart:i])
+		if err != nil {
+			return nil, err
+		}
+
+		state.result.variables = append(state.result.variables, v)
+		state.varStart = i + 1
+
+		// We always have a string in between variables, even if it's an
+		// empty one.
+		state.result.strings = append(state.result.strings, "")
+
+		return parseDollarState, nil
+
+	case r == eof:
+		// This is the end of the variable name.
+		v, err := state.scope.LookupVariable(state.str[state.varStart:i])
+		if err != nil {
+			return nil, err
+		}
+
+		state.result.variables = append(state.result.variables, v)
+
+		// We always end with a string, even if it's an empty one.
+		state.result.strings = append(state.result.strings, "")
+
+		return nil, nil
+
+	default:
+		// We've just gone past the end of the variable name, so record what
+		// we have.
+		v, err := state.scope.LookupVariable(state.str[state.varStart:i])
+		if err != nil {
+			return nil, err
+		}
+
+		state.result.variables = append(state.result.variables, v)
+		state.stringStart = i
+		return parseStringState, nil
+	}
+}
+
+func parseBracketsState(state *parseState, i int, r rune) (stateFunc, error) {
+	switch {
+	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z',
+		r >= '0' && r <= '9', r == '_', r == '-', r == '.':
+		// A part of the variable name.  Keep going.
+		return parseBracketsState, nil
+
+	case r == '}':
+		if state.varStart == i {
+			// The brackets were immediately closed.  That's no good.
+			return nil, fmt.Errorf("empty variable name at byte offset %d",
+				i)
+		}
+
+		// This is the end of the variable name.
+		v, err := state.scope.LookupVariable(state.str[state.varStart:i])
+		if err != nil {
+			return nil, err
+		}
+
+		state.result.variables = append(state.result.variables, v)
+		state.stringStart = i + 1
+		return parseStringState, nil
+
+	case r == eof:
+		return nil, fmt.Errorf("unexpected end of string in variable name")
+
+	default:
+		// This character isn't allowed in a variable name.
+		return nil, fmt.Errorf("invalid character in variable name at "+
+			"byte offset %d", i)
+	}
 }
 
 func parseNinjaStrings(scope scope, strs []string) ([]*ninjaString,
