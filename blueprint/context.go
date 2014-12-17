@@ -48,6 +48,7 @@ type Context struct {
 	// set at instantiation
 	moduleFactories map[string]ModuleFactory
 	modules         map[string]Module
+	modulesSorted   []Module
 	moduleInfo      map[Module]*moduleInfo
 	singletonInfo   map[string]*singletonInfo
 
@@ -592,7 +593,7 @@ func (c *Context) ResolveDependencies(config interface{}) []error {
 		return errs
 	}
 
-	errs = c.checkForDependencyCycles()
+	errs = c.rebuildSortedModuleList()
 	if len(errs) > 0 {
 		return errs
 	}
@@ -686,12 +687,16 @@ func (c *Context) resolveDependencies(config interface{}) (errs []error) {
 	return
 }
 
-// checkForDependencyCycles recursively walks the module dependency graph and
-// reports errors when it encounters dependency cycles.  This should only be
-// called after resolveDependencies.
-func (c *Context) checkForDependencyCycles() (errs []error) {
+// rebuildSortedModuleList recursively walks the module dependency graph and
+// builds a sorted list of modules such that dependencies of a module always
+// appear first.  It also reports errors when it encounters dependency cycles.
+// This should called after resolveDependencies, as well as after any mutator
+// pass has called addDependency
+func (c *Context) rebuildSortedModuleList() (errs []error) {
 	visited := make(map[Module]bool)  // modules that were already checked
 	checking := make(map[Module]bool) // modules actively being checked
+
+	sorted := make([]Module, 0, len(c.modules))
 
 	var check func(m Module) []Module
 
@@ -747,6 +752,8 @@ func (c *Context) checkForDependencyCycles() (errs []error) {
 			}
 		}
 
+		sorted = append(sorted, m)
+
 		return nil
 	}
 
@@ -758,6 +765,8 @@ func (c *Context) checkForDependencyCycles() (errs []error) {
 			}
 		}
 	}
+
+	c.modulesSorted = sorted
 
 	return
 }
@@ -888,24 +897,11 @@ func (c *Context) preGenerateModuleBuildActions(config interface{}) (errs []erro
 func (c *Context) generateModuleBuildActions(config interface{},
 	liveGlobals *liveTracker) ([]string, []error) {
 
-	visited := make(map[Module]bool)
-
 	var deps []string
 	var errs []error
 
-	var walk func(module Module)
-	walk = func(module Module) {
-		visited[module] = true
-
+	for _, module := range c.modulesSorted {
 		info := c.moduleInfo[module]
-		for _, dep := range info.directDeps {
-			if !visited[dep] {
-				walk(dep)
-				if len(errs) > 0 {
-					return
-				}
-			}
-		}
 
 		// The parent scope of the moduleContext's local scope gets overridden to be that of the
 		// calling Go package on a per-call basis.  Since the initial parent scope doesn't matter we
@@ -928,22 +924,16 @@ func (c *Context) generateModuleBuildActions(config interface{},
 
 		if len(mctx.errs) > 0 {
 			errs = append(errs, mctx.errs...)
-			return
+			break
 		}
 
 		deps = append(deps, mctx.ninjaFileDeps...)
 
 		newErrs := c.processLocalBuildActions(&info.actionDefs,
 			&mctx.actionDefs, liveGlobals)
-		errs = append(errs, newErrs...)
-	}
-
-	for _, module := range c.modules {
-		if !visited[module] {
-			walk(module)
-			if len(errs) > 0 {
-				break
-			}
+		if len(newErrs) > 0 {
+			errs = append(errs, newErrs...)
+			break
 		}
 	}
 
