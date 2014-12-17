@@ -68,13 +68,6 @@ type Module interface {
 	GenerateBuildActions(ModuleContext)
 }
 
-type preGenerateModule interface {
-	// PreGenerateBuildActions is called by the Context that created the Module
-	// during its generate phase, before calling GenerateBuildActions on
-	// any module.  It should not touch any Ninja build actions.
-	PreGenerateBuildActions(PreModuleContext)
-}
-
 // A DynamicDependerModule is a Module that may add dependencies that do not
 // appear in its "deps" property.  Any Module that implements this interface
 // will have its DynamicDependencies method called by the Context that created
@@ -106,7 +99,7 @@ type DynamicDependerModuleContext interface {
 	BaseModuleContext
 }
 
-type PreModuleContext interface {
+type ModuleContext interface {
 	BaseModuleContext
 
 	OtherModuleName(m Module) string
@@ -114,10 +107,6 @@ type PreModuleContext interface {
 
 	VisitDepsDepthFirst(visit func(Module))
 	VisitDepsDepthFirstIf(pred func(Module) bool, visit func(Module))
-}
-
-type ModuleContext interface {
-	PreModuleContext
 
 	ModuleSubDir() string
 
@@ -194,19 +183,22 @@ func (d *baseModuleContext) Failed() bool {
 	return len(d.errs) > 0
 }
 
-var _ PreModuleContext = (*preModuleContext)(nil)
+var _ ModuleContext = (*moduleContext)(nil)
 
-type preModuleContext struct {
+type moduleContext struct {
 	baseModuleContext
-	module *moduleInfo
+	module        *moduleInfo
+	scope         *localScope
+	ninjaFileDeps []string
+	actionDefs    localBuildActions
 }
 
-func (m *preModuleContext) OtherModuleName(module Module) string {
+func (m *moduleContext) OtherModuleName(module Module) string {
 	info := m.context.moduleInfo[module]
 	return info.group.properties.Name
 }
 
-func (m *preModuleContext) OtherModuleErrorf(module Module, format string,
+func (m *moduleContext) OtherModuleErrorf(module Module, format string,
 	args ...interface{}) {
 
 	info := m.context.moduleInfo[module]
@@ -216,23 +208,14 @@ func (m *preModuleContext) OtherModuleErrorf(module Module, format string,
 	})
 }
 
-func (m *preModuleContext) VisitDepsDepthFirst(visit func(Module)) {
+func (m *moduleContext) VisitDepsDepthFirst(visit func(Module)) {
 	m.context.visitDepsDepthFirst(m.module, visit)
 }
 
-func (m *preModuleContext) VisitDepsDepthFirstIf(pred func(Module) bool,
+func (m *moduleContext) VisitDepsDepthFirstIf(pred func(Module) bool,
 	visit func(Module)) {
 
 	m.context.visitDepsDepthFirstIf(m.module, pred, visit)
-}
-
-var _ ModuleContext = (*moduleContext)(nil)
-
-type moduleContext struct {
-	preModuleContext
-	scope         *localScope
-	ninjaFileDeps []string
-	actionDefs    localBuildActions
 }
 
 func (m *moduleContext) ModuleSubDir() string {

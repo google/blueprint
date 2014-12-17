@@ -1014,11 +1014,6 @@ func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs [
 
 	c.initSpecialVariables()
 
-	errs = c.preGenerateModuleBuildActions(config)
-	if len(errs) > 0 {
-		return nil, errs
-	}
-
 	depsModules, errs := c.generateModuleBuildActions(config, liveGlobals)
 	if len(errs) > 0 {
 		return nil, errs
@@ -1158,32 +1153,6 @@ func (c *Context) initSpecialVariables() {
 	c.requiredNinjaMicro = 0
 }
 
-func (c *Context) preGenerateModuleBuildActions(config interface{}) (errs []error) {
-	for _, group := range c.moduleGroupsSorted {
-		for _, module := range group.modules {
-			if preGenerateModule, ok := module.logicModule.(preGenerateModule); ok {
-				mctx := &preModuleContext{
-					baseModuleContext: baseModuleContext{
-						context: c,
-						config:  config,
-						group:   group,
-					},
-					module: module,
-				}
-
-				preGenerateModule.PreGenerateBuildActions(mctx)
-
-				if len(mctx.errs) > 0 {
-					errs = append(errs, mctx.errs...)
-					break
-				}
-			}
-		}
-	}
-
-	return
-}
-
 func (c *Context) generateModuleBuildActions(config interface{},
 	liveGlobals *liveTracker) ([]string, []error) {
 
@@ -1198,15 +1167,13 @@ func (c *Context) generateModuleBuildActions(config interface{},
 
 		for _, module := range group.modules {
 			mctx := &moduleContext{
-				preModuleContext: preModuleContext{
-					baseModuleContext: baseModuleContext{
-						context: c,
-						config:  config,
-						group:   group,
-					},
-					module: module,
+				baseModuleContext: baseModuleContext{
+					context: c,
+					config:  config,
+					group:   group,
 				},
-				scope: scope,
+				module: module,
+				scope:  scope,
 			}
 
 			mctx.module.logicModule.GenerateBuildActions(mctx)
