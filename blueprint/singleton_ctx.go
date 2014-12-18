@@ -56,28 +56,28 @@ func (s *singletonContext) Config() interface{} {
 	return s.config
 }
 
-func (s *singletonContext) ModuleName(module Module) string {
-	info := s.context.moduleInfo[module]
-	return info.properties.Name
+func (s *singletonContext) ModuleName(logicModule Module) string {
+	module := s.context.moduleInfo[logicModule]
+	return module.group.properties.Name
 }
 
-func (s *singletonContext) ModuleDir(module Module) string {
-	info := s.context.moduleInfo[module]
-	return filepath.Dir(info.relBlueprintsFile)
+func (s *singletonContext) ModuleDir(logicModule Module) string {
+	module := s.context.moduleInfo[logicModule]
+	return filepath.Dir(module.group.relBlueprintsFile)
 }
 
-func (s *singletonContext) BlueprintFile(module Module) string {
-	info := s.context.moduleInfo[module]
-	return info.relBlueprintsFile
+func (s *singletonContext) BlueprintFile(logicModule Module) string {
+	module := s.context.moduleInfo[logicModule]
+	return module.group.relBlueprintsFile
 }
 
-func (s *singletonContext) ModuleErrorf(module Module, format string,
+func (s *singletonContext) ModuleErrorf(logicModule Module, format string,
 	args ...interface{}) {
 
-	info := s.context.moduleInfo[module]
+	module := s.context.moduleInfo[logicModule]
 	s.errs = append(s.errs, &Error{
 		Err: fmt.Errorf(format, args...),
-		Pos: info.pos,
+		Pos: module.group.pos,
 	})
 }
 
@@ -151,13 +151,13 @@ func (s *singletonContext) VisitAllModulesIf(pred func(Module) bool,
 func (s *singletonContext) VisitDepsDepthFirst(module Module,
 	visit func(Module)) {
 
-	s.context.visitDepsDepthFirst(module, visit)
+	s.context.visitDepsDepthFirst(s.context.moduleInfo[module], visit)
 }
 
 func (s *singletonContext) VisitDepsDepthFirstIf(module Module,
 	pred func(Module) bool, visit func(Module)) {
 
-	s.context.visitDepsDepthFirstIf(module, pred, visit)
+	s.context.visitDepsDepthFirstIf(s.context.moduleInfo[module], pred, visit)
 }
 
 func (s *singletonContext) AddNinjaFileDeps(deps ...string) {

@@ -46,11 +46,11 @@ const maxErrors = 10
 // actions.
 type Context struct {
 	// set at instantiation
-	moduleFactories map[string]ModuleFactory
-	modules         map[string]Module
-	modulesSorted   []Module
-	moduleInfo      map[Module]*moduleInfo
-	singletonInfo   map[string]*singletonInfo
+	moduleFactories    map[string]ModuleFactory
+	moduleGroups       map[string]*moduleGroup
+	moduleInfo         map[Module]*moduleInfo
+	moduleGroupsSorted []*moduleGroup
+	singletonInfo      map[string]*singletonInfo
 
 	dependenciesReady bool // set to true on a successful ResolveDependencies
 	buildActionsReady bool // set to true on a successful PrepareBuildActions
@@ -87,7 +87,7 @@ type localBuildActions struct {
 	buildDefs []*buildDef
 }
 
-type moduleInfo struct {
+type moduleGroup struct {
 	// set during Parse
 	typeName          string
 	relBlueprintsFile string
@@ -98,11 +98,16 @@ type moduleInfo struct {
 		Deps []string
 	}
 
-	// set during ResolveDependencies
-	directDeps []Module
+	modules []*moduleInfo
 
 	// set during PrepareBuildActions
 	actionDefs localBuildActions
+}
+
+type moduleInfo struct {
+	directDeps  []*moduleInfo // set during ResolveDependencies
+	logicModule Module
+	group       *moduleGroup
 }
 
 type singletonInfo struct {
@@ -126,7 +131,7 @@ func (e *Error) Error() string {
 func NewContext() *Context {
 	return &Context{
 		moduleFactories: make(map[string]ModuleFactory),
-		modules:         make(map[string]Module),
+		moduleGroups:    make(map[string]*moduleGroup),
 		moduleInfo:      make(map[Module]*moduleInfo),
 		singletonInfo:   make(map[string]*singletonInfo),
 	}
@@ -526,14 +531,14 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 		}
 	}
 
-	module, properties := factory()
-	info := &moduleInfo{
+	logicModule, properties := factory()
+	group := &moduleGroup{
 		typeName:          typeName,
 		relBlueprintsFile: relBlueprintsFile,
 	}
 
 	props := []interface{}{
-		&info.properties,
+		&group.properties,
 	}
 	properties = append(props, properties...)
 
@@ -542,39 +547,46 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 		return errs
 	}
 
-	info.pos = moduleDef.Pos
-	info.propertyPos = make(map[string]scanner.Position)
+	group.pos = moduleDef.Pos
+	group.propertyPos = make(map[string]scanner.Position)
 	for name, propertyDef := range propertyMap {
-		info.propertyPos[name] = propertyDef.Pos
+		group.propertyPos[name] = propertyDef.Pos
 	}
 
-	name := info.properties.Name
+	name := group.properties.Name
 	err := validateNinjaName(name)
 	if err != nil {
 		return []error{
 			&Error{
 				Err: fmt.Errorf("invalid module name %q: %s", err),
-				Pos: info.propertyPos["name"],
+				Pos: group.propertyPos["name"],
 			},
 		}
 	}
 
-	if first, present := c.modules[name]; present {
+	if first, present := c.moduleGroups[name]; present {
 		errs = append(errs, &Error{
 			Err: fmt.Errorf("module %q already defined", name),
 			Pos: moduleDef.Pos,
 		})
 		errs = append(errs, &Error{
 			Err: fmt.Errorf("<-- previous definition here"),
-			Pos: c.moduleInfo[first].pos,
+			Pos: first.pos,
 		})
 		if len(errs) > 0 {
 			return errs
 		}
 	}
 
-	c.modules[name] = module
-	c.moduleInfo[module] = info
+	module := &moduleInfo{
+		group:       group,
+		logicModule: logicModule,
+	}
+
+	c.moduleGroups[name] = group
+	c.moduleInfo[logicModule] = module
+
+	group.modules = []*moduleInfo{module}
 
 	return nil
 }
@@ -607,22 +619,25 @@ func (c *Context) ResolveDependencies(config interface{}) []error {
 // this set consists of the union of those module names listed in its "deps"
 // property and those returned by its DynamicDependencies method.  Otherwise it
 // is simply those names listed in its "deps" property.
-func (c *Context) moduleDepNames(info *moduleInfo,
+func (c *Context) moduleDepNames(group *moduleGroup,
 	config interface{}) ([]string, []error) {
 
 	depNamesSet := make(map[string]bool)
 
-	for _, depName := range info.properties.Deps {
+	for _, depName := range group.properties.Deps {
 		depNamesSet[depName] = true
 	}
 
-	module := c.modules[info.properties.Name]
-	dynamicDepender, ok := module.(DynamicDependerModule)
+	if len(group.modules) != 1 {
+		panic("expected a single module during moduleDepNames")
+	}
+	logicModule := group.modules[0].logicModule
+	dynamicDepender, ok := logicModule.(DynamicDependerModule)
 	if ok {
 		ddmctx := &baseModuleContext{
 			context: c,
 			config:  config,
-			info:    info,
+			group:   group,
 		}
 
 		dynamicDeps := dynamicDepender.DynamicDependencies(ddmctx)
@@ -647,22 +662,25 @@ func (c *Context) moduleDepNames(info *moduleInfo,
 	return depNames, nil
 }
 
-// resolveDependencies populates the moduleInfo.directDeps list for every
+// resolveDependencies populates the moduleGroup.modules[0].directDeps list for every
 // module.  In doing so it checks for missing dependencies and self-dependant
 // modules.
 func (c *Context) resolveDependencies(config interface{}) (errs []error) {
-	for _, info := range c.moduleInfo {
-		depNames, newErrs := c.moduleDepNames(info, config)
+	for _, group := range c.moduleGroups {
+		depNames, newErrs := c.moduleDepNames(group, config)
 		if len(newErrs) > 0 {
 			errs = append(errs, newErrs...)
 			continue
 		}
 
-		info.directDeps = make([]Module, 0, len(depNames))
-		depsPos := info.propertyPos["deps"]
+		if len(group.modules) != 1 {
+			panic("expected a single module in resolveDependencies")
+		}
+		group.modules[0].directDeps = make([]*moduleInfo, 0, len(depNames))
+		depsPos := group.propertyPos["deps"]
 
 		for _, depName := range depNames {
-			if depName == info.properties.Name {
+			if depName == group.properties.Name {
 				errs = append(errs, &Error{
 					Err: fmt.Errorf("%q depends on itself", depName),
 					Pos: depsPos,
@@ -670,17 +688,21 @@ func (c *Context) resolveDependencies(config interface{}) (errs []error) {
 				continue
 			}
 
-			dep, ok := c.modules[depName]
+			depInfo, ok := c.moduleGroups[depName]
 			if !ok {
 				errs = append(errs, &Error{
 					Err: fmt.Errorf("%q depends on undefined module %q",
-						info.properties.Name, depName),
+						group.properties.Name, depName),
 					Pos: depsPos,
 				})
 				continue
 			}
 
-			info.directDeps = append(info.directDeps, dep)
+			if len(depInfo.modules) != 1 {
+				panic("expected a single module in resolveDependencies")
+			}
+
+			group.modules[0].directDeps = append(group.modules[0].directDeps, depInfo.modules[0])
 		}
 	}
 
@@ -693,50 +715,55 @@ func (c *Context) resolveDependencies(config interface{}) (errs []error) {
 // This should called after resolveDependencies, as well as after any mutator
 // pass has called addDependency
 func (c *Context) rebuildSortedModuleList() (errs []error) {
-	visited := make(map[Module]bool)  // modules that were already checked
-	checking := make(map[Module]bool) // modules actively being checked
+	visited := make(map[*moduleGroup]bool)  // modules that were already checked
+	checking := make(map[*moduleGroup]bool) // modules actively being checked
 
-	sorted := make([]Module, 0, len(c.modules))
+	sorted := make([]*moduleGroup, 0, len(c.moduleGroups))
 
-	var check func(m Module) []Module
+	var check func(group *moduleGroup) []*moduleGroup
 
-	check = func(m Module) []Module {
-		info := c.moduleInfo[m]
+	check = func(group *moduleGroup) []*moduleGroup {
+		visited[group] = true
+		checking[group] = true
+		defer delete(checking, group)
 
-		visited[m] = true
-		checking[m] = true
-		defer delete(checking, m)
+		deps := make(map[*moduleGroup]bool)
+		for _, module := range group.modules {
+			for _, dep := range module.directDeps {
+				deps[dep.group] = true
+			}
+		}
 
-		for _, dep := range info.directDeps {
+		for dep := range deps {
 			if checking[dep] {
 				// This is a cycle.
-				return []Module{dep, m}
+				return []*moduleGroup{dep, group}
 			}
 
 			if !visited[dep] {
 				cycle := check(dep)
 				if cycle != nil {
-					if cycle[0] == m {
+					if cycle[0] == group {
 						// We are the "start" of the cycle, so we're responsible
 						// for generating the errors.  The cycle list is in
 						// reverse order because all the 'check' calls append
 						// their own module to the list.
 						errs = append(errs, &Error{
 							Err: fmt.Errorf("encountered dependency cycle:"),
-							Pos: info.pos,
+							Pos: group.pos,
 						})
 
 						// Iterate backwards through the cycle list.
-						curInfo := info
+						curGroup := group
 						for i := len(cycle) - 1; i >= 0; i-- {
-							nextInfo := c.moduleInfo[cycle[i]]
+							nextGroup := cycle[i]
 							errs = append(errs, &Error{
 								Err: fmt.Errorf("    %q depends on %q",
-									curInfo.properties.Name,
-									nextInfo.properties.Name),
-								Pos: curInfo.propertyPos["deps"],
+									curGroup.properties.Name,
+									nextGroup.properties.Name),
+								Pos: curGroup.propertyPos["deps"],
 							})
-							curInfo = nextInfo
+							curGroup = nextGroup
 						}
 
 						// We can continue processing this module's children to
@@ -746,27 +773,27 @@ func (c *Context) rebuildSortedModuleList() (errs []error) {
 					} else {
 						// We're not the "start" of the cycle, so we just append
 						// our module to the list and return it.
-						return append(cycle, m)
+						return append(cycle, group)
 					}
 				}
 			}
 		}
 
-		sorted = append(sorted, m)
+		sorted = append(sorted, group)
 
 		return nil
 	}
 
-	for _, module := range c.modules {
-		if !visited[module] {
-			cycle := check(module)
+	for _, group := range c.moduleGroups {
+		if !visited[group] {
+			cycle := check(group)
 			if cycle != nil {
 				panic("inconceivable!")
 			}
 		}
 	}
 
-	c.modulesSorted = sorted
+	c.moduleGroupsSorted = sorted
 
 	return
 }
@@ -846,47 +873,24 @@ func (c *Context) initSpecialVariables() {
 }
 
 func (c *Context) preGenerateModuleBuildActions(config interface{}) (errs []error) {
-
-	visited := make(map[Module]bool)
-
-	var walk func(module Module)
-	walk = func(module Module) {
-		visited[module] = true
-
-		info := c.moduleInfo[module]
-		for _, dep := range info.directDeps {
-			if !visited[dep] {
-				walk(dep)
-				if len(errs) > 0 {
-					return
+	for _, group := range c.moduleGroupsSorted {
+		for _, module := range group.modules {
+			if preGenerateModule, ok := module.logicModule.(preGenerateModule); ok {
+				mctx := &preModuleContext{
+					baseModuleContext: baseModuleContext{
+						context: c,
+						config:  config,
+						group:   group,
+					},
+					module: module,
 				}
-			}
-		}
 
-		if preGenerateModule, ok := module.(preGenerateModule); ok {
-			mctx := &preModuleContext{
-				baseModuleContext: baseModuleContext{
-					context: c,
-					config:  config,
-					info:    info,
-				},
-				module: module,
-			}
+				preGenerateModule.PreGenerateBuildActions(mctx)
 
-			preGenerateModule.PreGenerateBuildActions(mctx)
-
-			if len(mctx.errs) > 0 {
-				errs = append(errs, mctx.errs...)
-				return
-			}
-		}
-	}
-
-	for _, module := range c.modules {
-		if !visited[module] {
-			walk(module)
-			if len(errs) > 0 {
-				break
+				if len(mctx.errs) > 0 {
+					errs = append(errs, mctx.errs...)
+					break
+				}
 			}
 		}
 	}
@@ -900,40 +904,40 @@ func (c *Context) generateModuleBuildActions(config interface{},
 	var deps []string
 	var errs []error
 
-	for _, module := range c.modulesSorted {
-		info := c.moduleInfo[module]
-
+	for _, group := range c.moduleGroupsSorted {
 		// The parent scope of the moduleContext's local scope gets overridden to be that of the
 		// calling Go package on a per-call basis.  Since the initial parent scope doesn't matter we
 		// just set it to nil.
-		scope := newLocalScope(nil, moduleNamespacePrefix(info.properties.Name))
+		scope := newLocalScope(nil, moduleNamespacePrefix(group.properties.Name))
 
-		mctx := &moduleContext{
-			preModuleContext: preModuleContext{
-				baseModuleContext: baseModuleContext{
-					context: c,
-					config:  config,
-					info:    info,
+		for _, module := range group.modules {
+			mctx := &moduleContext{
+				preModuleContext: preModuleContext{
+					baseModuleContext: baseModuleContext{
+						context: c,
+						config:  config,
+						group:   group,
+					},
+					module: module,
 				},
-				module: module,
-			},
-			scope: scope,
-		}
+				scope: scope,
+			}
 
-		module.GenerateBuildActions(mctx)
+			mctx.module.logicModule.GenerateBuildActions(mctx)
 
-		if len(mctx.errs) > 0 {
-			errs = append(errs, mctx.errs...)
-			break
-		}
+			if len(mctx.errs) > 0 {
+				errs = append(errs, mctx.errs...)
+				break
+			}
 
-		deps = append(deps, mctx.ninjaFileDeps...)
+			deps = append(deps, mctx.ninjaFileDeps...)
 
-		newErrs := c.processLocalBuildActions(&info.actionDefs,
-			&mctx.actionDefs, liveGlobals)
-		if len(newErrs) > 0 {
-			errs = append(errs, newErrs...)
-			break
+			newErrs := c.processLocalBuildActions(&group.actionDefs,
+				&mctx.actionDefs, liveGlobals)
+			if len(newErrs) > 0 {
+				errs = append(errs, newErrs...)
+				break
+			}
 		}
 	}
 
@@ -1026,60 +1030,54 @@ func (c *Context) processLocalBuildActions(out, in *localBuildActions,
 	return nil
 }
 
-func (c *Context) visitDepsDepthFirst(module Module, visit func(Module)) {
-	visited := make(map[Module]bool)
+func (c *Context) visitDepsDepthFirst(topModule *moduleInfo, visit func(Module)) {
+	visited := make(map[*moduleInfo]bool)
 
-	var walk func(m Module)
-	walk = func(m Module) {
-		info := c.moduleInfo[m]
-		visited[m] = true
-		for _, dep := range info.directDeps {
-			if !visited[dep] {
-				walk(dep)
+	var walk func(module *moduleInfo)
+	walk = func(module *moduleInfo) {
+		visited[module] = true
+		for _, moduleDep := range module.directDeps {
+			if !visited[moduleDep] {
+				walk(moduleDep)
 			}
 		}
-		visit(m)
-	}
 
-	info := c.moduleInfo[module]
-	for _, dep := range info.directDeps {
-		if !visited[dep] {
-			walk(dep)
+		if module != topModule {
+			visit(module.logicModule)
 		}
 	}
+
+	walk(topModule)
 }
 
-func (c *Context) visitDepsDepthFirstIf(module Module, pred func(Module) bool,
+func (c *Context) visitDepsDepthFirstIf(topModule *moduleInfo, pred func(Module) bool,
 	visit func(Module)) {
 
-	visited := make(map[Module]bool)
+	visited := make(map[*moduleInfo]bool)
 
-	var walk func(m Module)
-	walk = func(m Module) {
-		info := c.moduleInfo[m]
-		visited[m] = true
-		for _, dep := range info.directDeps {
-			if !visited[dep] {
-				walk(dep)
+	var walk func(module *moduleInfo)
+	walk = func(module *moduleInfo) {
+		visited[module] = true
+		for _, moduleDep := range module.directDeps {
+			if !visited[moduleDep] {
+				walk(moduleDep)
 			}
 		}
-		if pred(m) {
-			visit(m)
+
+		if module != topModule {
+			if pred(module.logicModule) {
+				visit(module.logicModule)
+			}
 		}
 	}
 
-	info := c.moduleInfo[module]
-	for _, dep := range info.directDeps {
-		if !visited[dep] {
-			walk(dep)
-		}
-	}
+	walk(topModule)
 }
 
 func (c *Context) sortedModuleNames() []string {
 	if c.cachedSortedModuleNames == nil {
-		c.cachedSortedModuleNames = make([]string, 0, len(c.modules))
-		for moduleName := range c.modules {
+		c.cachedSortedModuleNames = make([]string, 0, len(c.moduleGroups))
+		for moduleName := range c.moduleGroups {
 			c.cachedSortedModuleNames = append(c.cachedSortedModuleNames,
 				moduleName)
 		}
@@ -1091,8 +1089,10 @@ func (c *Context) sortedModuleNames() []string {
 
 func (c *Context) visitAllModules(visit func(Module)) {
 	for _, moduleName := range c.sortedModuleNames() {
-		module := c.modules[moduleName]
-		visit(module)
+		group := c.moduleGroups[moduleName]
+		for _, module := range group.modules {
+			visit(module.logicModule)
+		}
 	}
 }
 
@@ -1100,9 +1100,11 @@ func (c *Context) visitAllModulesIf(pred func(Module) bool,
 	visit func(Module)) {
 
 	for _, moduleName := range c.sortedModuleNames() {
-		module := c.modules[moduleName]
-		if pred(module) {
-			visit(module)
+		group := c.moduleGroups[moduleName]
+		for _, module := range group.modules {
+			if pred(module.logicModule) {
+				visit(module.logicModule)
+			}
 		}
 	}
 }
@@ -1263,7 +1265,7 @@ func (c *Context) AllTargets() (map[string]string, error) {
 	targets := map[string]string{}
 
 	// Collect all the module build targets.
-	for _, info := range c.moduleInfo {
+	for _, info := range c.moduleGroups {
 		for _, buildDef := range info.actionDefs.buildDefs {
 			ruleName := buildDef.Rule.fullName(c.pkgNames)
 			for _, output := range buildDef.Outputs {
@@ -1563,19 +1565,19 @@ func (c *Context) writeGlobalRules(nw *ninjaWriter) error {
 	return nil
 }
 
-type moduleInfoSorter []*moduleInfo
+type moduleGroupSorter []*moduleGroup
 
-func (s moduleInfoSorter) Len() int {
+func (s moduleGroupSorter) Len() int {
 	return len(s)
 }
 
-func (s moduleInfoSorter) Less(i, j int) bool {
+func (s moduleGroupSorter) Less(i, j int) bool {
 	iName := s[i].properties.Name
 	jName := s[j].properties.Name
 	return iName < jName
 }
 
-func (s moduleInfoSorter) Swap(i, j int) {
+func (s moduleGroupSorter) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
 
@@ -1587,11 +1589,11 @@ func (c *Context) writeAllModuleActions(nw *ninjaWriter) error {
 		panic(err)
 	}
 
-	infos := make([]*moduleInfo, 0, len(c.moduleInfo))
-	for _, info := range c.moduleInfo {
+	infos := make([]*moduleGroup, 0, len(c.moduleGroups))
+	for _, info := range c.moduleGroups {
 		infos = append(infos, info)
 	}
-	sort.Sort(moduleInfoSorter(infos))
+	sort.Sort(moduleGroupSorter(infos))
 
 	buf := bytes.NewBuffer(nil)
 
