@@ -86,7 +86,7 @@ type DynamicDependerModule interface {
 	DynamicDependencies(DynamicDependerModuleContext) []string
 }
 
-type DynamicDependerModuleContext interface {
+type BaseModuleContext interface {
 	ModuleName() string
 	ModuleDir() string
 	Config() interface{}
@@ -98,8 +98,12 @@ type DynamicDependerModuleContext interface {
 	Failed() bool
 }
 
+type DynamicDependerModuleContext interface {
+	BaseModuleContext
+}
+
 type PreModuleContext interface {
-	DynamicDependerModuleContext
+	BaseModuleContext
 
 	OtherModuleName(m Module) string
 	OtherModuleErrorf(m Module, fmt string, args ...interface{})
@@ -118,33 +122,33 @@ type ModuleContext interface {
 	AddNinjaFileDeps(deps ...string)
 }
 
-var _ DynamicDependerModuleContext = (*dynamicDependerModuleContext)(nil)
+var _ BaseModuleContext = (*baseModuleContext)(nil)
 
-type dynamicDependerModuleContext struct {
+type baseModuleContext struct {
 	context *Context
 	config  interface{}
 	info    *moduleInfo
 	errs    []error
 }
 
-func (d *dynamicDependerModuleContext) ModuleName() string {
+func (d *baseModuleContext) ModuleName() string {
 	return d.info.properties.Name
 }
 
-func (d *dynamicDependerModuleContext) ContainsProperty(name string) bool {
+func (d *baseModuleContext) ContainsProperty(name string) bool {
 	_, ok := d.info.propertyPos[name]
 	return ok
 }
 
-func (d *dynamicDependerModuleContext) ModuleDir() string {
+func (d *baseModuleContext) ModuleDir() string {
 	return filepath.Dir(d.info.relBlueprintsFile)
 }
 
-func (d *dynamicDependerModuleContext) Config() interface{} {
+func (d *baseModuleContext) Config() interface{} {
 	return d.config
 }
 
-func (d *dynamicDependerModuleContext) Errorf(pos scanner.Position,
+func (d *baseModuleContext) Errorf(pos scanner.Position,
 	format string, args ...interface{}) {
 
 	d.errs = append(d.errs, &Error{
@@ -153,7 +157,7 @@ func (d *dynamicDependerModuleContext) Errorf(pos scanner.Position,
 	})
 }
 
-func (d *dynamicDependerModuleContext) ModuleErrorf(format string,
+func (d *baseModuleContext) ModuleErrorf(format string,
 	args ...interface{}) {
 
 	d.errs = append(d.errs, &Error{
@@ -162,7 +166,7 @@ func (d *dynamicDependerModuleContext) ModuleErrorf(format string,
 	})
 }
 
-func (d *dynamicDependerModuleContext) PropertyErrorf(property, format string,
+func (d *baseModuleContext) PropertyErrorf(property, format string,
 	args ...interface{}) {
 
 	pos, ok := d.info.propertyPos[property]
@@ -176,14 +180,14 @@ func (d *dynamicDependerModuleContext) PropertyErrorf(property, format string,
 	})
 }
 
-func (d *dynamicDependerModuleContext) Failed() bool {
+func (d *baseModuleContext) Failed() bool {
 	return len(d.errs) > 0
 }
 
 var _ PreModuleContext = (*preModuleContext)(nil)
 
 type preModuleContext struct {
-	dynamicDependerModuleContext
+	baseModuleContext
 	module Module
 }
 

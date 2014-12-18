@@ -619,7 +619,7 @@ func (c *Context) moduleDepNames(info *moduleInfo,
 	module := c.modules[info.properties.Name]
 	dynamicDepender, ok := module.(DynamicDependerModule)
 	if ok {
-		ddmctx := &dynamicDependerModuleContext{
+		ddmctx := &baseModuleContext{
 			context: c,
 			config:  config,
 			info:    info,
@@ -865,7 +865,7 @@ func (c *Context) preGenerateModuleBuildActions(config interface{}) (errs []erro
 
 		if preGenerateModule, ok := module.(preGenerateModule); ok {
 			mctx := &preModuleContext{
-				dynamicDependerModuleContext: dynamicDependerModuleContext{
+				baseModuleContext: baseModuleContext{
 					context: c,
 					config:  config,
 					info:    info,
@@ -910,7 +910,7 @@ func (c *Context) generateModuleBuildActions(config interface{},
 
 		mctx := &moduleContext{
 			preModuleContext: preModuleContext{
-				dynamicDependerModuleContext: dynamicDependerModuleContext{
+				baseModuleContext: baseModuleContext{
 					context: c,
 					config:  config,
 					info:    info,
