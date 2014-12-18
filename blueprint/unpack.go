@@ -5,6 +5,7 @@ import (
 	"blueprint/proptools"
 	"fmt"
 	"reflect"
+	"strings"
 )
 
 type packedProperty struct {
@@ -154,6 +155,11 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 				panic(fmt.Errorf("field %s contains a non-struct pointer",
 					field.Name))
 			}
+		case reflect.Int, reflect.Uint:
+			if !hasTag(field, "blueprint", "mutated") {
+				panic(fmt.Errorf(`int field %s must be tagged blueprint:"mutated"`, field.Name))
+			}
+
 		default:
 			panic(fmt.Errorf("unsupported kind for field %s: %s",
 				field.Name, kind))
@@ -167,9 +173,19 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			continue
 		}
 
+		var newErrs []error
+
+		if hasTag(field, "blueprint", "mutated") {
+			errs = append(errs,
+				fmt.Errorf("mutated field %s cannot be set in a Blueprint file", propertyName))
+			if len(errs) >= maxErrors {
+				return errs
+			}
+			continue
+		}
+
 		packedProperty.unpacked = true
 
-		var newErrs []error
 		switch kind := fieldValue.Kind(); kind {
 		case reflect.Bool:
 			newErrs = unpackBool(fieldValue, packedProperty.property)
@@ -260,4 +276,15 @@ func unpackStruct(namePrefix string, structValue reflect.Value,
 	}
 
 	return unpackStructValue(namePrefix, structValue, propertyMap)
+}
+
+func hasTag(field reflect.StructField, name, value string) bool {
+	tag := field.Tag.Get(name)
+	for _, entry := range strings.Split(tag, ",") {
+		if entry == value {
+			return true
+		}
+	}
+
+	return false
 }

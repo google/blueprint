@@ -40,7 +40,7 @@ func CopyProperties(dstValue, srcValue reflect.Value) {
 		dstFieldValue := dstValue.Field(i)
 
 		switch srcFieldValue.Kind() {
-		case reflect.Bool, reflect.String:
+		case reflect.Bool, reflect.String, reflect.Int, reflect.Uint:
 			dstFieldValue.Set(srcFieldValue)
 		case reflect.Struct:
 			CopyProperties(dstFieldValue, srcFieldValue)
@@ -104,7 +104,7 @@ func ZeroProperties(structValue reflect.Value) {
 		fieldValue := structValue.Field(i)
 
 		switch fieldValue.Kind() {
-		case reflect.Bool, reflect.String, reflect.Struct, reflect.Slice:
+		case reflect.Bool, reflect.String, reflect.Struct, reflect.Slice, reflect.Int, reflect.Uint:
 			fieldValue.Set(reflect.Zero(fieldValue.Type()))
 		case reflect.Ptr, reflect.Interface:
 			if !fieldValue.IsNil() {
