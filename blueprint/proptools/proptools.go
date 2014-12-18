@@ -79,7 +79,7 @@ func CopyProperties(dstValue, srcValue reflect.Value) {
 					dstFieldValue.Set(CloneProperties(elem))
 				} else {
 					// Re-use the existing allocation.
-					CopyProperties(dstFieldValue, srcFieldValue)
+					CopyProperties(dstFieldValue.Elem().Elem(), srcFieldValue.Elem().Elem())
 				}
 			} else {
 				dstFieldValue.Set(srcFieldValue)
