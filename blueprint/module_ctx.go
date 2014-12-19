@@ -7,12 +7,16 @@ import (
 )
 
 // A Module handles generating all of the Ninja build actions needed to build a
-// single module that is defined in a Blueprints file.  Module objects are
-// created during the parse phase of a Context using one of the registered
-// module types (and the associated ModuleFactory function).  The Module's
-// properties struct is automatically filled in with the property values
-// specified in the Blueprints file (see Context.RegisterModuleType for more
+// single module based on properties defined in a Blueprints file.  Module
+// objects are initially created during the parse phase of a Context using one
+// of the registered module types (and the associated ModuleFactory function).
+// The Module's properties struct is automatically filled in with the property
+// values specified in the Blueprints file (see Context.RegisterModuleType for more
 // information on this).
+//
+// A Module can be split into multiple Modules by a Mutator.  All existing
+// properties set on the module will be duplicated to the new Module, and then
+// modified as necessary by the Mutator.
 //
 // The Module implementation can access the build configuration as well as any
 // modules on which on which it depends (as defined by the "deps" property
@@ -115,11 +119,15 @@ type PreModuleContext interface {
 type ModuleContext interface {
 	PreModuleContext
 
+	ModuleSubDir() string
+
 	Variable(pctx *PackageContext, name, value string)
 	Rule(pctx *PackageContext, name string, params RuleParams, argNames ...string) Rule
 	Build(pctx *PackageContext, params BuildParams)
 
 	AddNinjaFileDeps(deps ...string)
+
+	PrimaryModule() Module
 }
 
 var _ BaseModuleContext = (*baseModuleContext)(nil)
@@ -188,7 +196,8 @@ var _ PreModuleContext = (*preModuleContext)(nil)
 
 type preModuleContext struct {
 	baseModuleContext
-	module *moduleInfo
+	module        *moduleInfo
+	primaryModule *moduleInfo
 }
 
 func (m *preModuleContext) OtherModuleName(module Module) string {
@@ -223,6 +232,10 @@ type moduleContext struct {
 	scope         *localScope
 	ninjaFileDeps []string
 	actionDefs    localBuildActions
+}
+
+func (m *moduleContext) ModuleSubDir() string {
+	return m.module.subName()
 }
 
 func (m *moduleContext) Variable(pctx *PackageContext, name, value string) {
@@ -264,4 +277,121 @@ func (m *moduleContext) Build(pctx *PackageContext, params BuildParams) {
 
 func (m *moduleContext) AddNinjaFileDeps(deps ...string) {
 	m.ninjaFileDeps = append(m.ninjaFileDeps, deps...)
+}
+
+func (m *moduleContext) PrimaryModule() Module {
+	return m.primaryModule.logicModule
+}
+
+//
+// MutatorContext
+//
+
+type mutatorContext struct {
+	baseModuleContext
+	module               *moduleInfo
+	name                 string
+	dependenciesModified bool
+}
+
+type baseMutatorContext interface {
+	BaseModuleContext
+
+	Module() Module
+}
+
+type TopDownMutatorContext interface {
+	baseMutatorContext
+
+	VisitDirectDeps(visit func(Module))
+	VisitDirectDepsIf(pred func(Module) bool, visit func(Module))
+	VisitDepsDepthFirst(visit func(Module))
+	VisitDepsDepthFirstIf(pred func(Module) bool, visit func(Module))
+}
+
+type BottomUpMutatorContext interface {
+	baseMutatorContext
+
+	AddDependency(module Module, name string)
+	CreateVariants(...string) []Module
+	SetDependencyVariant(string)
+}
+
+// A Mutator function is called for each Module, and can use
+// MutatorContext.CreateSubVariants to split a Module into multiple Modules,
+// modifying properties on the new modules to differentiate them.  It is called
+// after parsing all Blueprint files, but before generating any build rules,
+// and is always called on dependencies before being called on the depending module.
+//
+// The Mutator function should only modify members of properties structs, and not
+// members of the module struct itself, to ensure the modified values are copied
+// if a second Mutator chooses to split the module a second time.
+type TopDownMutator func(mctx TopDownMutatorContext)
+type BottomUpMutator func(mctx BottomUpMutatorContext)
+
+// Split a module into mulitple variants, one for each name in the variantNames
+// parameter.  It returns a list of new modules in the same order as the variantNames
+// list.
+//
+// If any of the dependencies of the module being operated on were already split
+// by calling CreateVariants with the same name, the dependency will automatically
+// be updated to point the matching variant.
+//
+// If a module is split, and then a module depending on the first module is not split
+// when the Mutator is later called on it, the dependency of the depending module will
+// automatically be updated to point to the first variant.
+func (mctx *mutatorContext) CreateVariants(variantNames ...string) []Module {
+	ret := []Module{}
+	modules := mctx.context.createVariants(mctx.module, mctx.name, variantNames)
+
+	for _, module := range modules {
+		ret = append(ret, module.logicModule)
+	}
+
+	if len(ret) != len(variantNames) {
+		panic("oops!")
+	}
+
+	return ret
+}
+
+// Set all dangling dependencies on the current module to point to the variant
+// with given name.
+func (mctx *mutatorContext) SetDependencyVariant(variantName string) {
+	subName := subName{
+		mutatorName: mctx.name,
+		variantName: variantName,
+	}
+	mctx.context.convertDepsToVariant(mctx.module, subName)
+}
+
+func (mctx *mutatorContext) Module() Module {
+	return mctx.module.logicModule
+}
+
+// Add a dependency to the given module.  The depender can be a specific variant
+// of a module, but the dependee must be a module that only has a single variant.
+// Does not affect the ordering of the current mutator pass, but will be ordered
+// correctly for all future mutator passes.
+func (mctx *mutatorContext) AddDependency(module Module, depName string) {
+	mctx.context.addDependency(mctx.context.moduleInfo[module], depName)
+	mctx.dependenciesModified = true
+}
+
+func (mctx *mutatorContext) VisitDirectDeps(visit func(Module)) {
+	mctx.context.visitDirectDeps(mctx.module, visit)
+}
+
+func (mctx *mutatorContext) VisitDirectDepsIf(pred func(Module) bool, visit func(Module)) {
+	mctx.context.visitDirectDepsIf(mctx.module, pred, visit)
+}
+
+func (mctx *mutatorContext) VisitDepsDepthFirst(visit func(Module)) {
+	mctx.context.visitDepsDepthFirst(mctx.module, visit)
+}
+
+func (mctx *mutatorContext) VisitDepsDepthFirstIf(pred func(Module) bool,
+	visit func(Module)) {
+
+	mctx.context.visitDepsDepthFirstIf(mctx.module, pred, visit)
 }
