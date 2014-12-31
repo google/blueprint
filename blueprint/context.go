@@ -1293,7 +1293,7 @@ func (c *Context) AllTargets() (map[string]string, error) {
 			for _, output := range buildDef.Outputs {
 				outputValue, err := output.Eval(c.globalVariables)
 				if err != nil {
-		    			return nil, err
+					return nil, err
 				}
 				targets[outputValue] = ruleName
 			}
