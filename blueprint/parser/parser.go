@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 	"text/scanner"
@@ -22,8 +23,8 @@ func (e *ParseError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Pos, e.Err)
 }
 
-func Parse(filename string, r io.Reader) (defs []Definition, errs []error) {
-	p := newParser(r)
+func Parse(filename string, r io.Reader, scope *Scope) (defs []Definition, errs []error) {
+	p := newParser(r, scope)
 	p.scanner.Filename = filename
 
 	defer func() {
@@ -48,10 +49,12 @@ type parser struct {
 	scanner scanner.Scanner
 	tok     rune
 	errors  []error
+	scope   *Scope
 }
 
-func newParser(r io.Reader) *parser {
+func newParser(r io.Reader, scope *Scope) *parser {
 	p := &parser{}
+	p.scope = scope
 	p.scanner.Init(r)
 	p.scanner.Error = func(sc *scanner.Scanner, msg string) {
 		p.errorf(msg)
@@ -140,6 +143,10 @@ func (p *parser) parseAssignment(name string,
 	assignment.Value = value
 	assignment.Pos = pos
 
+	if p.scope != nil {
+		p.scope.Add(assignment)
+	}
+
 	return
 }
 
@@ -196,7 +203,7 @@ func (p *parser) parseProperty() (property *Property) {
 func (p *parser) parseValue() (value Value) {
 	switch p.tok {
 	case scanner.Ident:
-		return p.parseBoolValue()
+		return p.parseVariable()
 	case scanner.String:
 		return p.parseStringValue()
 	case '[':
@@ -210,18 +217,23 @@ func (p *parser) parseValue() (value Value) {
 	}
 }
 
-func (p *parser) parseBoolValue() (value Value) {
-	value.Type = Bool
+func (p *parser) parseVariable() (value Value) {
 	value.Pos = p.scanner.Position
 	switch text := p.scanner.TokenText(); text {
 	case "true":
+		value.Type = Bool
 		value.BoolValue = true
 	case "false":
+		value.Type = Bool
 		value.BoolValue = false
 	default:
-		p.errorf("expected true or false; found %q", text)
-		return
+		assignment, err := p.scope.Get(p.scanner.TokenText())
+		if err != nil {
+			p.errorf(err.Error())
+		}
+		value = assignment.Value
 	}
+
 	p.accept(scanner.Ident)
 	return
 }
@@ -247,8 +259,13 @@ func (p *parser) parseListValue() (value Value) {
 	}
 
 	var elements []Value
-	for p.tok == scanner.String {
-		elements = append(elements, p.parseStringValue())
+	for p.tok != ']' {
+		element := p.parseValue()
+		if element.Type != String {
+			p.errorf("Expected string in list, found %s", element.String())
+			return
+		}
+		elements = append(elements, element)
 
 		if p.tok != ',' {
 			// There was no comma, so the list is done.
@@ -378,4 +395,61 @@ func (p Value) String() string {
 	default:
 		panic(fmt.Errorf("bad property type: %d", p.Type))
 	}
+}
+
+type Scope struct {
+	vars map[string]*Assignment
+}
+
+func NewScope(s *Scope) *Scope {
+	newScope := &Scope{
+		vars: make(map[string]*Assignment),
+	}
+
+	if s != nil {
+		for k, v := range s.vars {
+			newScope.vars[k] = v
+		}
+	}
+
+	return newScope
+}
+
+func (s *Scope) Add(assignment *Assignment) error {
+	if old, ok := s.vars[assignment.Name]; ok {
+		return fmt.Errorf("variable already set, previous assignment: %s", old)
+	}
+
+	s.vars[assignment.Name] = assignment
+
+	return nil
+}
+
+func (s *Scope) Remove(name string) {
+	delete(s.vars, name)
+}
+
+func (s *Scope) Get(name string) (*Assignment, error) {
+	if a, ok := s.vars[name]; ok {
+		return a, nil
+	}
+
+	return nil, fmt.Errorf("variable %s not set", name)
+}
+
+func (s *Scope) String() string {
+	vars := []string{}
+
+	for k := range s.vars {
+		vars = append(vars, k)
+	}
+
+	sort.Strings(vars)
+
+	ret := []string{}
+	for _, v := range vars {
+		ret = append(ret, s.vars[v].String())
+	}
+
+	return strings.Join(ret, "\n")
 }

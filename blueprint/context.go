@@ -145,9 +145,9 @@ type singletonInfo struct {
 
 type mutatorInfo struct {
 	// set during RegisterMutator
-	topDownMutator TopDownMutator
-	bottomUpMutator    BottomUpMutator
-	name              string
+	topDownMutator  TopDownMutator
+	bottomUpMutator BottomUpMutator
+	name            string
 }
 
 func (e *Error) Error() string {
@@ -293,7 +293,7 @@ func (c *Context) RegisterTopDownMutator(name string, mutator TopDownMutator) {
 
 	c.mutatorInfo = append(c.mutatorInfo, &mutatorInfo{
 		topDownMutator: mutator,
-		name:              name,
+		name:           name,
 	})
 }
 
@@ -311,7 +311,7 @@ func (c *Context) RegisterBottomUpMutator(name string, mutator BottomUpMutator) 
 
 	c.mutatorInfo = append(c.mutatorInfo, &mutatorInfo{
 		bottomUpMutator: mutator,
-		name:           name,
+		name:            name,
 	})
 }
 
@@ -339,17 +339,19 @@ func (c *Context) SetIgnoreUnknownModuleTypes(ignoreUnknownModuleTypes bool) {
 // This method should probably not be used directly.  It is provided to simplify
 // testing.  Instead ParseBlueprintsFiles should be called to parse a set of
 // Blueprints files starting from a top-level Blueprints file.
-func (c *Context) Parse(rootDir, filename string, r io.Reader) (subdirs []string,
-	errs []error) {
+func (c *Context) Parse(rootDir, filename string, r io.Reader,
+	scope *parser.Scope) (subdirs []string, errs []error, outScope *parser.Scope) {
 
 	c.dependenciesReady = false
 
 	relBlueprintsFile, err := filepath.Rel(rootDir, filename)
 	if err != nil {
-		return nil, []error{err}
+		return nil, []error{err}, nil
 	}
 
-	defs, errs := parser.Parse(filename, r)
+	scope = parser.NewScope(scope)
+	scope.Remove("subdirs")
+	defs, errs := parser.Parse(filename, r, scope)
 	if len(errs) > 0 {
 		for i, err := range errs {
 			if parseErr, ok := err.(*parser.ParseError); ok {
@@ -363,7 +365,7 @@ func (c *Context) Parse(rootDir, filename string, r io.Reader) (subdirs []string
 
 		// If there were any parse errors don't bother trying to interpret the
 		// result.
-		return nil, errs
+		return nil, errs, nil
 	}
 
 	for _, def := range defs {
@@ -373,12 +375,7 @@ func (c *Context) Parse(rootDir, filename string, r io.Reader) (subdirs []string
 			newErrs = c.processModuleDef(def, relBlueprintsFile)
 
 		case *parser.Assignment:
-			var newSubdirs []string
-			newSubdirs, newErrs = c.processAssignment(def)
-			if newSubdirs != nil {
-				subdirs = newSubdirs
-			}
-
+			// Already handled via Scope object
 		default:
 			panic("unknown definition type")
 		}
@@ -391,7 +388,17 @@ func (c *Context) Parse(rootDir, filename string, r io.Reader) (subdirs []string
 		}
 	}
 
-	return subdirs, errs
+	subdirs, newErrs := c.processSubdirs(scope)
+	if len(newErrs) > 0 {
+		errs = append(errs, newErrs...)
+	}
+
+	return subdirs, errs, scope
+}
+
+type blueprintAndScope struct {
+	blueprint string
+	scope     *parser.Scope
 }
 
 // ParseBlueprintsFiles parses a set of Blueprints files starting with the file
@@ -409,7 +416,7 @@ func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string,
 	rootDir := filepath.Dir(rootFile)
 
 	depsSet := map[string]bool{rootFile: true}
-	blueprints := []string{rootFile}
+	blueprints := []blueprintAndScope{blueprintAndScope{rootFile, nil}}
 
 	var file *os.File
 	defer func() {
@@ -425,7 +432,8 @@ func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string,
 			return
 		}
 
-		filename := blueprints[i]
+		filename := blueprints[i].blueprint
+		scope := blueprints[i].scope
 		dir := filepath.Dir(filename)
 
 		file, err = os.Open(filename)
@@ -434,7 +442,7 @@ func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string,
 			continue
 		}
 
-		subdirs, newErrs := c.Parse(rootDir, filename, file)
+		subdirs, newErrs, subScope := c.Parse(rootDir, filename, file, scope)
 		if len(newErrs) > 0 {
 			errs = append(errs, newErrs...)
 			continue
@@ -475,7 +483,11 @@ func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string,
 						// We haven't seen this Blueprints file before, so add
 						// it to our list.
 						depsSet[subBlueprints] = true
-						blueprints = append(blueprints, subBlueprints)
+						blueprints = append(blueprints,
+							blueprintAndScope{
+								subBlueprints,
+								subScope,
+							})
 					}
 				}
 
@@ -487,7 +499,11 @@ func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string,
 				subBlueprints := filepath.Join(subdir, "Blueprints")
 				if !depsSet[subBlueprints] {
 					depsSet[subBlueprints] = true
-					blueprints = append(blueprints, subBlueprints)
+					blueprints = append(blueprints,
+						blueprintAndScope{
+							subBlueprints,
+							subScope,
+						})
 				}
 			}
 		}
@@ -523,10 +539,10 @@ func listSubdirs(dir string) ([]string, error) {
 	return subdirs, nil
 }
 
-func (c *Context) processAssignment(
-	assignment *parser.Assignment) (subdirs []string, errs []error) {
+func (c *Context) processSubdirs(
+	scope *parser.Scope) (subdirs []string, errs []error) {
 
-	if assignment.Name == "subdirs" {
+	if assignment, err := scope.Get("subdirs"); err == nil {
 		switch assignment.Value.Type {
 		case parser.List:
 			subdirs = make([]string, 0, len(assignment.Value.ListValue))
@@ -574,12 +590,7 @@ func (c *Context) processAssignment(
 		}
 	}
 
-	return nil, []error{
-		&Error{
-			Err: fmt.Errorf("only 'subdirs' assignment is supported"),
-			Pos: assignment.Pos,
-		},
-	}
+	return nil, nil
 }
 
 func (c *Context) createVariants(origModule *moduleInfo, mutatorName string,
