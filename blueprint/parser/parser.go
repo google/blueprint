@@ -137,7 +137,7 @@ func (p *parser) parseAssignment(name string,
 	if !p.accept('=') {
 		return
 	}
-	value := p.parseValue()
+	value := p.parseExpression()
 
 	assignment.Name = name
 	assignment.Value = value
@@ -191,13 +191,53 @@ func (p *parser) parseProperty() (property *Property) {
 	if !p.accept(scanner.Ident, ':') {
 		return
 	}
-	value := p.parseValue()
+	value := p.parseExpression()
 
 	property.Name = name
 	property.Value = value
 	property.Pos = pos
 
 	return
+}
+
+func (p *parser) parseExpression() (value Value) {
+	value = p.parseValue()
+	switch p.tok {
+	case '+':
+		return p.parseOperator(value)
+	default:
+		return value
+	}
+}
+
+func (p *parser) parseOperator(value1 Value) (value Value) {
+	operator := p.tok
+	p.accept(operator)
+
+	value2 := p.parseExpression()
+
+	if value1.Type != value2.Type {
+		p.errorf("mismatched type in operator %c: %s != %s", operator,
+			value1.Type, value2.Type)
+		return
+	}
+
+	switch operator {
+	case '+':
+		switch value1.Type {
+		case String:
+			value1.StringValue += value2.StringValue
+		case List:
+			value1.ListValue = append(value1.ListValue, value2.ListValue...)
+		default:
+			p.errorf("operator %c not supported on type %s", operator, value1.Type)
+			return
+		}
+	default:
+		panic("unknown operator " + string(operator))
+	}
+
+	return value1
 }
 
 func (p *parser) parseValue() (value Value) {
@@ -260,7 +300,7 @@ func (p *parser) parseListValue() (value Value) {
 
 	var elements []Value
 	for p.tok != ']' {
-		element := p.parseValue()
+		element := p.parseExpression()
 		if element.Type != String {
 			p.errorf("Expected string in list, found %s", element.String())
 			return
