@@ -128,6 +128,8 @@ type ModuleContext interface {
 	AddNinjaFileDeps(deps ...string)
 
 	PrimaryModule() Module
+	FinalModule() Module
+	VisitAllModuleVariants(visit func(Module))
 }
 
 var _ BaseModuleContext = (*baseModuleContext)(nil)
@@ -196,8 +198,7 @@ var _ PreModuleContext = (*preModuleContext)(nil)
 
 type preModuleContext struct {
 	baseModuleContext
-	module        *moduleInfo
-	primaryModule *moduleInfo
+	module *moduleInfo
 }
 
 func (m *preModuleContext) OtherModuleName(module Module) string {
@@ -280,7 +281,17 @@ func (m *moduleContext) AddNinjaFileDeps(deps ...string) {
 }
 
 func (m *moduleContext) PrimaryModule() Module {
-	return m.primaryModule.logicModule
+	return m.module.group.modules[0].logicModule
+}
+
+func (m *moduleContext) FinalModule() Module {
+	return m.module.group.modules[len(m.module.group.modules)-1].logicModule
+}
+
+func (m *moduleContext) VisitAllModuleVariants(visit func(Module)) {
+	for _, module := range m.module.group.modules {
+		visit(module.logicModule)
+	}
 }
 
 //
