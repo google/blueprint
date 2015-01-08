@@ -57,7 +57,7 @@ func TestContextParse(t *testing.T) {
 		}
 	`)
 
-	_, errs := ctx.Parse(".", "Blueprint", r)
+	_, _, errs, _ := ctx.parse(".", "Blueprint", r, nil)
 	if len(errs) > 0 {
 		t.Errorf("unexpected parse errors:")
 		for _, err := range errs {
@@ -75,7 +75,7 @@ func TestContextParse(t *testing.T) {
 		t.FailNow()
 	}
 
-	errs = ctx.checkForDependencyCycles()
+	errs = ctx.rebuildSortedModuleList()
 	if len(errs) > 0 {
 		t.Errorf("unexpected dep cycle errors:")
 		for _, err := range errs {

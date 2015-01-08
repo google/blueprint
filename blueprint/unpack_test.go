@@ -111,7 +111,7 @@ var validUnpackTestCases = []struct {
 func TestUnpackProperties(t *testing.T) {
 	for _, testCase := range validUnpackTestCases {
 		r := bytes.NewBufferString(testCase.input)
-		defs, errs := parser.Parse("", r)
+		defs, errs := parser.Parse("", r, nil)
 		if len(errs) != 0 {
 			t.Errorf("test case: %s", testCase.input)
 			t.Errorf("unexpected parse errors:")

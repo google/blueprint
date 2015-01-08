@@ -232,6 +232,8 @@ type ModuleFactory func() (m Module, propertyStructs []interface{})
 //       bar:  ["my", "bar", "strings"],
 //   }
 //
+// The factory function may be called from multiple goroutines.  Any accesses
+// to global variables must be synchronized.
 func (c *Context) RegisterModuleType(name string, factory ModuleFactory) {
 	if _, present := c.moduleFactories[name]; present {
 		panic(errors.New("module type name is already registered"))
@@ -335,18 +337,13 @@ func (c *Context) SetIgnoreUnknownModuleTypes(ignoreUnknownModuleTypes bool) {
 // rootDir specifies the path to the root directory of the source tree, while
 // filename specifies the path to the Blueprints file.  These paths are used for
 // error reporting and for determining the module's directory.
-//
-// This method should probably not be used directly.  It is provided to simplify
-// testing.  Instead ParseBlueprintsFiles should be called to parse a set of
-// Blueprints files starting from a top-level Blueprints file.
-func (c *Context) Parse(rootDir, filename string, r io.Reader,
-	scope *parser.Scope) (subdirs []string, errs []error, outScope *parser.Scope) {
-
-	c.dependenciesReady = false
+func (c *Context) parse(rootDir, filename string, r io.Reader,
+	scope *parser.Scope) (subdirs []string, modules []*moduleInfo, errs []error,
+	outScope *parser.Scope) {
 
 	relBlueprintsFile, err := filepath.Rel(rootDir, filename)
 	if err != nil {
-		return nil, []error{err}, nil
+		return nil, nil, []error{err}, nil
 	}
 
 	scope = parser.NewScope(scope)
@@ -365,14 +362,15 @@ func (c *Context) Parse(rootDir, filename string, r io.Reader,
 
 		// If there were any parse errors don't bother trying to interpret the
 		// result.
-		return nil, errs, nil
+		return nil, nil, errs, nil
 	}
 
 	for _, def := range defs {
 		var newErrs []error
+		var newModule *moduleInfo
 		switch def := def.(type) {
 		case *parser.Module:
-			newErrs = c.processModuleDef(def, relBlueprintsFile)
+			newModule, newErrs = c.processModuleDef(def, relBlueprintsFile)
 
 		case *parser.Assignment:
 			// Already handled via Scope object
@@ -385,6 +383,8 @@ func (c *Context) Parse(rootDir, filename string, r io.Reader,
 			if len(errs) > maxErrors {
 				break
 			}
+		} else if newModule != nil {
+			modules = append(modules, newModule)
 		}
 	}
 
@@ -393,12 +393,12 @@ func (c *Context) Parse(rootDir, filename string, r io.Reader,
 		errs = append(errs, newErrs...)
 	}
 
-	return subdirs, errs, scope
+	return subdirs, modules, errs, scope
 }
 
-type blueprintAndScope struct {
-	blueprint string
-	scope     *parser.Scope
+type stringAndScope struct {
+	string
+	*parser.Scope
 }
 
 // ParseBlueprintsFiles parses a set of Blueprints files starting with the file
@@ -413,107 +413,147 @@ type blueprintAndScope struct {
 func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string,
 	errs []error) {
 
+	c.dependenciesReady = false
+
 	rootDir := filepath.Dir(rootFile)
 
-	depsSet := map[string]bool{rootFile: true}
-	blueprints := []blueprintAndScope{blueprintAndScope{rootFile, nil}}
+	blueprintsSet := make(map[string]bool)
 
-	var file *os.File
-	defer func() {
-		if file != nil {
-			file.Close()
-		}
-	}()
+	// Channels to receive data back from parseBlueprintsFile goroutines
+	blueprintsCh := make(chan stringAndScope)
+	errsCh := make(chan []error)
+	modulesCh := make(chan []*moduleInfo)
+	depsCh := make(chan string)
 
-	var err error
+	// Channel to notify main loop that a parseBlueprintsFile goroutine has finished
+	doneCh := make(chan struct{})
 
-	for i := 0; i < len(blueprints); i++ {
+	// Number of outstanding goroutines to wait for
+	count := 0
+
+	startParseBlueprintsFile := func(filename string, scope *parser.Scope) {
+		count++
+		go func() {
+			c.parseBlueprintsFile(filename, scope, rootDir,
+				errsCh, modulesCh, blueprintsCh, depsCh)
+			doneCh <- struct{}{}
+		}()
+	}
+
+	tooManyErrors := false
+
+	startParseBlueprintsFile(rootFile, nil)
+
+loop:
+	for {
 		if len(errs) > maxErrors {
-			return
+			tooManyErrors = true
 		}
 
-		filename := blueprints[i].blueprint
-		scope := blueprints[i].scope
-		dir := filepath.Dir(filename)
-
-		file, err = os.Open(filename)
-		if err != nil {
-			errs = append(errs, &Error{Err: err})
-			continue
-		}
-
-		subdirs, newErrs, subScope := c.Parse(rootDir, filename, file, scope)
-		if len(newErrs) > 0 {
+		select {
+		case newErrs := <-errsCh:
 			errs = append(errs, newErrs...)
-			continue
-		}
+		case dep := <-depsCh:
+			deps = append(deps, dep)
+		case modules := <-modulesCh:
+			newErrs := c.addModules(modules)
+			errs = append(errs, newErrs...)
+		case blueprint := <-blueprintsCh:
+			if tooManyErrors {
+				continue
+			}
+			if blueprintsSet[blueprint.string] {
+				continue
+			}
 
-		err = file.Close()
-		if err != nil {
-			errs = append(errs, &Error{Err: err})
-			continue
-		}
-
-		// Add the subdirs to the list of directories to parse Blueprint files
-		// from.
-		for _, subdir := range subdirs {
-			subdir = filepath.Join(dir, subdir)
-			dirPart, filePart := filepath.Split(subdir)
-			dirPart = filepath.Clean(dirPart)
-
-			if filePart == "*" {
-				foundSubdirs, err := listSubdirs(dirPart)
-				if err != nil {
-					errs = append(errs, &Error{Err: err})
-					continue
-				}
-
-				for _, foundSubdir := range foundSubdirs {
-					subBlueprints := filepath.Join(dirPart, foundSubdir,
-						"Blueprints")
-
-					_, err := os.Stat(subBlueprints)
-					if os.IsNotExist(err) {
-						// There is no Blueprints file in this subdirectory.  We
-						// need to add the directory to the list of dependencies
-						// so that if someone adds a Blueprints file in the
-						// future we'll pick it up.
-						depsSet[filepath.Dir(subBlueprints)] = true
-					} else if !depsSet[subBlueprints] {
-						// We haven't seen this Blueprints file before, so add
-						// it to our list.
-						depsSet[subBlueprints] = true
-						blueprints = append(blueprints,
-							blueprintAndScope{
-								subBlueprints,
-								subScope,
-							})
-					}
-				}
-
-				// We now depend on the directory itself because if any new
-				// subdirectories get added or removed we need to rebuild the
-				// Ninja manifest.
-				depsSet[dirPart] = true
-			} else {
-				subBlueprints := filepath.Join(subdir, "Blueprints")
-				if !depsSet[subBlueprints] {
-					depsSet[subBlueprints] = true
-					blueprints = append(blueprints,
-						blueprintAndScope{
-							subBlueprints,
-							subScope,
-						})
-				}
+			blueprintsSet[blueprint.string] = true
+			startParseBlueprintsFile(blueprint.string, blueprint.Scope)
+		case <-doneCh:
+			count--
+			if count == 0 {
+				break loop
 			}
 		}
 	}
 
-	for dep := range depsSet {
-		deps = append(deps, dep)
+	return
+}
+
+// parseBlueprintFile parses a single Blueprints file, returning any errors through
+// errsCh, any defined modules through modulesCh, any sub-Blueprints files through
+// blueprintsCh, and any dependencies on Blueprints files or directories through
+// depsCh.
+func (c *Context) parseBlueprintsFile(filename string, scope *parser.Scope, rootDir string,
+	errsCh chan<- []error, modulesCh chan<- []*moduleInfo, blueprintsCh chan<- stringAndScope,
+	depsCh chan<- string) {
+
+	dir := filepath.Dir(filename)
+
+	file, err := os.Open(filename)
+	if err != nil {
+		errsCh <- []error{err}
+		return
 	}
 
-	return
+	subdirs, modules, errs, subScope := c.parse(rootDir, filename, file, scope)
+	if len(errs) > 0 {
+		errsCh <- errs
+	}
+
+	err = file.Close()
+	if err != nil {
+		errsCh <- []error{err}
+	}
+
+	modulesCh <- modules
+
+	for _, subdir := range subdirs {
+		subdir = filepath.Join(dir, subdir)
+
+		dirPart, filePart := filepath.Split(subdir)
+		dirPart = filepath.Clean(dirPart)
+
+		if filePart == "*" {
+			foundSubdirs, err := listSubdirs(dirPart)
+			if err != nil {
+				errsCh <- []error{err}
+				return
+			}
+
+			for _, foundSubdir := range foundSubdirs {
+				subBlueprints := filepath.Join(dirPart, foundSubdir,
+					"Blueprints")
+
+				_, err := os.Stat(subBlueprints)
+				if os.IsNotExist(err) {
+					// There is no Blueprints file in this subdirectory.  We
+					// need to add the directory to the list of dependencies
+					// so that if someone adds a Blueprints file in the
+					// future we'll pick it up.
+					depsCh <- filepath.Dir(subBlueprints)
+				} else {
+					depsCh <- subBlueprints
+					blueprintsCh <- stringAndScope{
+						subBlueprints,
+						subScope,
+					}
+				}
+			}
+
+			// We now depend on the directory itself because if any new
+			// subdirectories get added or removed we need to rebuild the
+			// Ninja manifest.
+			depsCh <- dirPart
+		} else {
+			subBlueprints := filepath.Join(subdir, "Blueprints")
+			depsCh <- subBlueprints
+			blueprintsCh <- stringAndScope{
+				subBlueprints,
+				subScope,
+			}
+
+		}
+	}
 }
 
 func listSubdirs(dir string) ([]string, error) {
@@ -683,16 +723,16 @@ func (c *Context) convertDepsToVariant(module *moduleInfo, newSubName subName) {
 }
 
 func (c *Context) processModuleDef(moduleDef *parser.Module,
-	relBlueprintsFile string) []error {
+	relBlueprintsFile string) (*moduleInfo, []error) {
 
 	typeName := moduleDef.Type
 	factory, ok := c.moduleFactories[typeName]
 	if !ok {
 		if c.ignoreUnknownModuleTypes {
-			return nil
+			return nil, nil
 		}
 
-		return []error{
+		return nil, []error{
 			&Error{
 				Err: fmt.Errorf("unrecognized module type %q", typeName),
 				Pos: moduleDef.Pos,
@@ -713,7 +753,7 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 
 	propertyMap, errs := unpackProperties(moduleDef.Properties, properties...)
 	if len(errs) > 0 {
-		return errs
+		return nil, errs
 	}
 
 	group.pos = moduleDef.Pos
@@ -725,25 +765,11 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 	name := group.properties.Name
 	err := validateNinjaName(name)
 	if err != nil {
-		return []error{
+		return nil, []error{
 			&Error{
 				Err: fmt.Errorf("invalid module name %q: %s", err),
 				Pos: group.propertyPos["name"],
 			},
-		}
-	}
-
-	if first, present := c.moduleGroups[name]; present {
-		errs = append(errs, &Error{
-			Err: fmt.Errorf("module %q already defined", name),
-			Pos: moduleDef.Pos,
-		})
-		errs = append(errs, &Error{
-			Err: fmt.Errorf("<-- previous definition here"),
-			Pos: first.pos,
-		})
-		if len(errs) > 0 {
-			return errs
 		}
 	}
 
@@ -752,13 +778,33 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 		logicModule:      logicModule,
 		moduleProperties: properties,
 	}
-
-	c.moduleGroups[name] = group
-	c.moduleInfo[logicModule] = module
-
 	group.modules = []*moduleInfo{module}
 
-	return nil
+	return module, nil
+}
+
+func (c *Context) addModules(modules []*moduleInfo) (errs []error) {
+	for _, module := range modules {
+		name := module.group.properties.Name
+		if first, present := c.moduleGroups[name]; present {
+			errs = append(errs, []error{
+				&Error{
+					Err: fmt.Errorf("module %q already defined", name),
+					Pos: module.group.pos,
+				},
+				&Error{
+					Err: fmt.Errorf("<-- previous definition here"),
+					Pos: first.pos,
+				},
+			}...)
+			continue
+		}
+
+		c.moduleGroups[name] = module.group
+		c.moduleInfo[module.logicModule] = module
+	}
+
+	return errs
 }
 
 // ResolveDependencies checks that the dependencies specified by all of the
