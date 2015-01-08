@@ -1,10 +1,13 @@
 package blueprint
 
+import "sync"
+
 // A liveTracker tracks the values of live variables, rules, and pools.  An
 // entity is made "live" when it is referenced directly or indirectly by a build
 // definition.  When an entity is made live its value is computed based on the
 // configuration.
 type liveTracker struct {
+	sync.Mutex
 	config interface{} // Used to evaluate variable, rule, and pool values.
 
 	variables map[Variable]*ninjaString
@@ -22,6 +25,9 @@ func newLiveTracker(config interface{}) *liveTracker {
 }
 
 func (l *liveTracker) AddBuildDefDeps(def *buildDef) error {
+	l.Lock()
+	defer l.Unlock()
+
 	err := l.addRule(def.Rule)
 	if err != nil {
 		return err

@@ -75,7 +75,7 @@ func TestContextParse(t *testing.T) {
 		t.FailNow()
 	}
 
-	errs = ctx.rebuildSortedModuleList()
+	errs = ctx.updateDependencies()
 	if len(errs) > 0 {
 		t.Errorf("unexpected dep cycle errors:")
 		for _, err := range errs {

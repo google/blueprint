@@ -61,6 +61,13 @@ import (
 //
 // to build the list of library file names that should be included in its link
 // command.
+//
+// GenerateBuildActions may be called from multiple threads.  It is guaranteed to
+// be called after it has finished being called on all dependencies and on all
+// variants of that appear earlier in the ModuleContext.VisitAllModuleVariants list.
+// Any accesses to global variables or to Module objects that are not dependencies
+// or variants of the current Module must be synchronized by the implementation of
+// GenerateBuildActions.
 type Module interface {
 	// GenerateBuildActions is called by the Context that created the Module
 	// during its generate phase.  This call should generate all Ninja build

@@ -102,8 +102,15 @@ type moduleGroup struct {
 
 	modules []*moduleInfo
 
+	// set during updateDependencies
+	reverseDeps []*moduleGroup
+	depsCount   int
+
 	// set during PrepareBuildActions
 	actionDefs localBuildActions
+
+	// used by parallelVisitAllBottomUp
+	waitingCount int
 }
 
 type moduleInfo struct {
@@ -821,7 +828,7 @@ func (c *Context) ResolveDependencies(config interface{}) []error {
 		return errs
 	}
 
-	errs = c.rebuildSortedModuleList()
+	errs = c.updateDependencies()
 	if len(errs) > 0 {
 		return errs
 	}
@@ -935,12 +942,53 @@ func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 	return nil
 }
 
-// rebuildSortedModuleList recursively walks the module dependency graph and
-// builds a sorted list of modules such that dependencies of a module always
-// appear first.  It also reports errors when it encounters dependency cycles.
-// This should called after resolveDependencies, as well as after any mutator
-// pass has called addDependency
-func (c *Context) rebuildSortedModuleList() (errs []error) {
+func (c *Context) parallelVisitAllBottomUp(visit func(group *moduleGroup)) {
+	doneCh := make(chan *moduleGroup)
+	count := 0
+
+	for _, group := range c.moduleGroupsSorted {
+		group.waitingCount = group.depsCount
+	}
+
+	visitOne := func(group *moduleGroup) {
+		count++
+		go func() {
+			visit(group)
+			doneCh <- group
+		}()
+	}
+
+	for _, group := range c.moduleGroupsSorted {
+		if group.waitingCount == 0 {
+			visitOne(group)
+		}
+	}
+
+loop:
+	for {
+		select {
+		case doneGroup := <-doneCh:
+			for _, parent := range doneGroup.reverseDeps {
+				parent.waitingCount--
+				if parent.waitingCount == 0 {
+					visitOne(parent)
+				}
+			}
+			count--
+			if count == 0 {
+				break loop
+			}
+		}
+	}
+}
+
+// updateDependencies recursively walks the module dependency graph and updates
+// additional fields based on the dependencies.  It builds a sorted list of modules
+// such that dependencies of a module always appear first, and populates reverse
+// dependency links and counts of total dependencies.  It also reports errors when
+// it encounters dependency cycles.  This should called after resolveDependencies,
+// as well as after any mutator pass has called addDependency
+func (c *Context) updateDependencies() (errs []error) {
 	visited := make(map[*moduleGroup]bool)  // modules that were already checked
 	checking := make(map[*moduleGroup]bool) // modules actively being checked
 
@@ -959,6 +1007,9 @@ func (c *Context) rebuildSortedModuleList() (errs []error) {
 				deps[dep.group] = true
 			}
 		}
+
+		group.reverseDeps = []*moduleGroup{}
+		group.depsCount = len(deps)
 
 		for dep := range deps {
 			if checking[dep] {
@@ -1003,6 +1054,8 @@ func (c *Context) rebuildSortedModuleList() (errs []error) {
 					}
 				}
 			}
+
+			dep.reverseDeps = append(dep.reverseDeps, group)
 		}
 
 		sorted = append(sorted, group)
@@ -1183,7 +1236,7 @@ func (c *Context) runBottomUpMutator(config interface{},
 	}
 
 	if dependenciesModified {
-		errs = c.rebuildSortedModuleList()
+		errs = c.updateDependencies()
 		if len(errs) > 0 {
 			return errs
 		}
@@ -1205,7 +1258,26 @@ func (c *Context) generateModuleBuildActions(config interface{},
 	var deps []string
 	var errs []error
 
-	for _, group := range c.moduleGroupsSorted {
+	cancelCh := make(chan struct{})
+	errsCh := make(chan []error)
+	depsCh := make(chan []string)
+
+	go func() {
+		for {
+			select {
+			case <-cancelCh:
+				close(cancelCh)
+				return
+			case newErrs := <-errsCh:
+				errs = append(errs, newErrs...)
+			case newDeps := <-depsCh:
+				deps = append(deps, newDeps...)
+
+			}
+		}
+	}()
+
+	c.parallelVisitAllBottomUp(func(group *moduleGroup) {
 		// The parent scope of the moduleContext's local scope gets overridden to be that of the
 		// calling Go package on a per-call basis.  Since the initial parent scope doesn't matter we
 		// just set it to nil.
@@ -1225,20 +1297,23 @@ func (c *Context) generateModuleBuildActions(config interface{},
 			mctx.module.logicModule.GenerateBuildActions(mctx)
 
 			if len(mctx.errs) > 0 {
-				errs = append(errs, mctx.errs...)
+				errsCh <- mctx.errs
 				break
 			}
 
-			deps = append(deps, mctx.ninjaFileDeps...)
+			depsCh <- mctx.ninjaFileDeps
 
 			newErrs := c.processLocalBuildActions(&group.actionDefs,
 				&mctx.actionDefs, liveGlobals)
 			if len(newErrs) > 0 {
-				errs = append(errs, newErrs...)
+				errsCh <- newErrs
 				break
 			}
 		}
-	}
+	})
+
+	cancelCh <- struct{}{}
+	<-cancelCh
 
 	return deps, errs
 }

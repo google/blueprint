@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 // A PackageContext provides a way to create package-scoped Ninja pools,
@@ -543,11 +544,12 @@ func (p *poolFunc) String() string {
 }
 
 type staticRule struct {
-	pctx     *PackageContext
-	name_    string
-	params   RuleParams
-	argNames map[string]bool
-	scope_   *basicScope
+	pctx       *PackageContext
+	name_      string
+	params     RuleParams
+	argNames   map[string]bool
+	scope_     *basicScope
+	sync.Mutex // protects scope_ during lazy creation
 }
 
 // StaticRule returns a Rule whose value does not depend on any configuration
@@ -590,7 +592,13 @@ func (p *PackageContext) StaticRule(name string, params RuleParams,
 
 	ruleScope := (*basicScope)(nil) // This will get created lazily
 
-	r := &staticRule{p, name, params, argNamesSet, ruleScope}
+	r := &staticRule{
+		pctx:     p,
+		name_:    name,
+		params:   params,
+		argNames: argNamesSet,
+		scope_:   ruleScope,
+	}
 	err = p.scope.AddRule(r)
 	if err != nil {
 		panic(err)
@@ -623,6 +631,9 @@ func (r *staticRule) scope() *basicScope {
 	// We lazily create the scope so that all the package-scoped variables get
 	// declared before the args are created.  Otherwise we could incorrectly
 	// shadow a package-scoped variable with an arg variable.
+	r.Lock()
+	defer r.Unlock()
+
 	if r.scope_ == nil {
 		r.scope_ = makeRuleScope(r.pctx.scope, r.argNames)
 	}
@@ -643,6 +654,7 @@ type ruleFunc struct {
 	paramsFunc func(interface{}) (RuleParams, error)
 	argNames   map[string]bool
 	scope_     *basicScope
+	sync.Mutex // protects scope_ during lazy creation
 }
 
 // RuleFunc returns a Rule whose value is determined by a function that takes a
@@ -686,7 +698,13 @@ func (p *PackageContext) RuleFunc(name string, f func(interface{}) (RuleParams,
 
 	ruleScope := (*basicScope)(nil) // This will get created lazily
 
-	rule := &ruleFunc{p, name, f, argNamesSet, ruleScope}
+	rule := &ruleFunc{
+		pctx:       p,
+		name_:      name,
+		paramsFunc: f,
+		argNames:   argNamesSet,
+		scope_:     ruleScope,
+	}
 	err = p.scope.AddRule(rule)
 	if err != nil {
 		panic(err)
@@ -723,6 +741,9 @@ func (r *ruleFunc) scope() *basicScope {
 	// We lazily create the scope so that all the global variables get declared
 	// before the args are created.  Otherwise we could incorrectly shadow a
 	// global variable with an arg variable.
+	r.Lock()
+	defer r.Unlock()
+
 	if r.scope_ == nil {
 		r.scope_ = makeRuleScope(r.pctx.scope, r.argNames)
 	}
@@ -738,8 +759,9 @@ func (r *ruleFunc) String() string {
 }
 
 type builtinRule struct {
-	name_  string
-	scope_ *basicScope
+	name_      string
+	scope_     *basicScope
+	sync.Mutex // protects scope_ during lazy creation
 }
 
 func (r *builtinRule) packageContext() *PackageContext {
@@ -759,6 +781,9 @@ func (r *builtinRule) def(config interface{}) (*ruleDef, error) {
 }
 
 func (r *builtinRule) scope() *basicScope {
+	r.Lock()
+	defer r.Unlock()
+
 	if r.scope_ == nil {
 		r.scope_ = makeRuleScope(nil, nil)
 	}
