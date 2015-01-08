@@ -66,7 +66,7 @@ func buildPropertyMap(namePrefix string, propertyDefs []*parser.Property,
 	propertyMap map[string]*packedProperty) (errs []error) {
 
 	for _, propertyDef := range propertyDefs {
-		name := namePrefix + propertyDef.Name
+		name := namePrefix + propertyDef.Name.Name
 		if first, present := propertyMap[name]; present {
 			if first.property == propertyDef {
 				// We've already added this property.

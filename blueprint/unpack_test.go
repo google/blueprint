@@ -111,7 +111,7 @@ var validUnpackTestCases = []struct {
 func TestUnpackProperties(t *testing.T) {
 	for _, testCase := range validUnpackTestCases {
 		r := bytes.NewBufferString(testCase.input)
-		defs, errs := parser.Parse("", r, nil)
+		file, errs := parser.Parse("", r, nil)
 		if len(errs) != 0 {
 			t.Errorf("test case: %s", testCase.input)
 			t.Errorf("unexpected parse errors:")
@@ -121,7 +121,7 @@ func TestUnpackProperties(t *testing.T) {
 			t.FailNow()
 		}
 
-		module := defs[0].(*parser.Module)
+		module := file.Defs[0].(*parser.Module)
 		properties := proptools.CloneProperties(reflect.ValueOf(testCase.output))
 		proptools.ZeroProperties(properties.Elem())
 		_, errs = unpackProperties(module.Properties, properties.Interface())

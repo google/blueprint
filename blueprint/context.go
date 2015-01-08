@@ -355,7 +355,7 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 
 	scope = parser.NewScope(scope)
 	scope.Remove("subdirs")
-	defs, errs := parser.Parse(filename, r, scope)
+	file, errs := parser.Parse(filename, r, scope)
 	if len(errs) > 0 {
 		for i, err := range errs {
 			if parseErr, ok := err.(*parser.ParseError); ok {
@@ -372,7 +372,7 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 		return nil, nil, errs, nil
 	}
 
-	for _, def := range defs {
+	for _, def := range file.Defs {
 		var newErrs []error
 		var newModule *moduleInfo
 		switch def := def.(type) {
@@ -732,7 +732,7 @@ func (c *Context) convertDepsToVariant(module *moduleInfo, newSubName subName) {
 func (c *Context) processModuleDef(moduleDef *parser.Module,
 	relBlueprintsFile string) (*moduleInfo, []error) {
 
-	typeName := moduleDef.Type
+	typeName := moduleDef.Type.Name
 	factory, ok := c.moduleFactories[typeName]
 	if !ok {
 		if c.ignoreUnknownModuleTypes {
@@ -742,7 +742,7 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 		return nil, []error{
 			&Error{
 				Err: fmt.Errorf("unrecognized module type %q", typeName),
-				Pos: moduleDef.Pos,
+				Pos: moduleDef.Type.Pos,
 			},
 		}
 	}
@@ -763,7 +763,7 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 		return nil, errs
 	}
 
-	group.pos = moduleDef.Pos
+	group.pos = moduleDef.Type.Pos
 	group.propertyPos = make(map[string]scanner.Position)
 	for name, propertyDef := range propertyMap {
 		group.propertyPos[name] = propertyDef.Pos
