@@ -19,7 +19,9 @@ bootstrap_go_package {
 bootstrap_go_package {
     name:    "blueprint-parser",
     pkgPath: "blueprint/parser",
-    srcs:    ["blueprint/parser/parser.go"],
+    srcs:    ["blueprint/parser/parser.go",
+              "blueprint/parser/printer.go",
+              "blueprint/parser/sort.go"],
 }
 
 bootstrap_go_package {
@@ -58,4 +60,10 @@ bootstrap_go_binary {
     name: "minibp",
     deps: ["blueprint", "blueprint-bootstrap"],
     srcs: ["blueprint/bootstrap/minibp/main.go"],
+}
+
+bootstrap_go_binary {
+    name: "bpfmt",
+    deps: ["blueprint-parser"],
+    srcs: ["blueprint/bpfmt/bpfmt.go"],
 }

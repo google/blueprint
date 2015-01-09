@@ -1,0 +1,190 @@
+package parser
+
+import (
+	"bytes"
+	"testing"
+)
+
+var validPrinterTestCases = []struct {
+	input  string
+	output string
+}{
+	{
+		input: `
+foo {}
+`,
+		output: `
+foo {}
+`,
+	},
+	{
+		input: `
+foo{name: "abc",}
+`,
+		output: `
+foo {
+    name: "abc",
+}
+`,
+	},
+	{
+		input: `
+			foo {
+				stuff: ["asdf", "jkl;", "qwert",
+					"uiop", "bnm,"]
+			}
+			`,
+		output: `
+foo {
+    stuff: [
+        "asdf",
+        "bnm,",
+        "jkl;",
+        "qwert",
+        "uiop",
+    ],
+}
+`,
+	},
+	{
+		input: `
+		foo {
+			stuff: {
+				isGood: true,
+				name: "bar"
+			}
+		}
+		`,
+		output: `
+foo {
+    stuff: {
+        isGood: true,
+        name: "bar",
+    },
+}
+`,
+	},
+	{
+		input: `
+// comment1
+foo {
+	// comment2
+	isGood: true,  // comment3
+}
+`,
+		output: `
+// comment1
+foo {
+    // comment2
+    isGood: true, // comment3
+}
+`,
+	},
+	{
+		input: `
+foo {
+	name: "abc",
+}
+
+bar {
+	name: "def",
+}
+		`,
+		output: `
+foo {
+    name: "abc",
+}
+
+bar {
+    name: "def",
+}
+`,
+	},
+	{
+		input: `
+foo = "stuff"
+bar = foo
+baz = foo + bar
+`,
+		output: `
+foo = "stuff"
+bar = foo
+baz = foo + bar
+`,
+	},
+	{
+		input: `
+//test
+test /* test */{
+    srcs: [
+        /*"blueprint/bootstrap/bootstrap.go",
+    "blueprint/bootstrap/cleanup.go",*/
+        "blueprint/bootstrap/command.go",
+        "blueprint/bootstrap/doc.go", //doc.go
+        "blueprint/bootstrap/config.go", //config.go
+    ],
+    deps: ["libabc"],
+    incs: []
+} //test
+//test
+test2{
+}
+
+
+//test3
+`,
+		output: `
+//test
+test /* test */ {
+    srcs: [
+        /*"blueprint/bootstrap/bootstrap.go",
+        "blueprint/bootstrap/cleanup.go",*/
+        "blueprint/bootstrap/command.go",
+        "blueprint/bootstrap/config.go", //config.go
+        "blueprint/bootstrap/doc.go", //doc.go
+    ],
+    deps: ["libabc"],
+    incs: [],
+} //test
+
+//test
+test2 {
+}
+
+//test3
+`,
+	},
+}
+
+func TestPrinter(t *testing.T) {
+	for _, testCase := range validPrinterTestCases {
+		in := testCase.input[1:]
+		expected := testCase.output[1:]
+
+		r := bytes.NewBufferString(in)
+		file, errs := Parse("", r, NewScope(nil))
+		if len(errs) != 0 {
+			t.Errorf("test case: %s", in)
+			t.Errorf("unexpected errors:")
+			for _, err := range errs {
+				t.Errorf("  %s", err)
+			}
+			t.FailNow()
+		}
+
+		SortLists(file)
+
+		got, err := Print(file)
+		if err != nil {
+			t.Errorf("test case: %s", in)
+			t.Errorf("unexpected error: %s", err)
+			t.FailNow()
+		}
+
+		if string(got) != expected {
+			t.Errorf("test case: %s", in)
+			t.Errorf("  expected: %s", expected)
+			t.Errorf("       got: %s", string(got))
+		}
+	}
+}
