@@ -846,9 +846,13 @@ func (c *Context) moduleDepNames(group *moduleGroup,
 	config interface{}) ([]string, []error) {
 
 	depNamesSet := make(map[string]bool)
+	depNames := []string{}
 
 	for _, depName := range group.properties.Deps {
-		depNamesSet[depName] = true
+		if !depNamesSet[depName] {
+			depNamesSet[depName] = true
+			depNames = append(depNames, depName)
+		}
 	}
 
 	if len(group.modules) != 1 {
@@ -870,17 +874,12 @@ func (c *Context) moduleDepNames(group *moduleGroup,
 		}
 
 		for _, depName := range dynamicDeps {
-			depNamesSet[depName] = true
+			if !depNamesSet[depName] {
+				depNamesSet[depName] = true
+				depNames = append(depNames, depName)
+			}
 		}
 	}
-
-	// We need to sort the dependency names to ensure deterministic Ninja file
-	// output from one run to the next.
-	depNames := make([]string, 0, len(depNamesSet))
-	for depName := range depNamesSet {
-		depNames = append(depNames, depName)
-	}
-	sort.Strings(depNames)
 
 	return depNames, nil
 }
