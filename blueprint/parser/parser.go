@@ -130,10 +130,10 @@ func (p *parser) parseDefinitions() (defs []Definition) {
 			switch p.tok {
 			case '=':
 				defs = append(defs, p.parseAssignment(ident, pos))
-			case '{':
+			case '{', '(':
 				defs = append(defs, p.parseModule(ident, pos))
 			default:
-				p.errorf("expected \"=\" or \"{\", found %s",
+				p.errorf("expected \"=\" or \"{\" or \"(\", found %s",
 					scanner.TokenString(p.tok))
 			}
 		case scanner.EOF:
@@ -172,14 +172,22 @@ func (p *parser) parseModule(typ string,
 	typPos scanner.Position) (module *Module) {
 
 	module = new(Module)
-
+	compat := false
 	lbracePos := p.scanner.Position
-	if !p.accept('{') {
+	if p.tok == '{' {
+		compat = true
+	}
+
+	if !p.accept(p.tok) {
 		return
 	}
-	properties := p.parsePropertyList()
+	properties := p.parsePropertyList(true, compat)
 	rbracePos := p.scanner.Position
-	p.accept('}')
+	if !compat {
+		p.accept(')')
+	} else {
+		p.accept('}')
+	}
 
 	module.Type = Ident{typ, typPos}
 	module.Properties = properties
@@ -188,9 +196,9 @@ func (p *parser) parseModule(typ string,
 	return
 }
 
-func (p *parser) parsePropertyList() (properties []*Property) {
+func (p *parser) parsePropertyList(isModule, compat bool) (properties []*Property) {
 	for p.tok == scanner.Ident {
-		property := p.parseProperty()
+		property := p.parseProperty(isModule, compat)
 		properties = append(properties, property)
 
 		if p.tok != ',' {
@@ -204,15 +212,26 @@ func (p *parser) parsePropertyList() (properties []*Property) {
 	return
 }
 
-func (p *parser) parseProperty() (property *Property) {
+func (p *parser) parseProperty(isModule, compat bool) (property *Property) {
 	property = new(Property)
 
 	name := p.scanner.TokenText()
 	namePos := p.scanner.Position
 	p.accept(scanner.Ident)
 	pos := p.scanner.Position
-	if !p.accept(':') {
-		return
+
+	if isModule {
+		if compat && p.tok == ':' {
+			p.accept(':')
+		} else {
+			if !p.accept('=') {
+				return
+			}
+		}
+	} else {
+		if !p.accept(':') {
+			return
+		}
 	}
 
 	value := p.parseExpression()
@@ -366,7 +385,7 @@ func (p *parser) parseMapValue() (value Value) {
 		return
 	}
 
-	properties := p.parsePropertyList()
+	properties := p.parsePropertyList(false, false)
 	value.MapValue = properties
 
 	value.EndPos = p.scanner.Position

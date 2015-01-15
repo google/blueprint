@@ -79,7 +79,7 @@ func (p *printer) printAssignment(assignment *Assignment) {
 
 func (p *printer) printModule(module *Module) {
 	p.printToken(module.Type.Name, module.Type.Pos, wsBoth)
-	p.printMap(module.Properties, module.LbracePos, module.RbracePos)
+	p.printMap(module.Properties, module.LbracePos, module.RbracePos, true)
 	p.forceLineBreak = 2
 }
 
@@ -103,7 +103,7 @@ func (p *printer) printValue(value Value) {
 		case List:
 			p.printList(value.ListValue, value.Pos, value.EndPos)
 		case Map:
-			p.printMap(value.MapValue, value.Pos, value.EndPos)
+			p.printMap(value.MapValue, value.Pos, value.EndPos, false)
 		default:
 			panic(fmt.Errorf("bad property type: %d", value.Type))
 		}
@@ -129,19 +129,27 @@ func (p *printer) printList(list []Value, pos, endPos scanner.Position) {
 	p.printToken("]", endPos, wsAfter)
 }
 
-func (p *printer) printMap(list []*Property, pos, endPos scanner.Position) {
-	p.printToken("{", pos, wsBefore)
+func (p *printer) printMap(list []*Property, pos, endPos scanner.Position, isModule bool) {
+	if isModule {
+		p.printToken("(", pos, wsNone)
+	} else {
+		p.printToken("{", pos, wsBefore)
+	}
 	if len(list) > 0 || pos.Line != endPos.Line {
 		p.forceLineBreak = 1
 		p.indent(p.curIndent() + 4)
 		for _, prop := range list {
-			p.printProperty(prop)
+			p.printProperty(prop, isModule)
 			p.printToken(",", noPos, wsAfter)
 			p.forceLineBreak = 1
 		}
 		p.unindent()
 	}
-	p.printToken("}", endPos, wsAfter)
+	if isModule {
+		p.printToken(")", endPos, wsAfter)
+	} else {
+		p.printToken("}", endPos, wsAfter)
+	}
 }
 
 func (p *printer) printExpression(expression Expression) {
@@ -150,9 +158,13 @@ func (p *printer) printExpression(expression Expression) {
 	p.printValue(expression.Args[1])
 }
 
-func (p *printer) printProperty(property *Property) {
+func (p *printer) printProperty(property *Property, isModule bool) {
 	p.printToken(property.Name.Name, property.Name.Pos, wsMaybe)
-	p.printToken(":", property.Pos, wsAfter)
+	if isModule {
+		p.printToken("=", property.Pos, wsBoth)
+	} else {
+		p.printToken(":", property.Pos, wsAfter)
+	}
 	p.printValue(property.Value)
 }
 
