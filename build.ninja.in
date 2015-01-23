@@ -73,7 +73,7 @@ default .bootstrap/blueprint/pkg/blueprint.a
 # Module:  blueprint-bootstrap
 # Type:    bootstrap_go_package
 # Factory: blueprint/bootstrap.newGoPackageModule
-# Defined: Blueprints:47:1
+# Defined: Blueprints:55:1
 
 build .bootstrap/blueprint-bootstrap/pkg/blueprint/bootstrap.a: g.bootstrap.gc $
         ${g.bootstrap.srcDir}/bootstrap/bootstrap.go $
@@ -94,7 +94,7 @@ default .bootstrap/blueprint-bootstrap/pkg/blueprint/bootstrap.a
 # Module:  blueprint-deptools
 # Type:    bootstrap_go_package
 # Factory: blueprint/bootstrap.newGoPackageModule
-# Defined: Blueprints:28:1
+# Defined: Blueprints:34:1
 
 build .bootstrap/blueprint-deptools/pkg/blueprint/deptools.a: g.bootstrap.gc $
         ${g.bootstrap.srcDir}/deptools/depfile.go | ${g.bootstrap.gcCmd}
@@ -105,7 +105,7 @@ default .bootstrap/blueprint-deptools/pkg/blueprint/deptools.a
 # Module:  blueprint-parser
 # Type:    bootstrap_go_package
 # Factory: blueprint/bootstrap.newGoPackageModule
-# Defined: Blueprints:19:1
+# Defined: Blueprints:23:1
 
 build .bootstrap/blueprint-parser/pkg/blueprint/parser.a: g.bootstrap.gc $
         ${g.bootstrap.srcDir}/parser/modify.go $
@@ -119,7 +119,7 @@ default .bootstrap/blueprint-parser/pkg/blueprint/parser.a
 # Module:  blueprint-pathtools
 # Type:    bootstrap_go_package
 # Factory: blueprint/bootstrap.newGoPackageModule
-# Defined: Blueprints:34:1
+# Defined: Blueprints:40:1
 
 build .bootstrap/blueprint-pathtools/pkg/blueprint/pathtools.a: g.bootstrap.gc $
         ${g.bootstrap.srcDir}/pathtools/lists.go $
@@ -131,7 +131,7 @@ default .bootstrap/blueprint-pathtools/pkg/blueprint/pathtools.a
 # Module:  blueprint-proptools
 # Type:    bootstrap_go_package
 # Factory: blueprint/bootstrap.newGoPackageModule
-# Defined: Blueprints:41:1
+# Defined: Blueprints:49:1
 
 build .bootstrap/blueprint-proptools/pkg/blueprint/proptools.a: g.bootstrap.gc $
         ${g.bootstrap.srcDir}/proptools/proptools.go | ${g.bootstrap.gcCmd}
@@ -142,7 +142,7 @@ default .bootstrap/blueprint-proptools/pkg/blueprint/proptools.a
 # Module:  bpfmt
 # Type:    bootstrap_go_binary
 # Factory: blueprint/bootstrap.newGoBinaryModule
-# Defined: Blueprints:66:1
+# Defined: Blueprints:81:1
 
 build .bootstrap/bpfmt/obj/bpfmt.a: g.bootstrap.gc $
         ${g.bootstrap.srcDir}/bpfmt/bpfmt.go | ${g.bootstrap.gcCmd} $
@@ -163,7 +163,7 @@ default .bootstrap/bin/bpfmt
 # Module:  bpmodify
 # Type:    bootstrap_go_binary
 # Factory: blueprint/bootstrap.newGoBinaryModule
-# Defined: Blueprints:72:1
+# Defined: Blueprints:87:1
 
 build .bootstrap/bpmodify/obj/bpmodify.a: g.bootstrap.gc $
         ${g.bootstrap.srcDir}/bpmodify/bpmodify.go | ${g.bootstrap.gcCmd} $
@@ -184,7 +184,7 @@ default .bootstrap/bin/bpmodify
 # Module:  minibp
 # Type:    bootstrap_go_binary
 # Factory: blueprint/bootstrap.newGoBinaryModule
-# Defined: Blueprints:60:1
+# Defined: Blueprints:72:1
 
 build .bootstrap/minibp/obj/minibp.a: g.bootstrap.gc $
         ${g.bootstrap.srcDir}/bootstrap/minibp/main.go | ${g.bootstrap.gcCmd} $
