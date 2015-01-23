@@ -55,17 +55,14 @@ rule g.bootstrap.link
 # Defined: Blueprints:1:1
 
 build .bootstrap/blueprint/pkg/blueprint.a: g.bootstrap.gc $
-        ${g.bootstrap.srcDir}/blueprint/context.go $
-        ${g.bootstrap.srcDir}/blueprint/live_tracker.go $
-        ${g.bootstrap.srcDir}/blueprint/mangle.go $
-        ${g.bootstrap.srcDir}/blueprint/module_ctx.go $
-        ${g.bootstrap.srcDir}/blueprint/ninja_defs.go $
-        ${g.bootstrap.srcDir}/blueprint/ninja_strings.go $
-        ${g.bootstrap.srcDir}/blueprint/ninja_writer.go $
-        ${g.bootstrap.srcDir}/blueprint/package_ctx.go $
-        ${g.bootstrap.srcDir}/blueprint/scope.go $
-        ${g.bootstrap.srcDir}/blueprint/singleton_ctx.go $
-        ${g.bootstrap.srcDir}/blueprint/unpack.go | ${g.bootstrap.gcCmd} $
+        ${g.bootstrap.srcDir}/context.go ${g.bootstrap.srcDir}/live_tracker.go $
+        ${g.bootstrap.srcDir}/mangle.go ${g.bootstrap.srcDir}/module_ctx.go $
+        ${g.bootstrap.srcDir}/ninja_defs.go $
+        ${g.bootstrap.srcDir}/ninja_strings.go $
+        ${g.bootstrap.srcDir}/ninja_writer.go $
+        ${g.bootstrap.srcDir}/package_ctx.go ${g.bootstrap.srcDir}/scope.go $
+        ${g.bootstrap.srcDir}/singleton_ctx.go ${g.bootstrap.srcDir}/unpack.go $
+        | ${g.bootstrap.gcCmd} $
         .bootstrap/blueprint-parser/pkg/blueprint/parser.a $
         .bootstrap/blueprint-proptools/pkg/blueprint/proptools.a
     incFlags = -I .bootstrap/blueprint-parser/pkg -I .bootstrap/blueprint-proptools/pkg
@@ -76,15 +73,14 @@ default .bootstrap/blueprint/pkg/blueprint.a
 # Module:  blueprint-bootstrap
 # Type:    bootstrap_go_package
 # Factory: blueprint/bootstrap.newGoPackageModule
-# Defined: Blueprints:44:1
+# Defined: Blueprints:47:1
 
 build .bootstrap/blueprint-bootstrap/pkg/blueprint/bootstrap.a: g.bootstrap.gc $
-        ${g.bootstrap.srcDir}/blueprint/bootstrap/bootstrap.go $
-        ${g.bootstrap.srcDir}/blueprint/bootstrap/cleanup.go $
-        ${g.bootstrap.srcDir}/blueprint/bootstrap/command.go $
-        ${g.bootstrap.srcDir}/blueprint/bootstrap/config.go $
-        ${g.bootstrap.srcDir}/blueprint/bootstrap/doc.go | $
-        ${g.bootstrap.gcCmd} $
+        ${g.bootstrap.srcDir}/bootstrap/bootstrap.go $
+        ${g.bootstrap.srcDir}/bootstrap/cleanup.go $
+        ${g.bootstrap.srcDir}/bootstrap/command.go $
+        ${g.bootstrap.srcDir}/bootstrap/config.go $
+        ${g.bootstrap.srcDir}/bootstrap/doc.go | ${g.bootstrap.gcCmd} $
         .bootstrap/blueprint-parser/pkg/blueprint/parser.a $
         .bootstrap/blueprint-proptools/pkg/blueprint/proptools.a $
         .bootstrap/blueprint/pkg/blueprint.a $
@@ -98,11 +94,10 @@ default .bootstrap/blueprint-bootstrap/pkg/blueprint/bootstrap.a
 # Module:  blueprint-deptools
 # Type:    bootstrap_go_package
 # Factory: blueprint/bootstrap.newGoPackageModule
-# Defined: Blueprints:25:1
+# Defined: Blueprints:28:1
 
 build .bootstrap/blueprint-deptools/pkg/blueprint/deptools.a: g.bootstrap.gc $
-        ${g.bootstrap.srcDir}/blueprint/deptools/depfile.go | $
-        ${g.bootstrap.gcCmd}
+        ${g.bootstrap.srcDir}/deptools/depfile.go | ${g.bootstrap.gcCmd}
     pkgPath = blueprint/deptools
 default .bootstrap/blueprint-deptools/pkg/blueprint/deptools.a
 
@@ -113,8 +108,10 @@ default .bootstrap/blueprint-deptools/pkg/blueprint/deptools.a
 # Defined: Blueprints:19:1
 
 build .bootstrap/blueprint-parser/pkg/blueprint/parser.a: g.bootstrap.gc $
-        ${g.bootstrap.srcDir}/blueprint/parser/parser.go | $
-        ${g.bootstrap.gcCmd}
+        ${g.bootstrap.srcDir}/parser/modify.go $
+        ${g.bootstrap.srcDir}/parser/parser.go $
+        ${g.bootstrap.srcDir}/parser/printer.go $
+        ${g.bootstrap.srcDir}/parser/sort.go | ${g.bootstrap.gcCmd}
     pkgPath = blueprint/parser
 default .bootstrap/blueprint-parser/pkg/blueprint/parser.a
 
@@ -122,12 +119,11 @@ default .bootstrap/blueprint-parser/pkg/blueprint/parser.a
 # Module:  blueprint-pathtools
 # Type:    bootstrap_go_package
 # Factory: blueprint/bootstrap.newGoPackageModule
-# Defined: Blueprints:31:1
+# Defined: Blueprints:34:1
 
 build .bootstrap/blueprint-pathtools/pkg/blueprint/pathtools.a: g.bootstrap.gc $
-        ${g.bootstrap.srcDir}/blueprint/pathtools/lists.go $
-        ${g.bootstrap.srcDir}/blueprint/pathtools/glob.go | $
-        ${g.bootstrap.gcCmd}
+        ${g.bootstrap.srcDir}/pathtools/lists.go $
+        ${g.bootstrap.srcDir}/pathtools/glob.go | ${g.bootstrap.gcCmd}
     pkgPath = blueprint/pathtools
 default .bootstrap/blueprint-pathtools/pkg/blueprint/pathtools.a
 
@@ -135,23 +131,63 @@ default .bootstrap/blueprint-pathtools/pkg/blueprint/pathtools.a
 # Module:  blueprint-proptools
 # Type:    bootstrap_go_package
 # Factory: blueprint/bootstrap.newGoPackageModule
-# Defined: Blueprints:38:1
+# Defined: Blueprints:41:1
 
 build .bootstrap/blueprint-proptools/pkg/blueprint/proptools.a: g.bootstrap.gc $
-        ${g.bootstrap.srcDir}/blueprint/proptools/proptools.go | $
-        ${g.bootstrap.gcCmd}
+        ${g.bootstrap.srcDir}/proptools/proptools.go | ${g.bootstrap.gcCmd}
     pkgPath = blueprint/proptools
 default .bootstrap/blueprint-proptools/pkg/blueprint/proptools.a
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Module:  bpfmt
+# Type:    bootstrap_go_binary
+# Factory: blueprint/bootstrap.newGoBinaryModule
+# Defined: Blueprints:66:1
+
+build .bootstrap/bpfmt/obj/bpfmt.a: g.bootstrap.gc $
+        ${g.bootstrap.srcDir}/bpfmt/bpfmt.go | ${g.bootstrap.gcCmd} $
+        .bootstrap/blueprint-parser/pkg/blueprint/parser.a
+    incFlags = -I .bootstrap/blueprint-parser/pkg
+    pkgPath = bpfmt
+default .bootstrap/bpfmt/obj/bpfmt.a
+
+build .bootstrap/bpfmt/obj/a.out: g.bootstrap.link $
+        .bootstrap/bpfmt/obj/bpfmt.a | ${g.bootstrap.linkCmd}
+    libDirFlags = -L .bootstrap/blueprint-parser/pkg
+default .bootstrap/bpfmt/obj/a.out
+
+build .bootstrap/bin/bpfmt: g.bootstrap.cp .bootstrap/bpfmt/obj/a.out
+default .bootstrap/bin/bpfmt
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Module:  bpmodify
+# Type:    bootstrap_go_binary
+# Factory: blueprint/bootstrap.newGoBinaryModule
+# Defined: Blueprints:72:1
+
+build .bootstrap/bpmodify/obj/bpmodify.a: g.bootstrap.gc $
+        ${g.bootstrap.srcDir}/bpmodify/bpmodify.go | ${g.bootstrap.gcCmd} $
+        .bootstrap/blueprint-parser/pkg/blueprint/parser.a
+    incFlags = -I .bootstrap/blueprint-parser/pkg
+    pkgPath = bpmodify
+default .bootstrap/bpmodify/obj/bpmodify.a
+
+build .bootstrap/bpmodify/obj/a.out: g.bootstrap.link $
+        .bootstrap/bpmodify/obj/bpmodify.a | ${g.bootstrap.linkCmd}
+    libDirFlags = -L .bootstrap/blueprint-parser/pkg
+default .bootstrap/bpmodify/obj/a.out
+
+build .bootstrap/bin/bpmodify: g.bootstrap.cp .bootstrap/bpmodify/obj/a.out
+default .bootstrap/bin/bpmodify
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  minibp
 # Type:    bootstrap_go_binary
 # Factory: blueprint/bootstrap.newGoBinaryModule
-# Defined: Blueprints:57:1
+# Defined: Blueprints:60:1
 
 build .bootstrap/minibp/obj/minibp.a: g.bootstrap.gc $
-        ${g.bootstrap.srcDir}/blueprint/bootstrap/minibp/main.go | $
-        ${g.bootstrap.gcCmd} $
+        ${g.bootstrap.srcDir}/bootstrap/minibp/main.go | ${g.bootstrap.gcCmd} $
         .bootstrap/blueprint-parser/pkg/blueprint/parser.a $
         .bootstrap/blueprint-proptools/pkg/blueprint/proptools.a $
         .bootstrap/blueprint/pkg/blueprint.a $
@@ -186,7 +222,8 @@ rule s.bootstrap.minibp
     generator = true
 
 build .bootstrap/main.ninja.in: s.bootstrap.bigbp $
-        ${g.bootstrap.srcDir}/Blueprints | .bootstrap/bin/minibp
+        ${g.bootstrap.srcDir}/Blueprints | .bootstrap/bin/bpfmt $
+        .bootstrap/bin/bpmodify .bootstrap/bin/minibp
 default .bootstrap/main.ninja.in
 build .bootstrap/notAFile: phony
 default .bootstrap/notAFile

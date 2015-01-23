@@ -3,45 +3,45 @@ bootstrap_go_package {
     deps:    ["blueprint-parser",
               "blueprint-proptools"],
     pkgPath: "blueprint",
-    srcs:    ["blueprint/context.go",
-              "blueprint/live_tracker.go",
-              "blueprint/mangle.go",
-              "blueprint/module_ctx.go",
-              "blueprint/ninja_defs.go",
-              "blueprint/ninja_strings.go",
-              "blueprint/ninja_writer.go",
-              "blueprint/package_ctx.go",
-              "blueprint/scope.go",
-              "blueprint/singleton_ctx.go",
-              "blueprint/unpack.go"],
+    srcs:    ["context.go",
+              "live_tracker.go",
+              "mangle.go",
+              "module_ctx.go",
+              "ninja_defs.go",
+              "ninja_strings.go",
+              "ninja_writer.go",
+              "package_ctx.go",
+              "scope.go",
+              "singleton_ctx.go",
+              "unpack.go"],
 }
 
 bootstrap_go_package {
     name:    "blueprint-parser",
     pkgPath: "blueprint/parser",
-    srcs:    ["blueprint/parser/modify.go",
-              "blueprint/parser/parser.go",
-              "blueprint/parser/printer.go",
-              "blueprint/parser/sort.go"],
+    srcs:    ["parser/modify.go",
+              "parser/parser.go",
+              "parser/printer.go",
+              "parser/sort.go"],
 }
 
 bootstrap_go_package {
     name:    "blueprint-deptools",
     pkgPath: "blueprint/deptools",
-    srcs:    ["blueprint/deptools/depfile.go"],
+    srcs:    ["deptools/depfile.go"],
 }
 
 bootstrap_go_package {
     name:    "blueprint-pathtools",
     pkgPath: "blueprint/pathtools",
-    srcs:    ["blueprint/pathtools/lists.go",
-              "blueprint/pathtools/glob.go"],
+    srcs:    ["pathtools/lists.go",
+              "pathtools/glob.go"],
 }
 
 bootstrap_go_package {
     name:    "blueprint-proptools",
     pkgPath: "blueprint/proptools",
-    srcs:    ["blueprint/proptools/proptools.go"],
+    srcs:    ["proptools/proptools.go"],
 }
 
 bootstrap_go_package {
@@ -50,27 +50,27 @@ bootstrap_go_package {
               "blueprint-deptools",
               "blueprint-pathtools"],
     pkgPath: "blueprint/bootstrap",
-    srcs:    ["blueprint/bootstrap/bootstrap.go",
-              "blueprint/bootstrap/cleanup.go",
-              "blueprint/bootstrap/command.go",
-              "blueprint/bootstrap/config.go",
-              "blueprint/bootstrap/doc.go"],
+    srcs:    ["bootstrap/bootstrap.go",
+              "bootstrap/cleanup.go",
+              "bootstrap/command.go",
+              "bootstrap/config.go",
+              "bootstrap/doc.go"],
 }
 
 bootstrap_go_binary {
     name: "minibp",
     deps: ["blueprint", "blueprint-bootstrap"],
-    srcs: ["blueprint/bootstrap/minibp/main.go"],
+    srcs: ["bootstrap/minibp/main.go"],
 }
 
 bootstrap_go_binary {
     name: "bpfmt",
     deps: ["blueprint-parser"],
-    srcs: ["blueprint/bpfmt/bpfmt.go"],
+    srcs: ["bpfmt/bpfmt.go"],
 }
 
 bootstrap_go_binary {
     name: "bpmodify",
     deps: ["blueprint-parser"],
-    srcs: ["blueprint/bpmodify/bpmodify.go"],
+    srcs: ["bpmodify/bpmodify.go"],
 }
