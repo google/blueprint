@@ -149,7 +149,7 @@ test2(
 `,
 		output: `
 //test
-test /* test */(
+test /* test */ (
     srcs = [
         /*"blueprint/bootstrap/bootstrap.go",
         "blueprint/bootstrap/cleanup.go",*/
@@ -166,6 +166,34 @@ test2(
 )
 
 //test3
+`,
+	},
+	{
+		input: `
+// test
+module // test
+
+(
+    srcs
+    = [
+        "src1.c",
+        "src2.c",
+    ],
+//test
+)
+//test2
+`,
+		output: `
+// test
+module( // test
+
+    srcs = [
+        "src1.c",
+        "src2.c",
+    ],
+    //test
+)
+//test2
 `,
 	},
 }
