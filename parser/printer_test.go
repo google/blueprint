@@ -119,11 +119,13 @@ bar(
 foo = "stuff"
 bar = foo
 baz = foo + bar
+baz += foo
 `,
 		output: `
 foo = "stuff"
 bar = foo
 baz = foo + bar
+baz += foo
 `,
 	},
 	{

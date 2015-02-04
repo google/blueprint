@@ -100,8 +100,8 @@ func (p *printer) printDef(def Definition) {
 
 func (p *printer) printAssignment(assignment *Assignment) {
 	p.printToken(assignment.Name.Name, assignment.Name.Pos, wsDontCare)
-	p.printToken("=", assignment.Pos, wsBoth)
-	p.printValue(assignment.Value)
+	p.printToken(assignment.Assigner, assignment.Pos, wsBoth)
+	p.printValue(assignment.OrigValue)
 	p.prev.ws = wsForceBreak
 }
 
