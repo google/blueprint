@@ -977,8 +977,7 @@ func (c *Context) parallelVisitAllBottomUp(visit func(group *moduleGroup)) {
 		}
 	}
 
-loop:
-	for {
+	for count > 0 {
 		select {
 		case doneGroup := <-doneCh:
 			for _, parent := range doneGroup.reverseDeps {
@@ -988,9 +987,6 @@ loop:
 				}
 			}
 			count--
-			if count == 0 {
-				break loop
-			}
 		}
 	}
 }
