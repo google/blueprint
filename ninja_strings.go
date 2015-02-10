@@ -15,6 +15,7 @@
 package blueprint
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 )
@@ -286,6 +287,26 @@ func validateNinjaName(name string) error {
 		}
 	}
 	return nil
+}
+
+func toNinjaName(name string) string {
+	ret := bytes.Buffer{}
+	ret.Grow(len(name))
+	for _, r := range name {
+		valid := (r >= 'a' && r <= 'z') ||
+			(r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') ||
+			(r == '_') ||
+			(r == '-') ||
+			(r == '.')
+		if valid {
+			ret.WriteRune(r)
+		} else {
+			ret.WriteRune('_')
+		}
+	}
+
+	return ret.String()
 }
 
 var builtinRuleArgs = []string{"out", "in"}

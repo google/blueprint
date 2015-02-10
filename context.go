@@ -26,6 +26,7 @@ import (
 	"reflect"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"text/scanner"
 	"text/template"
@@ -67,6 +68,7 @@ type Context struct {
 	moduleGroupsSorted []*moduleGroup
 	singletonInfo      map[string]*singletonInfo
 	mutatorInfo        []*mutatorInfo
+	moduleNinjaNames   map[string]*moduleGroup
 
 	dependenciesReady bool // set to true on a successful ResolveDependencies
 	buildActionsReady bool // set to true on a successful PrepareBuildActions
@@ -106,6 +108,7 @@ type localBuildActions struct {
 type moduleGroup struct {
 	// set during Parse
 	typeName          string
+	ninjaName         string
 	relBlueprintsFile string
 	pos               scanner.Position
 	propertyPos       map[string]scanner.Position
@@ -182,10 +185,11 @@ func (e *Error) Error() string {
 // useful.
 func NewContext() *Context {
 	return &Context{
-		moduleFactories: make(map[string]ModuleFactory),
-		moduleGroups:    make(map[string]*moduleGroup),
-		moduleInfo:      make(map[Module]*moduleInfo),
-		singletonInfo:   make(map[string]*singletonInfo),
+		moduleFactories:  make(map[string]ModuleFactory),
+		moduleGroups:     make(map[string]*moduleGroup),
+		moduleInfo:       make(map[Module]*moduleInfo),
+		singletonInfo:    make(map[string]*singletonInfo),
+		moduleNinjaNames: make(map[string]*moduleGroup),
 	}
 }
 
@@ -790,21 +794,21 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 		return nil, errs
 	}
 
+	ninjaName := toNinjaName(group.properties.Name)
+
+	// The sanitizing in toNinjaName can result in collisions, uniquify the name if it
+	// already exists
+	for i := 0; c.moduleNinjaNames[ninjaName] != nil; i++ {
+		ninjaName = toNinjaName(group.properties.Name) + strconv.Itoa(i)
+	}
+
+	c.moduleNinjaNames[ninjaName] = group
+	group.ninjaName = ninjaName
+
 	group.pos = moduleDef.Type.Pos
 	group.propertyPos = make(map[string]scanner.Position)
 	for name, propertyDef := range propertyMap {
 		group.propertyPos[name] = propertyDef.Pos
-	}
-
-	name := group.properties.Name
-	err := validateNinjaName(name)
-	if err != nil {
-		return nil, []error{
-			&Error{
-				Err: fmt.Errorf("invalid module name %q: %s", err),
-				Pos: group.propertyPos["name"],
-			},
-		}
 	}
 
 	module := &moduleInfo{
@@ -1317,12 +1321,13 @@ func (c *Context) generateModuleBuildActions(config interface{},
 	}()
 
 	c.parallelVisitAllBottomUp(func(group *moduleGroup) bool {
-		// The parent scope of the moduleContext's local scope gets overridden to be that of the
-		// calling Go package on a per-call basis.  Since the initial parent scope doesn't matter we
-		// just set it to nil.
-		scope := newLocalScope(nil, moduleNamespacePrefix(group.properties.Name))
-
 		for _, module := range group.modules {
+			// The parent scope of the moduleContext's local scope gets overridden to be that of the
+			// calling Go package on a per-call basis.  Since the initial parent scope doesn't matter we
+			// just set it to nil.
+			prefix := moduleNamespacePrefix(group.ninjaName + "_" + module.subName())
+			scope := newLocalScope(nil, prefix)
+
 			mctx := &moduleContext{
 				baseModuleContext: baseModuleContext{
 					context: c,
