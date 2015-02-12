@@ -126,6 +126,7 @@ func removeFileAndEmptyDirs(path string) error {
 		}
 		return err
 	}
+	fmt.Printf("removed old ninja-created file %s because it has no rule to generate it\n", path)
 
 	path, err = filepath.Abs(path)
 	if err != nil {
