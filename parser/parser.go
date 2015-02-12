@@ -296,6 +296,12 @@ func evaluateOperator(value1, value2 Value, operator rune, pos scanner.Position)
 		case List:
 			value.ListValue = append([]Value{}, value1.ListValue...)
 			value.ListValue = append(value.ListValue, value2.ListValue...)
+		case Map:
+			var err error
+			value.MapValue, err = addMaps(value.MapValue, value2.MapValue, pos)
+			if err != nil {
+				return Value{}, err
+			}
 		default:
 			return Value{}, fmt.Errorf("operator %c not supported on type %s", operator,
 				value1.Type)
@@ -311,6 +317,47 @@ func evaluateOperator(value1, value2 Value, operator rune, pos scanner.Position)
 	}
 
 	return value, nil
+}
+
+func addMaps(map1, map2 []*Property, pos scanner.Position) ([]*Property, error) {
+	ret := make([]*Property, 0, len(map1))
+	
+	inMap1 := make(map[string]*Property)
+	inMap2 := make(map[string]*Property)
+	inBoth := make(map[string]*Property)
+	
+	for _, prop1 := range map1 {
+		inMap1[prop1.Name.Name] = prop1
+	}
+
+	for _, prop2 := range map2 {
+		inMap2[prop2.Name.Name] = prop2
+		if _, ok := inMap1[prop2.Name.Name]; ok {
+			inBoth[prop2.Name.Name] = prop2
+		}
+	}
+	
+	for _, prop1 := range map1 {
+		if prop2, ok := inBoth[prop1.Name.Name]; ok {
+			var err error
+			newProp := *prop1
+			newProp.Value, err = evaluateOperator(prop1.Value, prop2.Value, '+', pos)
+			if err != nil {
+				return nil, err
+			}
+			ret = append(ret, &newProp)
+		} else {
+			ret = append(ret, prop1)
+		}
+	}
+
+	for _, prop2 := range map2 {
+		if _, ok := inBoth[prop2.Name.Name]; !ok {
+			ret = append(ret, prop2)
+		}
+	}
+	
+	return ret, nil
 }
 
 func (p *parser) parseOperator(value1 Value) Value {
