@@ -955,9 +955,10 @@ func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 	return nil
 }
 
-func (c *Context) parallelVisitAllBottomUp(visit func(group *moduleGroup)) {
+func (c *Context) parallelVisitAllBottomUp(visit func(group *moduleGroup) bool) {
 	doneCh := make(chan *moduleGroup)
 	count := 0
+	cancel := false
 
 	for _, group := range c.moduleGroupsSorted {
 		group.waitingCount = group.depsCount
@@ -966,7 +967,10 @@ func (c *Context) parallelVisitAllBottomUp(visit func(group *moduleGroup)) {
 	visitOne := func(group *moduleGroup) {
 		count++
 		go func() {
-			visit(group)
+			ret := visit(group)
+			if ret {
+				cancel = true
+			}
 			doneCh <- group
 		}()
 	}
@@ -980,10 +984,12 @@ func (c *Context) parallelVisitAllBottomUp(visit func(group *moduleGroup)) {
 	for count > 0 {
 		select {
 		case doneGroup := <-doneCh:
-			for _, parent := range doneGroup.reverseDeps {
-				parent.waitingCount--
-				if parent.waitingCount == 0 {
-					visitOne(parent)
+			if !cancel {
+				for _, parent := range doneGroup.reverseDeps {
+					parent.waitingCount--
+					if parent.waitingCount == 0 {
+						visitOne(parent)
+					}
 				}
 			}
 			count--
@@ -1286,7 +1292,7 @@ func (c *Context) generateModuleBuildActions(config interface{},
 		}
 	}()
 
-	c.parallelVisitAllBottomUp(func(group *moduleGroup) {
+	c.parallelVisitAllBottomUp(func(group *moduleGroup) bool {
 		// The parent scope of the moduleContext's local scope gets overridden to be that of the
 		// calling Go package on a per-call basis.  Since the initial parent scope doesn't matter we
 		// just set it to nil.
@@ -1307,7 +1313,7 @@ func (c *Context) generateModuleBuildActions(config interface{},
 
 			if len(mctx.errs) > 0 {
 				errsCh <- mctx.errs
-				break
+				return true
 			}
 
 			depsCh <- mctx.ninjaFileDeps
@@ -1316,9 +1322,10 @@ func (c *Context) generateModuleBuildActions(config interface{},
 				&mctx.actionDefs, liveGlobals)
 			if len(newErrs) > 0 {
 				errsCh <- newErrs
-				break
+				return true
 			}
 		}
+		return false
 	})
 
 	cancelCh <- struct{}{}
