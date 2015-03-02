@@ -25,93 +25,93 @@ var validPrinterTestCases = []struct {
 }{
 	{
 		input: `
-foo ()
+foo {}
 `,
 		output: `
-foo()
+foo {}
 `,
 	},
 	{
 		input: `
-foo(name= "abc",)
+foo{name= "abc",}
 `,
 		output: `
-foo(
-    name = "abc",
-)
+foo {
+    name: "abc",
+}
 `,
 	},
 	{
 		input: `
-			foo(
-				stuff = ["asdf", "jkl;", "qwert",
+			foo {
+				stuff: ["asdf", "jkl;", "qwert",
 					"uiop", "bnm,"]
-			)
+			}
 			`,
 		output: `
-foo(
-    stuff = [
+foo {
+    stuff: [
         "asdf",
         "bnm,",
         "jkl;",
         "qwert",
         "uiop",
     ],
-)
+}
 `,
 	},
 	{
 		input: `
-		foo(
-			stuff = {
+		foo {
+			stuff: {
 				isGood: true,
 				name: "bar"
 			}
-		)
+		}
 		`,
 		output: `
-foo(
-    stuff = {
+foo {
+    stuff: {
         isGood: true,
         name: "bar",
     },
-)
+}
 `,
 	},
 	{
 		input: `
 // comment1
-foo(
+foo {
 	// comment2
-	isGood = true,  // comment3
-)
+	isGood: true,  // comment3
+}
 `,
 		output: `
 // comment1
-foo(
+foo {
     // comment2
-    isGood = true, // comment3
-)
+    isGood: true, // comment3
+}
 `,
 	},
 	{
 		input: `
-foo(
-	name = "abc",
-)
+foo {
+	name: "abc",
+}
 
-bar (
-	name = "def",
-)
+bar  {
+	name: "def",
+}
 		`,
 		output: `
-foo(
-    name = "abc",
-)
+foo {
+    name: "abc",
+}
 
-bar(
-    name = "def",
-)
+bar {
+    name: "def",
+}
 `,
 	},
 	{
@@ -131,41 +131,41 @@ baz += foo
 	{
 		input: `
 //test
-test /* test */(
-    srcs = [
+test /* test */ {
+    srcs: [
         /*"blueprint/bootstrap/bootstrap.go",
     "blueprint/bootstrap/cleanup.go",*/
         "blueprint/bootstrap/command.go",
         "blueprint/bootstrap/doc.go", //doc.go
         "blueprint/bootstrap/config.go", //config.go
     ],
-    deps = ["libabc"],
-    incs = []
-) //test
+    deps: ["libabc"],
+    incs: []
+} //test
 //test
-test2(
-)
+test2 {
+}
 
 
 //test3
 `,
 		output: `
 //test
-test /* test */ (
-    srcs = [
+test /* test */ {
+    srcs: [
         /*"blueprint/bootstrap/bootstrap.go",
         "blueprint/bootstrap/cleanup.go",*/
         "blueprint/bootstrap/command.go",
         "blueprint/bootstrap/config.go", //config.go
         "blueprint/bootstrap/doc.go", //doc.go
     ],
-    deps = ["libabc"],
-    incs = [],
-) //test
+    deps: ["libabc"],
+    incs: [],
+} //test
 
 //test
-test2(
-)
+test2 {
+}
 
 //test3
 `,
@@ -175,26 +175,26 @@ test2(
 // test
 module // test
 
-(
+ {
     srcs
-    = [
+   : [
         "src1.c",
         "src2.c",
     ],
 //test
-)
+}
 //test2
 `,
 		output: `
 // test
-module( // test
+module { // test
 
-    srcs = [
+    srcs: [
         "src1.c",
         "src2.c",
     ],
     //test
-)
+}
 //test2
 `,
 	},

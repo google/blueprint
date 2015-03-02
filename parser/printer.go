@@ -107,7 +107,7 @@ func (p *printer) printAssignment(assignment *Assignment) {
 
 func (p *printer) printModule(module *Module) {
 	p.printToken(module.Type.Name, module.Type.Pos, wsDontCare)
-	p.printMap(module.Properties, module.LbracePos, module.RbracePos, true)
+	p.printMap(module.Properties, module.LbracePos, module.RbracePos)
 	p.prev.ws = wsForceDoubleBreak
 }
 
@@ -131,7 +131,7 @@ func (p *printer) printValue(value Value) {
 		case List:
 			p.printList(value.ListValue, value.Pos, value.EndPos)
 		case Map:
-			p.printMap(value.MapValue, value.Pos, value.EndPos, false)
+			p.printMap(value.MapValue, value.Pos, value.EndPos)
 		default:
 			panic(fmt.Errorf("bad property type: %d", value.Type))
 		}
@@ -156,26 +156,18 @@ func (p *printer) printList(list []Value, pos, endPos scanner.Position) {
 	p.printToken("]", endPos, wsDontCare)
 }
 
-func (p *printer) printMap(list []*Property, pos, endPos scanner.Position, isModule bool) {
-	if isModule {
-		p.printToken("(", pos, wsDontCare)
-	} else {
-		p.printToken("{", pos, wsBefore)
-	}
+func (p *printer) printMap(list []*Property, pos, endPos scanner.Position) {
+	p.printToken("{", pos, wsBefore)
 	if len(list) > 0 || pos.Line != endPos.Line {
 		p.prev.ws = wsForceBreak
 		p.indent(p.curIndent() + 4)
 		for _, prop := range list {
-			p.printProperty(prop, isModule)
+			p.printProperty(prop)
 			p.printToken(",", noPos, wsForceBreak)
 		}
 		p.unindent()
 	}
-	if isModule {
-		p.printToken(")", endPos, wsForceDoubleBreak)
-	} else {
-		p.printToken("}", endPos, wsDontCare)
-	}
+	p.printToken("}", endPos, wsDontCare)
 }
 
 func (p *printer) printExpression(expression Expression) {
@@ -184,13 +176,9 @@ func (p *printer) printExpression(expression Expression) {
 	p.printValue(expression.Args[1])
 }
 
-func (p *printer) printProperty(property *Property, isModule bool) {
+func (p *printer) printProperty(property *Property) {
 	p.printToken(property.Name.Name, property.Name.Pos, wsDontCare)
-	if isModule {
-		p.printToken("=", property.Pos, wsBoth)
-	} else {
-		p.printToken(":", property.Pos, wsAfter)
-	}
+	p.printToken(":", property.Pos, wsAfter)
 	p.printValue(property.Value)
 }
 
