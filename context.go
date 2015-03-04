@@ -655,11 +655,13 @@ func (c *Context) processSubdirs(
 }
 
 func (c *Context) createVariants(origModule *moduleInfo, mutatorName string,
-	variantNames []string) []*moduleInfo {
+	variantNames []string) ([]*moduleInfo, []error) {
 
 	newModules := []*moduleInfo{}
 	origVariantName := origModule.name
 	group := origModule.group
+
+	var errs []error
 
 	for i, variantName := range variantNames {
 		typeName := group.typeName
@@ -713,7 +715,10 @@ func (c *Context) createVariants(origModule *moduleInfo, mutatorName string,
 		newModules = append(newModules, newModule)
 		c.moduleInfo[newModule.logicModule] = newModule
 
-		c.convertDepsToVariant(newModule, newSubName)
+		newErrs := c.convertDepsToVariant(newModule, newSubName)
+		if len(newErrs) > 0 {
+			errs = append(errs, newErrs...)
+		}
 	}
 
 	// Mark original variant as invalid.  Modules that depend on this module will still
@@ -721,10 +726,11 @@ func (c *Context) createVariants(origModule *moduleInfo, mutatorName string,
 	origModule.logicModule = nil
 	origModule.splitModules = newModules
 
-	return newModules
+	return newModules, errs
 }
 
-func (c *Context) convertDepsToVariant(module *moduleInfo, newSubName subName) {
+func (c *Context) convertDepsToVariant(module *moduleInfo, newSubName subName) (errs []error) {
+
 	for i, dep := range module.directDeps {
 		if dep.logicModule == nil {
 			var newDep *moduleInfo
@@ -735,12 +741,19 @@ func (c *Context) convertDepsToVariant(module *moduleInfo, newSubName subName) {
 				}
 			}
 			if newDep == nil {
-				panic(fmt.Sprintf("failed to find variant %s for module %s needed by %s",
-					newSubName.variantName, dep.group.properties.Name, module.group.properties.Name))
+				errs = append(errs, &Error{
+					Err: fmt.Errorf("failed to find variant %q for module %q needed by %q",
+						newSubName.variantName, dep.group.properties.Name,
+						module.group.properties.Name),
+					Pos: module.group.pos,
+				})
+				continue
 			}
 			module.directDeps[i] = newDep
 		}
 	}
+
+	return errs
 }
 
 func (c *Context) processModuleDef(moduleDef *parser.Module,

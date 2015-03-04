@@ -367,7 +367,10 @@ type BottomUpMutator func(mctx BottomUpMutatorContext)
 // automatically be updated to point to the first variant.
 func (mctx *mutatorContext) CreateVariants(variantNames ...string) []Module {
 	ret := []Module{}
-	modules := mctx.context.createVariants(mctx.module, mctx.name, variantNames)
+	modules, errs := mctx.context.createVariants(mctx.module, mctx.name, variantNames)
+	if len(errs) > 0 {
+		mctx.errs = append(mctx.errs, errs...)
+	}
 
 	for _, module := range modules {
 		ret = append(ret, module.logicModule)
