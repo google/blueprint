@@ -124,6 +124,11 @@ func removeFileAndEmptyDirs(path string) error {
 		if os.IsNotExist(err) {
 			return nil
 		}
+		pathErr := err.(*os.PathError)
+		switch pathErr.Err {
+		case syscall.ENOTEMPTY, syscall.EEXIST:
+			return nil
+		}
 		return err
 	}
 
