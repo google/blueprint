@@ -142,12 +142,15 @@ func (p *parser) parseDefinitions() (defs []Definition) {
 			p.accept(scanner.Ident)
 
 			switch p.tok {
+			case '+':
+				p.accept('+')
+				defs = append(defs, p.parseAssignment(ident, pos, "+="))
 			case '=':
-				defs = append(defs, p.parseAssignment(ident, pos))
+				defs = append(defs, p.parseAssignment(ident, pos, "="))
 			case '{', '(':
 				defs = append(defs, p.parseModule(ident, pos))
 			default:
-				p.errorf("expected \"=\" or \"{\" or \"(\", found %s",
+				p.errorf("expected \"=\" or \"+=\" or \"{\" or \"(\", found %s",
 					scanner.TokenString(p.tok))
 			}
 		case scanner.EOF:
@@ -161,7 +164,7 @@ func (p *parser) parseDefinitions() (defs []Definition) {
 }
 
 func (p *parser) parseAssignment(name string,
-	namePos scanner.Position) (assignment *Assignment) {
+	namePos scanner.Position, assigner string) (assignment *Assignment) {
 
 	assignment = new(Assignment)
 
@@ -173,10 +176,19 @@ func (p *parser) parseAssignment(name string,
 
 	assignment.Name = Ident{name, namePos}
 	assignment.Value = value
+	assignment.OrigValue = value
 	assignment.Pos = pos
+	assignment.Assigner = assigner
 
 	if p.scope != nil {
-		p.scope.Add(assignment)
+		if assigner == "+=" {
+			p.scope.Append(assignment)
+		} else {
+			err := p.scope.Add(assignment)
+			if err != nil {
+				p.errorf("%s", err.Error())
+			}
+		}
 	}
 
 	return
@@ -267,17 +279,10 @@ func (p *parser) parseExpression() (value Value) {
 	}
 }
 
-func (p *parser) parseOperator(value1 Value) Value {
-	operator := p.tok
-	pos := p.scanner.Position
-	p.accept(operator)
-
-	value2 := p.parseExpression()
-
+func evaluateOperator(value1, value2 Value, operator rune, pos scanner.Position) (Value, error) {
 	if value1.Type != value2.Type {
-		p.errorf("mismatched type in operator %c: %s != %s", operator,
+		return Value{}, fmt.Errorf("mismatched type in operator %c: %s != %s", operator,
 			value1.Type, value2.Type)
-		return Value{}
 	}
 
 	value := value1
@@ -291,9 +296,15 @@ func (p *parser) parseOperator(value1 Value) Value {
 		case List:
 			value.ListValue = append([]Value{}, value1.ListValue...)
 			value.ListValue = append(value.ListValue, value2.ListValue...)
+		case Map:
+			var err error
+			value.MapValue, err = addMaps(value.MapValue, value2.MapValue, pos)
+			if err != nil {
+				return Value{}, err
+			}
 		default:
-			p.errorf("operator %c not supported on type %s", operator, value1.Type)
-			return Value{}
+			return Value{}, fmt.Errorf("operator %c not supported on type %s", operator,
+				value1.Type)
 		}
 	default:
 		panic("unknown operator " + string(operator))
@@ -303,6 +314,63 @@ func (p *parser) parseOperator(value1 Value) Value {
 		Args:     [2]Value{value1, value2},
 		Operator: operator,
 		Pos:      pos,
+	}
+
+	return value, nil
+}
+
+func addMaps(map1, map2 []*Property, pos scanner.Position) ([]*Property, error) {
+	ret := make([]*Property, 0, len(map1))
+	
+	inMap1 := make(map[string]*Property)
+	inMap2 := make(map[string]*Property)
+	inBoth := make(map[string]*Property)
+	
+	for _, prop1 := range map1 {
+		inMap1[prop1.Name.Name] = prop1
+	}
+
+	for _, prop2 := range map2 {
+		inMap2[prop2.Name.Name] = prop2
+		if _, ok := inMap1[prop2.Name.Name]; ok {
+			inBoth[prop2.Name.Name] = prop2
+		}
+	}
+	
+	for _, prop1 := range map1 {
+		if prop2, ok := inBoth[prop1.Name.Name]; ok {
+			var err error
+			newProp := *prop1
+			newProp.Value, err = evaluateOperator(prop1.Value, prop2.Value, '+', pos)
+			if err != nil {
+				return nil, err
+			}
+			ret = append(ret, &newProp)
+		} else {
+			ret = append(ret, prop1)
+		}
+	}
+
+	for _, prop2 := range map2 {
+		if _, ok := inBoth[prop2.Name.Name]; !ok {
+			ret = append(ret, prop2)
+		}
+	}
+	
+	return ret, nil
+}
+
+func (p *parser) parseOperator(value1 Value) Value {
+	operator := p.tok
+	pos := p.scanner.Position
+	p.accept(operator)
+
+	value2 := p.parseExpression()
+
+	value, err := evaluateOperator(value1, value2, operator, pos)
+	if err != nil {
+		p.errorf(err.Error())
+		return Value{}
 	}
 
 	return value
@@ -413,6 +481,11 @@ type Expression struct {
 	Pos      scanner.Position
 }
 
+func (e *Expression) String() string {
+	return fmt.Sprintf("(%s %c %s)@%d:%s", e.Args[0].String(), e.Operator, e.Args[1].String(),
+		e.Pos.Offset, e.Pos)
+}
+
 type ValueType int
 
 const (
@@ -443,13 +516,16 @@ type Definition interface {
 }
 
 type Assignment struct {
-	Name  Ident
-	Value Value
-	Pos   scanner.Position
+	Name       Ident
+	Value      Value
+	OrigValue  Value
+	Pos        scanner.Position
+	Assigner   string
+	Referenced bool
 }
 
 func (a *Assignment) String() string {
-	return fmt.Sprintf("%s@%d:%s: %s", a.Name, a.Pos.Offset, a.Pos, a.Value)
+	return fmt.Sprintf("%s@%d:%s %s %s", a.Name, a.Pos.Offset, a.Pos, a.Assigner, a.Value)
 }
 
 func (a *Assignment) definitionTag() {}
@@ -506,28 +582,37 @@ type Value struct {
 }
 
 func (p Value) String() string {
+	var s string
+	if p.Variable != "" {
+		s += p.Variable + " = "
+	}
+	if p.Expression != nil {
+		s += p.Expression.String()
+	}
 	switch p.Type {
 	case Bool:
-		return fmt.Sprintf("%t@%d:%s", p.BoolValue, p.Pos.Offset, p.Pos)
+		s += fmt.Sprintf("%t@%d:%s", p.BoolValue, p.Pos.Offset, p.Pos)
 	case String:
-		return fmt.Sprintf("%q@%d:%s", p.StringValue, p.Pos.Offset, p.Pos)
+		s += fmt.Sprintf("%q@%d:%s", p.StringValue, p.Pos.Offset, p.Pos)
 	case List:
 		valueStrings := make([]string, len(p.ListValue))
 		for i, value := range p.ListValue {
 			valueStrings[i] = value.String()
 		}
-		return fmt.Sprintf("@%d:%s-%d:%s[%s]", p.Pos.Offset, p.Pos, p.EndPos.Offset, p.EndPos,
+		s += fmt.Sprintf("@%d:%s-%d:%s[%s]", p.Pos.Offset, p.Pos, p.EndPos.Offset, p.EndPos,
 			strings.Join(valueStrings, ", "))
 	case Map:
 		propertyStrings := make([]string, len(p.MapValue))
 		for i, property := range p.MapValue {
 			propertyStrings[i] = property.String()
 		}
-		return fmt.Sprintf("@%d:%s-%d:%s{%s}", p.Pos.Offset, p.Pos, p.EndPos.Offset, p.EndPos,
+		s += fmt.Sprintf("@%d:%s-%d:%s{%s}", p.Pos.Offset, p.Pos, p.EndPos.Offset, p.EndPos,
 			strings.Join(propertyStrings, ", "))
 	default:
 		panic(fmt.Errorf("bad property type: %d", p.Type))
 	}
+
+	return s
 }
 
 type Scope struct {
@@ -558,12 +643,27 @@ func (s *Scope) Add(assignment *Assignment) error {
 	return nil
 }
 
+func (s *Scope) Append(assignment *Assignment) error {
+	var err error
+	if old, ok := s.vars[assignment.Name.Name]; ok {
+		if old.Referenced {
+			return fmt.Errorf("modified variable with += after referencing")
+		}
+		old.Value, err = evaluateOperator(old.Value, assignment.Value, '+', assignment.Pos)
+	} else {
+		err = s.Add(assignment)
+	}
+
+	return err
+}
+
 func (s *Scope) Remove(name string) {
 	delete(s.vars, name)
 }
 
 func (s *Scope) Get(name string) (*Assignment, error) {
 	if a, ok := s.vars[name]; ok {
+		a.Referenced = true
 		return a, nil
 	}
 

@@ -126,6 +126,8 @@ type ModuleContext interface {
 	OtherModuleName(m Module) string
 	OtherModuleErrorf(m Module, fmt string, args ...interface{})
 
+	VisitDirectDeps(visit func(Module))
+	VisitDirectDepsIf(pred func(Module) bool, visit func(Module))
 	VisitDepsDepthFirst(visit func(Module))
 	VisitDepsDepthFirstIf(pred func(Module) bool, visit func(Module))
 
@@ -227,6 +229,14 @@ func (m *moduleContext) OtherModuleErrorf(module Module, format string,
 		Err: fmt.Errorf(format, args...),
 		Pos: info.group.pos,
 	})
+}
+
+func (m *moduleContext) VisitDirectDeps(visit func(Module)) {
+	m.context.visitDirectDeps(m.module, visit)
+}
+
+func (m *moduleContext) VisitDirectDepsIf(pred func(Module) bool, visit func(Module)) {
+	m.context.visitDirectDepsIf(m.module, pred, visit)
 }
 
 func (m *moduleContext) VisitDepsDepthFirst(visit func(Module)) {
@@ -357,7 +367,10 @@ type BottomUpMutator func(mctx BottomUpMutatorContext)
 // automatically be updated to point to the first variant.
 func (mctx *mutatorContext) CreateVariants(variantNames ...string) []Module {
 	ret := []Module{}
-	modules := mctx.context.createVariants(mctx.module, mctx.name, variantNames)
+	modules, errs := mctx.context.createVariants(mctx.module, mctx.name, variantNames)
+	if len(errs) > 0 {
+		mctx.errs = append(mctx.errs, errs...)
+	}
 
 	for _, module := range modules {
 		ret = append(ret, module.logicModule)

@@ -292,6 +292,8 @@ var validParseTestCases = []struct {
 		foo = "stuff"
 		bar = foo
 		baz = foo + bar
+		boo = baz
+		boo += foo
 		`,
 		[]Definition{
 			&Assignment{
@@ -302,6 +304,13 @@ var validParseTestCases = []struct {
 					Pos:         mkpos(9, 2, 9),
 					StringValue: "stuff",
 				},
+				OrigValue: Value{
+					Type:        String,
+					Pos:         mkpos(9, 2, 9),
+					StringValue: "stuff",
+				},
+				Assigner:   "=",
+				Referenced: true,
 			},
 			&Assignment{
 				Name: Ident{"bar", mkpos(19, 3, 3)},
@@ -312,6 +321,14 @@ var validParseTestCases = []struct {
 					StringValue: "stuff",
 					Variable:    "foo",
 				},
+				OrigValue: Value{
+					Type:        String,
+					Pos:         mkpos(25, 3, 9),
+					StringValue: "stuff",
+					Variable:    "foo",
+				},
+				Assigner:   "=",
+				Referenced: true,
 			},
 			&Assignment{
 				Name: Ident{"baz", mkpos(31, 4, 3)},
@@ -339,6 +356,118 @@ var validParseTestCases = []struct {
 						Pos:      mkpos(41, 4, 13),
 					},
 				},
+				OrigValue: Value{
+					Type:        String,
+					Pos:         mkpos(37, 4, 9),
+					StringValue: "stuffstuff",
+					Expression: &Expression{
+						Args: [2]Value{
+							{
+								Type:        String,
+								Pos:         mkpos(37, 4, 9),
+								StringValue: "stuff",
+								Variable:    "foo",
+							},
+							{
+								Type:        String,
+								Pos:         mkpos(43, 4, 15),
+								StringValue: "stuff",
+								Variable:    "bar",
+							},
+						},
+						Operator: '+',
+						Pos:      mkpos(41, 4, 13),
+					},
+				},
+				Assigner:   "=",
+				Referenced: true,
+			},
+			&Assignment{
+				Name: Ident{"boo", mkpos(49, 5, 3)},
+				Pos:  mkpos(53, 5, 7),
+				Value: Value{
+					Type:        String,
+					Pos:         mkpos(55, 5, 9),
+					StringValue: "stuffstuffstuff",
+					Expression: &Expression{
+						Args: [2]Value{
+							{
+								Type:        String,
+								Pos:         mkpos(55, 5, 9),
+								StringValue: "stuffstuff",
+								Variable:    "baz",
+								Expression: &Expression{
+									Args: [2]Value{
+										{
+											Type:        String,
+											Pos:         mkpos(37, 4, 9),
+											StringValue: "stuff",
+											Variable:    "foo",
+										},
+										{
+											Type:        String,
+											Pos:         mkpos(43, 4, 15),
+											StringValue: "stuff",
+											Variable:    "bar",
+										},
+									},
+									Operator: '+',
+									Pos:      mkpos(41, 4, 13),
+								},
+							},
+							{
+								Variable:    "foo",
+								Type:        String,
+								Pos:         mkpos(68, 6, 10),
+								StringValue: "stuff",
+							},
+						},
+						Pos:      mkpos(66, 6, 8),
+						Operator: '+',
+					},
+				},
+				OrigValue: Value{
+					Type:        String,
+					Pos:         mkpos(55, 5, 9),
+					StringValue: "stuffstuff",
+					Variable:    "baz",
+					Expression: &Expression{
+						Args: [2]Value{
+							{
+								Type:        String,
+								Pos:         mkpos(37, 4, 9),
+								StringValue: "stuff",
+								Variable:    "foo",
+							},
+							{
+								Type:        String,
+								Pos:         mkpos(43, 4, 15),
+								StringValue: "stuff",
+								Variable:    "bar",
+							},
+						},
+						Operator: '+',
+						Pos:      mkpos(41, 4, 13),
+					},
+				},
+				Assigner: "=",
+			},
+			&Assignment{
+				Name: Ident{"boo", mkpos(61, 6, 3)},
+				Pos:  mkpos(66, 6, 8),
+				Value: Value{
+					Type:        String,
+					Pos:         mkpos(68, 6, 10),
+					StringValue: "stuff",
+					Variable:    "foo",
+				},
+				OrigValue: Value{
+					Type:        String,
+					Pos:         mkpos(68, 6, 10),
+					StringValue: "stuff",
+					Variable:    "foo",
+				},
+				Assigner: "+=",
 			},
 		},
 		nil,
