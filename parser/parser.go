@@ -321,11 +321,11 @@ func evaluateOperator(value1, value2 Value, operator rune, pos scanner.Position)
 
 func addMaps(map1, map2 []*Property, pos scanner.Position) ([]*Property, error) {
 	ret := make([]*Property, 0, len(map1))
-	
+
 	inMap1 := make(map[string]*Property)
 	inMap2 := make(map[string]*Property)
 	inBoth := make(map[string]*Property)
-	
+
 	for _, prop1 := range map1 {
 		inMap1[prop1.Name.Name] = prop1
 	}
@@ -336,7 +336,7 @@ func addMaps(map1, map2 []*Property, pos scanner.Position) ([]*Property, error) 
 			inBoth[prop2.Name.Name] = prop2
 		}
 	}
-	
+
 	for _, prop1 := range map1 {
 		if prop2, ok := inBoth[prop1.Name.Name]; ok {
 			var err error
@@ -356,7 +356,7 @@ func addMaps(map1, map2 []*Property, pos scanner.Position) ([]*Property, error) 
 			ret = append(ret, prop2)
 		}
 	}
-	
+
 	return ret, nil
 }
 

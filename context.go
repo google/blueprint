@@ -1024,6 +1024,30 @@ func (c *Context) updateDependencies() (errs []error) {
 
 	var check func(group *moduleGroup) []*moduleGroup
 
+	cycleError := func(cycle []*moduleGroup) {
+		// We are the "start" of the cycle, so we're responsible
+		// for generating the errors.  The cycle list is in
+		// reverse order because all the 'check' calls append
+		// their own module to the list.
+		errs = append(errs, &Error{
+			Err: fmt.Errorf("encountered dependency cycle:"),
+			Pos: cycle[len(cycle)-1].pos,
+		})
+
+		// Iterate backwards through the cycle list.
+		curGroup := cycle[len(cycle)-1]
+		for i := len(cycle) - 1; i >= 0; i-- {
+			nextGroup := cycle[i]
+			errs = append(errs, &Error{
+				Err: fmt.Errorf("    %q depends on %q",
+					curGroup.properties.Name,
+					nextGroup.properties.Name),
+				Pos: curGroup.propertyPos["deps"],
+			})
+			curGroup = nextGroup
+		}
+	}
+
 	check = func(group *moduleGroup) []*moduleGroup {
 		visited[group] = true
 		checking[group] = true
@@ -1053,23 +1077,7 @@ func (c *Context) updateDependencies() (errs []error) {
 						// for generating the errors.  The cycle list is in
 						// reverse order because all the 'check' calls append
 						// their own module to the list.
-						errs = append(errs, &Error{
-							Err: fmt.Errorf("encountered dependency cycle:"),
-							Pos: group.pos,
-						})
-
-						// Iterate backwards through the cycle list.
-						curGroup := group
-						for i := len(cycle) - 1; i >= 0; i-- {
-							nextGroup := cycle[i]
-							errs = append(errs, &Error{
-								Err: fmt.Errorf("    %q depends on %q",
-									curGroup.properties.Name,
-									nextGroup.properties.Name),
-								Pos: curGroup.propertyPos["deps"],
-							})
-							curGroup = nextGroup
-						}
+						cycleError(cycle)
 
 						// We can continue processing this module's children to
 						// find more cycles.  Since all the modules that were
@@ -1095,7 +1103,10 @@ func (c *Context) updateDependencies() (errs []error) {
 		if !visited[group] {
 			cycle := check(group)
 			if cycle != nil {
-				panic("inconceivable!")
+				if cycle[len(cycle)-1] != group {
+					panic("inconceivable!")
+				}
+				cycleError(cycle)
 			}
 		}
 	}
