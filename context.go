@@ -62,13 +62,13 @@ const maxErrors = 10
 // actions.
 type Context struct {
 	// set at instantiation
-	moduleFactories    map[string]ModuleFactory
-	moduleGroups       map[string]*moduleGroup
-	moduleInfo         map[Module]*moduleInfo
-	moduleGroupsSorted []*moduleGroup
-	singletonInfo      map[string]*singletonInfo
-	mutatorInfo        []*mutatorInfo
-	moduleNinjaNames   map[string]*moduleGroup
+	moduleFactories  map[string]ModuleFactory
+	moduleGroups     map[string]*moduleGroup
+	moduleInfo       map[Module]*moduleInfo
+	modulesSorted    []*moduleInfo
+	singletonInfo    map[string]*singletonInfo
+	mutatorInfo      []*mutatorInfo
+	moduleNinjaNames map[string]*moduleGroup
 
 	dependenciesReady bool // set to true on a successful ResolveDependencies
 	buildActionsReady bool // set to true on a successful PrepareBuildActions
@@ -111,15 +111,8 @@ type moduleGroup struct {
 
 	modules []*moduleInfo
 
-	// set during updateDependencies
-	reverseDeps []*moduleGroup
-	depsCount   int
-
 	// set during PrepareBuildActions
 	actionDefs localBuildActions
-
-	// used by parallelVisitAllBottomUp
-	waitingCount int
 }
 
 type moduleInfo struct {
@@ -142,6 +135,13 @@ type moduleInfo struct {
 
 	// set during ResolveDependencies
 	directDeps []*moduleInfo
+
+	// set during updateDependencies
+	reverseDeps []*moduleInfo
+	depsCount   int
+
+	// used by parallelVisitAllBottomUp
+	waitingCount int
 
 	// set during each runMutator
 	splitModules []*moduleInfo
@@ -973,37 +973,37 @@ func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 	return nil
 }
 
-func (c *Context) parallelVisitAllBottomUp(visit func(group *moduleGroup) bool) {
-	doneCh := make(chan *moduleGroup)
+func (c *Context) parallelVisitAllBottomUp(visit func(group *moduleInfo) bool) {
+	doneCh := make(chan *moduleInfo)
 	count := 0
 	cancel := false
 
-	for _, group := range c.moduleGroupsSorted {
-		group.waitingCount = group.depsCount
+	for _, module := range c.modulesSorted {
+		module.waitingCount = module.depsCount
 	}
 
-	visitOne := func(group *moduleGroup) {
+	visitOne := func(module *moduleInfo) {
 		count++
 		go func() {
-			ret := visit(group)
+			ret := visit(module)
 			if ret {
 				cancel = true
 			}
-			doneCh <- group
+			doneCh <- module
 		}()
 	}
 
-	for _, group := range c.moduleGroupsSorted {
-		if group.waitingCount == 0 {
-			visitOne(group)
+	for _, module := range c.modulesSorted {
+		if module.waitingCount == 0 {
+			visitOne(module)
 		}
 	}
 
 	for count > 0 {
 		select {
-		case doneGroup := <-doneCh:
+		case doneModule := <-doneCh:
 			if !cancel {
-				for _, parent := range doneGroup.reverseDeps {
+				for _, parent := range doneModule.reverseDeps {
 					parent.waitingCount--
 					if parent.waitingCount == 0 {
 						visitOne(parent)
@@ -1022,62 +1022,69 @@ func (c *Context) parallelVisitAllBottomUp(visit func(group *moduleGroup) bool) 
 // it encounters dependency cycles.  This should called after resolveDependencies,
 // as well as after any mutator pass has called addDependency
 func (c *Context) updateDependencies() (errs []error) {
-	visited := make(map[*moduleGroup]bool)  // modules that were already checked
-	checking := make(map[*moduleGroup]bool) // modules actively being checked
+	visited := make(map[*moduleInfo]bool)  // modules that were already checked
+	checking := make(map[*moduleInfo]bool) // modules actively being checked
 
-	sorted := make([]*moduleGroup, 0, len(c.moduleGroups))
+	sorted := make([]*moduleInfo, 0, len(c.moduleInfo))
 
-	var check func(group *moduleGroup) []*moduleGroup
+	var check func(group *moduleInfo) []*moduleInfo
 
-	cycleError := func(cycle []*moduleGroup) {
+	cycleError := func(cycle []*moduleInfo) {
 		// We are the "start" of the cycle, so we're responsible
 		// for generating the errors.  The cycle list is in
 		// reverse order because all the 'check' calls append
 		// their own module to the list.
 		errs = append(errs, &Error{
 			Err: fmt.Errorf("encountered dependency cycle:"),
-			Pos: cycle[len(cycle)-1].modules[0].pos,
+			Pos: cycle[len(cycle)-1].pos,
 		})
 
 		// Iterate backwards through the cycle list.
-		curGroup := cycle[len(cycle)-1]
+		curModule := cycle[len(cycle)-1]
 		for i := len(cycle) - 1; i >= 0; i-- {
-			nextGroup := cycle[i]
+			nextModule := cycle[i]
 			errs = append(errs, &Error{
 				Err: fmt.Errorf("    %q depends on %q",
-					curGroup.name,
-					nextGroup.name),
-				Pos: curGroup.modules[0].propertyPos["deps"],
+					curModule.properties.Name,
+					nextModule.properties.Name),
+				Pos: curModule.propertyPos["deps"],
 			})
-			curGroup = nextGroup
+			curModule = nextModule
 		}
 	}
 
-	check = func(group *moduleGroup) []*moduleGroup {
-		visited[group] = true
-		checking[group] = true
-		defer delete(checking, group)
+	check = func(module *moduleInfo) []*moduleInfo {
+		visited[module] = true
+		checking[module] = true
+		defer delete(checking, module)
 
-		deps := make(map[*moduleGroup]bool)
-		for _, module := range group.modules {
-			for _, dep := range module.directDeps {
-				deps[dep.group] = true
+		deps := make(map[*moduleInfo]bool)
+
+		// Add an implicit dependency ordering on all earlier modules in the same module group
+		for _, dep := range module.group.modules {
+			if dep == module {
+				break
 			}
+			deps[dep] = true
 		}
 
-		group.reverseDeps = []*moduleGroup{}
-		group.depsCount = len(deps)
+		for _, dep := range module.directDeps {
+			deps[dep] = true
+		}
+
+		module.reverseDeps = []*moduleInfo{}
+		module.depsCount = len(deps)
 
 		for dep := range deps {
 			if checking[dep] {
 				// This is a cycle.
-				return []*moduleGroup{dep, group}
+				return []*moduleInfo{dep, module}
 			}
 
 			if !visited[dep] {
 				cycle := check(dep)
 				if cycle != nil {
-					if cycle[0] == group {
+					if cycle[0] == module {
 						// We are the "start" of the cycle, so we're responsible
 						// for generating the errors.  The cycle list is in
 						// reverse order because all the 'check' calls append
@@ -1091,24 +1098,24 @@ func (c *Context) updateDependencies() (errs []error) {
 					} else {
 						// We're not the "start" of the cycle, so we just append
 						// our module to the list and return it.
-						return append(cycle, group)
+						return append(cycle, module)
 					}
 				}
 			}
 
-			dep.reverseDeps = append(dep.reverseDeps, group)
+			dep.reverseDeps = append(dep.reverseDeps, module)
 		}
 
-		sorted = append(sorted, group)
+		sorted = append(sorted, module)
 
 		return nil
 	}
 
-	for _, group := range c.moduleGroups {
-		if !visited[group] {
-			cycle := check(group)
+	for _, module := range c.moduleInfo {
+		if !visited[module] {
+			cycle := check(module)
 			if cycle != nil {
-				if cycle[len(cycle)-1] != group {
+				if cycle[len(cycle)-1] != module {
 					panic("inconceivable!")
 				}
 				cycleError(cycle)
@@ -1116,7 +1123,7 @@ func (c *Context) updateDependencies() (errs []error) {
 		}
 	}
 
-	c.moduleGroupsSorted = sorted
+	c.modulesSorted = sorted
 
 	return
 }
@@ -1208,23 +1215,21 @@ func (c *Context) runMutators(config interface{}) (errs []error) {
 func (c *Context) runTopDownMutator(config interface{},
 	name string, mutator TopDownMutator) (errs []error) {
 
-	for i := 0; i < len(c.moduleGroupsSorted); i++ {
-		group := c.moduleGroupsSorted[len(c.moduleGroupsSorted)-1-i]
-		for _, module := range group.modules {
-			mctx := &mutatorContext{
-				baseModuleContext: baseModuleContext{
-					context: c,
-					config:  config,
-					module:  module,
-				},
-				name: name,
-			}
+	for i := 0; i < len(c.modulesSorted); i++ {
+		module := c.modulesSorted[len(c.modulesSorted)-1-i]
+		mctx := &mutatorContext{
+			baseModuleContext: baseModuleContext{
+				context: c,
+				config:  config,
+				module:  module,
+			},
+			name: name,
+		}
 
-			mutator(mctx)
-			if len(mctx.errs) > 0 {
-				errs = append(errs, mctx.errs...)
-				return errs
-			}
+		mutator(mctx)
+		if len(mctx.errs) > 0 {
+			errs = append(errs, mctx.errs...)
+			return errs
 		}
 	}
 
@@ -1236,45 +1241,43 @@ func (c *Context) runBottomUpMutator(config interface{},
 
 	dependenciesModified := false
 
-	for _, group := range c.moduleGroupsSorted {
-		newModules := make([]*moduleInfo, 0, len(group.modules))
+	for _, module := range c.modulesSorted {
+		newModules := make([]*moduleInfo, 0, 1)
 
-		for _, module := range group.modules {
-			mctx := &mutatorContext{
-				baseModuleContext: baseModuleContext{
-					context: c,
-					config:  config,
-					module:  module,
-				},
-				name: name,
-			}
+		mctx := &mutatorContext{
+			baseModuleContext: baseModuleContext{
+				context: c,
+				config:  config,
+				module:  module,
+			},
+			name: name,
+		}
 
-			mutator(mctx)
-			if len(mctx.errs) > 0 {
-				errs = append(errs, mctx.errs...)
-				return errs
-			}
+		mutator(mctx)
+		if len(mctx.errs) > 0 {
+			errs = append(errs, mctx.errs...)
+			return errs
+		}
 
-			// Fix up any remaining dependencies on modules that were split into variants
-			// by replacing them with the first variant
-			for i, dep := range module.directDeps {
-				if dep.logicModule == nil {
-					module.directDeps[i] = dep.splitModules[0]
-				}
-			}
-
-			if mctx.dependenciesModified {
-				dependenciesModified = true
-			}
-
-			if module.splitModules != nil {
-				newModules = append(newModules, module.splitModules...)
-			} else {
-				newModules = append(newModules, module)
+		// Fix up any remaining dependencies on modules that were split into variants
+		// by replacing them with the first variant
+		for i, dep := range module.directDeps {
+			if dep.logicModule == nil {
+				module.directDeps[i] = dep.splitModules[0]
 			}
 		}
 
-		group.modules = newModules
+		if mctx.dependenciesModified {
+			dependenciesModified = true
+		}
+
+		if module.splitModules != nil {
+			newModules = append(newModules, module.splitModules...)
+		} else {
+			newModules = append(newModules, module)
+		}
+
+		module.group.modules = spliceModules(module.group.modules, module, newModules)
 	}
 
 	if dependenciesModified {
@@ -1285,6 +1288,38 @@ func (c *Context) runBottomUpMutator(config interface{},
 	}
 
 	return errs
+}
+
+func spliceModules(modules []*moduleInfo, origModule *moduleInfo,
+	newModules []*moduleInfo) []*moduleInfo {
+	for i, m := range modules {
+		if m == origModule {
+			return spliceModulesAtIndex(modules, i, newModules)
+		}
+	}
+
+	panic("failed to find original module to splice")
+}
+
+func spliceModulesAtIndex(modules []*moduleInfo, i int, newModules []*moduleInfo) []*moduleInfo {
+	spliceSize := len(newModules)
+	newLen := len(modules) + spliceSize - 1
+	var dest []*moduleInfo
+	if cap(modules) >= len(modules)-1+len(newModules) {
+		// We can fit the splice in the existing capacity, do everything in place
+		dest = modules[:newLen]
+	} else {
+		dest = make([]*moduleInfo, newLen)
+		copy(dest, modules[:i])
+	}
+
+	// Move the end of the slice over by spliceSize-1
+	copy(modules[i+spliceSize:], modules[i+1:])
+
+	// Copy the new modules into the slice
+	copy(modules[i:], newModules)
+
+	return modules
 }
 
 func (c *Context) initSpecialVariables() {
@@ -1319,38 +1354,36 @@ func (c *Context) generateModuleBuildActions(config interface{},
 		}
 	}()
 
-	c.parallelVisitAllBottomUp(func(group *moduleGroup) bool {
-		for _, module := range group.modules {
-			// The parent scope of the moduleContext's local scope gets overridden to be that of the
-			// calling Go package on a per-call basis.  Since the initial parent scope doesn't matter we
-			// just set it to nil.
-			prefix := moduleNamespacePrefix(group.ninjaName + "_" + module.variantName)
-			scope := newLocalScope(nil, prefix)
+	c.parallelVisitAllBottomUp(func(module *moduleInfo) bool {
+		// The parent scope of the moduleContext's local scope gets overridden to be that of the
+		// calling Go package on a per-call basis.  Since the initial parent scope doesn't matter we
+		// just set it to nil.
+		prefix := moduleNamespacePrefix(module.group.ninjaName + "_" + module.variantName)
+		scope := newLocalScope(nil, prefix)
 
-			mctx := &moduleContext{
-				baseModuleContext: baseModuleContext{
-					context: c,
-					config:  config,
-					module:  module,
-				},
-				scope: scope,
-			}
+		mctx := &moduleContext{
+			baseModuleContext: baseModuleContext{
+				context: c,
+				config:  config,
+				module:  module,
+			},
+			scope: scope,
+		}
 
-			mctx.module.logicModule.GenerateBuildActions(mctx)
+		mctx.module.logicModule.GenerateBuildActions(mctx)
 
-			if len(mctx.errs) > 0 {
-				errsCh <- mctx.errs
-				return true
-			}
+		if len(mctx.errs) > 0 {
+			errsCh <- mctx.errs
+			return true
+		}
 
-			depsCh <- mctx.ninjaFileDeps
+		depsCh <- mctx.ninjaFileDeps
 
-			newErrs := c.processLocalBuildActions(&group.actionDefs,
-				&mctx.actionDefs, liveGlobals)
-			if len(newErrs) > 0 {
-				errsCh <- newErrs
-				return true
-			}
+		newErrs := c.processLocalBuildActions(&module.group.actionDefs,
+			&mctx.actionDefs, liveGlobals)
+		if len(newErrs) > 0 {
+			errsCh <- newErrs
+			return true
 		}
 		return false
 	})
