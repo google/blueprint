@@ -133,7 +133,9 @@ type moduleInfo struct {
 		Deps []string
 	}
 
-	name             []subName
+	variantName string
+	variants    variantMap
+
 	logicModule      Module
 	group            *moduleGroup
 	moduleProperties []interface{}
@@ -145,19 +147,19 @@ type moduleInfo struct {
 	splitModules []*moduleInfo
 }
 
-type subName struct {
-	mutatorName string
-	variantName string
+type variantMap map[string]string
+
+func (vm variantMap) clone() variantMap {
+	newVm := make(variantMap)
+	for k, v := range vm {
+		newVm[k] = v
+	}
+
+	return newVm
 }
 
-func (module *moduleInfo) subName() string {
-	names := []string{}
-	for _, subName := range module.name {
-		if subName.variantName != "" {
-			names = append(names, subName.variantName)
-		}
-	}
-	return strings.Join(names, "_")
+func (vm variantMap) equal(other variantMap) bool {
+	return reflect.DeepEqual(vm, other)
 }
 
 type singletonInfo struct {
@@ -664,7 +666,6 @@ func (c *Context) createVariants(origModule *moduleInfo, mutatorName string,
 	variantNames []string) ([]*moduleInfo, []error) {
 
 	newModules := []*moduleInfo{}
-	origVariantName := origModule.name
 
 	var errs []error
 
@@ -702,24 +703,26 @@ func (c *Context) createVariants(origModule *moduleInfo, mutatorName string,
 			}
 		}
 
-		newVariantName := append([]subName(nil), origVariantName...)
-		newSubName := subName{
-			mutatorName: mutatorName,
-			variantName: variantName,
-		}
-		newVariantName = append(newVariantName, newSubName)
+		newVariants := origModule.variants.clone()
+		newVariants[mutatorName] = variantName
 
 		m := *origModule
 		newModule := &m
 		newModule.directDeps = append([]*moduleInfo(nil), origModule.directDeps...)
 		newModule.logicModule = newLogicModule
-		newModule.name = newVariantName
+		newModule.variants = newVariants
 		newModule.moduleProperties = newProperties
+
+		if newModule.variantName == "" {
+			newModule.variantName = variantName
+		} else {
+			newModule.variantName += "_" + variantName
+		}
 
 		newModules = append(newModules, newModule)
 		c.moduleInfo[newModule.logicModule] = newModule
 
-		newErrs := c.convertDepsToVariant(newModule, newSubName)
+		newErrs := c.convertDepsToVariant(newModule, mutatorName, variantName)
 		if len(newErrs) > 0 {
 			errs = append(errs, newErrs...)
 		}
@@ -733,13 +736,14 @@ func (c *Context) createVariants(origModule *moduleInfo, mutatorName string,
 	return newModules, errs
 }
 
-func (c *Context) convertDepsToVariant(module *moduleInfo, newSubName subName) (errs []error) {
+func (c *Context) convertDepsToVariant(module *moduleInfo,
+	mutatorName, variantName string) (errs []error) {
 
 	for i, dep := range module.directDeps {
 		if dep.logicModule == nil {
 			var newDep *moduleInfo
 			for _, m := range dep.splitModules {
-				if len(m.name) > 0 && m.name[len(m.name)-1] == newSubName {
+				if m.variants[mutatorName] == variantName {
 					newDep = m
 					break
 				}
@@ -747,8 +751,7 @@ func (c *Context) convertDepsToVariant(module *moduleInfo, newSubName subName) (
 			if newDep == nil {
 				errs = append(errs, &Error{
 					Err: fmt.Errorf("failed to find variant %q for module %q needed by %q",
-						newSubName.variantName, dep.properties.Name,
-						module.properties.Name),
+						variantName, dep.properties.Name, module.properties.Name),
 					Pos: module.pos,
 				})
 				continue
@@ -1321,7 +1324,7 @@ func (c *Context) generateModuleBuildActions(config interface{},
 			// The parent scope of the moduleContext's local scope gets overridden to be that of the
 			// calling Go package on a per-call basis.  Since the initial parent scope doesn't matter we
 			// just set it to nil.
-			prefix := moduleNamespacePrefix(group.ninjaName + "_" + module.subName())
+			prefix := moduleNamespacePrefix(group.ninjaName + "_" + module.variantName)
 			scope := newLocalScope(nil, prefix)
 
 			mctx := &moduleContext{

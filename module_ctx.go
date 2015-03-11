@@ -249,7 +249,7 @@ func (m *moduleContext) VisitDepsDepthFirstIf(pred func(Module) bool,
 }
 
 func (m *moduleContext) ModuleSubDir() string {
-	return m.module.subName()
+	return m.module.variantName
 }
 
 func (m *moduleContext) Variable(pctx *PackageContext, name, value string) {
@@ -384,11 +384,7 @@ func (mctx *mutatorContext) CreateVariants(variantNames ...string) []Module {
 // Set all dangling dependencies on the current module to point to the variant
 // with given name.
 func (mctx *mutatorContext) SetDependencyVariant(variantName string) {
-	subName := subName{
-		mutatorName: mctx.name,
-		variantName: variantName,
-	}
-	mctx.context.convertDepsToVariant(mctx.module, subName)
+	mctx.context.convertDepsToVariant(mctx.module, mctx.name, variantName)
 }
 
 func (mctx *mutatorContext) Module() Module {
