@@ -118,6 +118,8 @@ type BaseModuleContext interface {
 
 type DynamicDependerModuleContext interface {
 	BaseModuleContext
+
+	AddVariantDependencies([]Variant, ...string)
 }
 
 type ModuleContext interface {
@@ -308,6 +310,25 @@ func (m *moduleContext) VisitAllModuleVariants(visit func(Module)) {
 }
 
 //
+// DynamicDependerModuleContext
+//
+
+type dynamicDependerModuleContext struct {
+	baseModuleContext
+
+	module *moduleInfo
+}
+
+func (mctx *dynamicDependerModuleContext) AddVariantDependencies(variant []Variant, deps ...string) {
+	for _, dep := range deps {
+		errs := mctx.context.addVariantDependency(mctx.module, variant, dep)
+		if len(errs) > 0 {
+			mctx.errs = append(mctx.errs, errs...)
+		}
+	}
+}
+
+//
 // MutatorContext
 //
 
@@ -321,6 +342,13 @@ type baseMutatorContext interface {
 	BaseModuleContext
 
 	Module() Module
+}
+
+type EarlyMutatorContext interface {
+	baseMutatorContext
+
+	CreateVariants(...string) []Module
+	CreateLocalVariants(...string) []Module
 }
 
 type TopDownMutatorContext interface {
@@ -351,6 +379,7 @@ type BottomUpMutatorContext interface {
 // if a second Mutator chooses to split the module a second time.
 type TopDownMutator func(mctx TopDownMutatorContext)
 type BottomUpMutator func(mctx BottomUpMutatorContext)
+type EarlyMutator func(mctx EarlyMutatorContext)
 
 // Split a module into mulitple variants, one for each name in the variantNames
 // parameter.  It returns a list of new modules in the same order as the variantNames
@@ -364,14 +393,32 @@ type BottomUpMutator func(mctx BottomUpMutatorContext)
 // when the Mutator is later called on it, the dependency of the depending module will
 // automatically be updated to point to the first variant.
 func (mctx *mutatorContext) CreateVariants(variantNames ...string) []Module {
+	return mctx.createVariants(variantNames, false)
+}
+
+// Split a module into mulitple variants, one for each name in the variantNames
+// parameter.  It returns a list of new modules in the same order as the variantNames
+// list.
+//
+// Local variants do not affect automatic dependency resolution - dependencies added
+// to the split module via deps or DynamicDependerModule must exactly match a variant
+// that contains all the non-local variants.
+func (mctx *mutatorContext) CreateLocalVariants(variantNames ...string) []Module {
+	return mctx.createVariants(variantNames, true)
+}
+
+func (mctx *mutatorContext) createVariants(variantNames []string, local bool) []Module {
 	ret := []Module{}
 	modules, errs := mctx.context.createVariants(mctx.module, mctx.name, variantNames)
 	if len(errs) > 0 {
 		mctx.errs = append(mctx.errs, errs...)
 	}
 
-	for _, module := range modules {
+	for i, module := range modules {
 		ret = append(ret, module.logicModule)
+		if !local {
+			module.dependencyVariants[mctx.name] = variantNames[i]
+		}
 	}
 
 	if len(ret) != len(variantNames) {
@@ -396,7 +443,10 @@ func (mctx *mutatorContext) Module() Module {
 // Does not affect the ordering of the current mutator pass, but will be ordered
 // correctly for all future mutator passes.
 func (mctx *mutatorContext) AddDependency(module Module, depName string) {
-	mctx.context.addDependency(mctx.context.moduleInfo[module], depName)
+	errs := mctx.context.addDependency(mctx.context.moduleInfo[module], depName)
+	if len(errs) > 0 {
+		mctx.errs = append(mctx.errs, errs...)
+	}
 	mctx.dependenciesModified = true
 }
 
