@@ -64,10 +64,12 @@ func CopyProperties(dstValue, srcValue reflect.Value) {
 					panic(fmt.Errorf("can't copy field %q: slice elements are "+
 						"not strings", field.Name))
 				}
-				newSlice := reflect.MakeSlice(field.Type, srcFieldValue.Len(),
-					srcFieldValue.Len())
-				dstFieldValue.Set(newSlice)
-				reflect.Copy(dstFieldValue, srcFieldValue)
+				if srcFieldValue != dstFieldValue {
+					newSlice := reflect.MakeSlice(field.Type, srcFieldValue.Len(),
+						srcFieldValue.Len())
+					reflect.Copy(newSlice, srcFieldValue)
+					dstFieldValue.Set(newSlice)
+				}
 			} else {
 				dstFieldValue.Set(srcFieldValue)
 			}
