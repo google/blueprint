@@ -149,21 +149,21 @@ var _ BaseModuleContext = (*baseModuleContext)(nil)
 type baseModuleContext struct {
 	context *Context
 	config  interface{}
-	group   *moduleGroup
+	module  *moduleInfo
 	errs    []error
 }
 
 func (d *baseModuleContext) ModuleName() string {
-	return d.group.properties.Name
+	return d.module.properties.Name
 }
 
 func (d *baseModuleContext) ContainsProperty(name string) bool {
-	_, ok := d.group.propertyPos[name]
+	_, ok := d.module.propertyPos[name]
 	return ok
 }
 
 func (d *baseModuleContext) ModuleDir() string {
-	return filepath.Dir(d.group.relBlueprintsFile)
+	return filepath.Dir(d.module.relBlueprintsFile)
 }
 
 func (d *baseModuleContext) Config() interface{} {
@@ -184,14 +184,14 @@ func (d *baseModuleContext) ModuleErrorf(format string,
 
 	d.errs = append(d.errs, &Error{
 		Err: fmt.Errorf(format, args...),
-		Pos: d.group.pos,
+		Pos: d.module.pos,
 	})
 }
 
 func (d *baseModuleContext) PropertyErrorf(property, format string,
 	args ...interface{}) {
 
-	pos, ok := d.group.propertyPos[property]
+	pos, ok := d.module.propertyPos[property]
 	if !ok {
 		panic(fmt.Errorf("property %q was not set for this module", property))
 	}
@@ -210,24 +210,23 @@ var _ ModuleContext = (*moduleContext)(nil)
 
 type moduleContext struct {
 	baseModuleContext
-	module        *moduleInfo
 	scope         *localScope
 	ninjaFileDeps []string
 	actionDefs    localBuildActions
 }
 
-func (m *moduleContext) OtherModuleName(module Module) string {
-	info := m.context.moduleInfo[module]
-	return info.group.properties.Name
+func (m *moduleContext) OtherModuleName(logicModule Module) string {
+	module := m.context.moduleInfo[logicModule]
+	return module.properties.Name
 }
 
-func (m *moduleContext) OtherModuleErrorf(module Module, format string,
+func (m *moduleContext) OtherModuleErrorf(logicModule Module, format string,
 	args ...interface{}) {
 
-	info := m.context.moduleInfo[module]
+	module := m.context.moduleInfo[logicModule]
 	m.errs = append(m.errs, &Error{
 		Err: fmt.Errorf(format, args...),
-		Pos: info.group.pos,
+		Pos: module.pos,
 	})
 }
 
@@ -314,7 +313,6 @@ func (m *moduleContext) VisitAllModuleVariants(visit func(Module)) {
 
 type mutatorContext struct {
 	baseModuleContext
-	module               *moduleInfo
 	name                 string
 	dependenciesModified bool
 }

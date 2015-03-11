@@ -106,16 +106,8 @@ type localBuildActions struct {
 }
 
 type moduleGroup struct {
-	// set during Parse
-	typeName          string
-	ninjaName         string
-	relBlueprintsFile string
-	pos               scanner.Position
-	propertyPos       map[string]scanner.Position
-	properties        struct {
-		Name string
-		Deps []string
-	}
+	name      string
+	ninjaName string
 
 	modules []*moduleInfo
 
@@ -131,6 +123,16 @@ type moduleGroup struct {
 }
 
 type moduleInfo struct {
+	// set during Parse
+	typeName          string
+	relBlueprintsFile string
+	pos               scanner.Position
+	propertyPos       map[string]scanner.Position
+	properties        struct {
+		Name string
+		Deps []string
+	}
+
 	name             []subName
 	logicModule      Module
 	group            *moduleGroup
@@ -663,12 +665,11 @@ func (c *Context) createVariants(origModule *moduleInfo, mutatorName string,
 
 	newModules := []*moduleInfo{}
 	origVariantName := origModule.name
-	group := origModule.group
 
 	var errs []error
 
 	for i, variantName := range variantNames {
-		typeName := group.typeName
+		typeName := origModule.typeName
 		factory, ok := c.moduleFactories[typeName]
 		if !ok {
 			panic(fmt.Sprintf("unrecognized module type %q during cloning", typeName))
@@ -683,14 +684,14 @@ func (c *Context) createVariants(origModule *moduleInfo, mutatorName string,
 			newProperties = origModule.moduleProperties
 		} else {
 			props := []interface{}{
-				&group.properties,
+				&origModule.properties,
 			}
 			newLogicModule, newProperties = factory()
 
 			newProperties = append(props, newProperties...)
 
 			if len(newProperties) != len(origModule.moduleProperties) {
-				panic("mismatched properties array length in " + group.properties.Name)
+				panic("mismatched properties array length in " + origModule.properties.Name)
 			}
 
 			for i := range newProperties {
@@ -708,13 +709,12 @@ func (c *Context) createVariants(origModule *moduleInfo, mutatorName string,
 		}
 		newVariantName = append(newVariantName, newSubName)
 
-		newModule := &moduleInfo{
-			group:            group,
-			directDeps:       append([]*moduleInfo(nil), origModule.directDeps...),
-			logicModule:      newLogicModule,
-			name:             newVariantName,
-			moduleProperties: newProperties,
-		}
+		m := *origModule
+		newModule := &m
+		newModule.directDeps = append([]*moduleInfo(nil), origModule.directDeps...)
+		newModule.logicModule = newLogicModule
+		newModule.name = newVariantName
+		newModule.moduleProperties = newProperties
 
 		newModules = append(newModules, newModule)
 		c.moduleInfo[newModule.logicModule] = newModule
@@ -747,9 +747,9 @@ func (c *Context) convertDepsToVariant(module *moduleInfo, newSubName subName) (
 			if newDep == nil {
 				errs = append(errs, &Error{
 					Err: fmt.Errorf("failed to find variant %q for module %q needed by %q",
-						newSubName.variantName, dep.group.properties.Name,
-						module.group.properties.Name),
-					Pos: module.group.pos,
+						newSubName.variantName, dep.properties.Name,
+						module.properties.Name),
+					Pos: module.pos,
 				})
 				continue
 			}
@@ -779,67 +779,69 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 	}
 
 	logicModule, properties := factory()
-	group := &moduleGroup{
+
+	module := &moduleInfo{
+		logicModule:       logicModule,
 		typeName:          typeName,
 		relBlueprintsFile: relBlueprintsFile,
 	}
 
 	props := []interface{}{
-		&group.properties,
+		&module.properties,
 	}
 	properties = append(props, properties...)
+	module.moduleProperties = properties
 
 	propertyMap, errs := unpackProperties(moduleDef.Properties, properties...)
 	if len(errs) > 0 {
 		return nil, errs
 	}
 
-	ninjaName := toNinjaName(group.properties.Name)
-
-	// The sanitizing in toNinjaName can result in collisions, uniquify the name if it
-	// already exists
-	for i := 0; c.moduleNinjaNames[ninjaName] != nil; i++ {
-		ninjaName = toNinjaName(group.properties.Name) + strconv.Itoa(i)
-	}
-
-	c.moduleNinjaNames[ninjaName] = group
-	group.ninjaName = ninjaName
-
-	group.pos = moduleDef.Type.Pos
-	group.propertyPos = make(map[string]scanner.Position)
+	module.pos = moduleDef.Type.Pos
+	module.propertyPos = make(map[string]scanner.Position)
 	for name, propertyDef := range propertyMap {
-		group.propertyPos[name] = propertyDef.Pos
+		module.propertyPos[name] = propertyDef.Pos
 	}
-
-	module := &moduleInfo{
-		group:            group,
-		logicModule:      logicModule,
-		moduleProperties: properties,
-	}
-	group.modules = []*moduleInfo{module}
 
 	return module, nil
 }
 
 func (c *Context) addModules(modules []*moduleInfo) (errs []error) {
 	for _, module := range modules {
-		name := module.group.properties.Name
-		if first, present := c.moduleGroups[name]; present {
+		name := module.properties.Name
+		c.moduleInfo[module.logicModule] = module
+
+		if group, present := c.moduleGroups[name]; present {
 			errs = append(errs, []error{
 				&Error{
 					Err: fmt.Errorf("module %q already defined", name),
-					Pos: module.group.pos,
+					Pos: module.pos,
 				},
 				&Error{
 					Err: fmt.Errorf("<-- previous definition here"),
-					Pos: first.pos,
+					Pos: group.modules[0].pos,
 				},
 			}...)
 			continue
-		}
+		} else {
+			ninjaName := toNinjaName(module.properties.Name)
 
-		c.moduleGroups[name] = module.group
-		c.moduleInfo[module.logicModule] = module
+			// The sanitizing in toNinjaName can result in collisions, uniquify the name if it
+			// already exists
+			for i := 0; c.moduleNinjaNames[ninjaName] != nil; i++ {
+				ninjaName = toNinjaName(module.properties.Name) + strconv.Itoa(i)
+			}
+
+			c.moduleNinjaNames[ninjaName] = group
+
+			group := &moduleGroup{
+				name:      module.properties.Name,
+				ninjaName: ninjaName,
+				modules:   []*moduleInfo{module},
+			}
+			module.group = group
+			c.moduleGroups[name] = group
+		}
 	}
 
 	return errs
@@ -873,29 +875,26 @@ func (c *Context) ResolveDependencies(config interface{}) []error {
 // this set consists of the union of those module names listed in its "deps"
 // property and those returned by its DynamicDependencies method.  Otherwise it
 // is simply those names listed in its "deps" property.
-func (c *Context) moduleDepNames(group *moduleGroup,
+func (c *Context) moduleDepNames(module *moduleInfo,
 	config interface{}) ([]string, []error) {
 
 	depNamesSet := make(map[string]bool)
 	depNames := []string{}
 
-	for _, depName := range group.properties.Deps {
+	for _, depName := range module.properties.Deps {
 		if !depNamesSet[depName] {
 			depNamesSet[depName] = true
 			depNames = append(depNames, depName)
 		}
 	}
 
-	if len(group.modules) != 1 {
-		panic("expected a single module during moduleDepNames")
-	}
-	logicModule := group.modules[0].logicModule
+	logicModule := module.logicModule
 	dynamicDepender, ok := logicModule.(DynamicDependerModule)
 	if ok {
 		ddmctx := &baseModuleContext{
 			context: c,
 			config:  config,
-			group:   group,
+			module:  module,
 		}
 
 		dynamicDeps := dynamicDepender.DynamicDependencies(ddmctx)
@@ -920,22 +919,21 @@ func (c *Context) moduleDepNames(group *moduleGroup,
 // modules.
 func (c *Context) resolveDependencies(config interface{}) (errs []error) {
 	for _, group := range c.moduleGroups {
-		depNames, newErrs := c.moduleDepNames(group, config)
-		if len(newErrs) > 0 {
-			errs = append(errs, newErrs...)
-			continue
-		}
-
-		if len(group.modules) != 1 {
-			panic("expected a single module in resolveDependencies")
-		}
-		group.modules[0].directDeps = make([]*moduleInfo, 0, len(depNames))
-
-		for _, depName := range depNames {
-			newErrs := c.addDependency(group.modules[0], depName)
+		for _, module := range group.modules {
+			depNames, newErrs := c.moduleDepNames(module, config)
 			if len(newErrs) > 0 {
 				errs = append(errs, newErrs...)
 				continue
+			}
+
+			module.directDeps = make([]*moduleInfo, 0, len(depNames))
+
+			for _, depName := range depNames {
+				newErrs := c.addDependency(module, depName)
+				if len(newErrs) > 0 {
+					errs = append(errs, newErrs...)
+					continue
+				}
 			}
 		}
 	}
@@ -944,9 +942,9 @@ func (c *Context) resolveDependencies(config interface{}) (errs []error) {
 }
 
 func (c *Context) addDependency(module *moduleInfo, depName string) []error {
-	depsPos := module.group.propertyPos["deps"]
+	depsPos := module.propertyPos["deps"]
 
-	if depName == module.group.properties.Name {
+	if depName == module.properties.Name {
 		return []error{&Error{
 			Err: fmt.Errorf("%q depends on itself", depName),
 			Pos: depsPos,
@@ -957,14 +955,14 @@ func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 	if !ok {
 		return []error{&Error{
 			Err: fmt.Errorf("%q depends on undefined module %q",
-				module.group.properties.Name, depName),
+				module.properties.Name, depName),
 			Pos: depsPos,
 		}}
 	}
 
 	if len(depInfo.modules) != 1 {
 		panic(fmt.Sprintf("cannot add dependency from %s to %s, it already has multiple variants",
-			module.group.properties.Name, depInfo.properties.Name))
+			module.properties.Name, depInfo.modules[0].properties.Name))
 	}
 
 	module.directDeps = append(module.directDeps, depInfo.modules[0])
@@ -1035,7 +1033,7 @@ func (c *Context) updateDependencies() (errs []error) {
 		// their own module to the list.
 		errs = append(errs, &Error{
 			Err: fmt.Errorf("encountered dependency cycle:"),
-			Pos: cycle[len(cycle)-1].pos,
+			Pos: cycle[len(cycle)-1].modules[0].pos,
 		})
 
 		// Iterate backwards through the cycle list.
@@ -1044,9 +1042,9 @@ func (c *Context) updateDependencies() (errs []error) {
 			nextGroup := cycle[i]
 			errs = append(errs, &Error{
 				Err: fmt.Errorf("    %q depends on %q",
-					curGroup.properties.Name,
-					nextGroup.properties.Name),
-				Pos: curGroup.propertyPos["deps"],
+					curGroup.name,
+					nextGroup.name),
+				Pos: curGroup.modules[0].propertyPos["deps"],
 			})
 			curGroup = nextGroup
 		}
@@ -1214,10 +1212,9 @@ func (c *Context) runTopDownMutator(config interface{},
 				baseModuleContext: baseModuleContext{
 					context: c,
 					config:  config,
-					group:   group,
+					module:  module,
 				},
-				module: module,
-				name:   name,
+				name: name,
 			}
 
 			mutator(mctx)
@@ -1244,10 +1241,9 @@ func (c *Context) runBottomUpMutator(config interface{},
 				baseModuleContext: baseModuleContext{
 					context: c,
 					config:  config,
-					group:   group,
+					module:  module,
 				},
-				module: module,
-				name:   name,
+				name: name,
 			}
 
 			mutator(mctx)
@@ -1332,10 +1328,9 @@ func (c *Context) generateModuleBuildActions(config interface{},
 				baseModuleContext: baseModuleContext{
 					context: c,
 					config:  config,
-					group:   group,
+					module:  module,
 				},
-				module: module,
-				scope:  scope,
+				scope: scope,
 			}
 
 			mctx.module.logicModule.GenerateBuildActions(mctx)
@@ -2005,8 +2000,8 @@ func (s moduleGroupSorter) Len() int {
 }
 
 func (s moduleGroupSorter) Less(i, j int) bool {
-	iName := s[i].properties.Name
-	jName := s[j].properties.Name
+	iName := s[i].name
+	jName := s[j].name
 	return iName < jName
 }
 
@@ -2036,17 +2031,17 @@ func (c *Context) writeAllModuleActions(nw *ninjaWriter) error {
 		// In order to make the bootstrap build manifest independent of the
 		// build dir we need to output the Blueprints file locations in the
 		// comments as paths relative to the source directory.
-		relPos := info.pos
-		relPos.Filename = info.relBlueprintsFile
+		relPos := info.modules[0].pos
+		relPos.Filename = info.modules[0].relBlueprintsFile
 
 		// Get the name and location of the factory function for the module.
-		factory := c.moduleFactories[info.typeName]
+		factory := c.moduleFactories[info.modules[0].typeName]
 		factoryFunc := runtime.FuncForPC(reflect.ValueOf(factory).Pointer())
 		factoryName := factoryFunc.Name()
 
 		infoMap := map[string]interface{}{
-			"properties": info.properties,
-			"typeName":   info.typeName,
+			"properties": info.modules[0].properties,
+			"typeName":   info.modules[0].typeName,
 			"goFactory":  factoryName,
 			"pos":        relPos,
 		}
