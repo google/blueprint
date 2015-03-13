@@ -125,9 +125,9 @@ type moduleInfo struct {
 		Deps []string
 	}
 
-	variantName        string
-	variants           variantMap
-	dependencyVariants variantMap
+	variantName       string
+	variant           variationMap
+	dependencyVariant variationMap
 
 	logicModule      Module
 	group            *moduleGroup
@@ -150,15 +150,22 @@ type moduleInfo struct {
 	actionDefs localBuildActions
 }
 
-type Variant struct {
+// A Variation is a way that a variant of a module differs from other variants of the same module.
+// For example, two variants of the same module might have Variation{"arch","arm"} and
+// Variation{"arch","arm64"}
+type Variation struct {
+	// Mutator is the axis on which this variation applies, i.e. "arch" or "link"
 	Mutator string
-	Variant string
+	// Variation is the name of the variation on the axis, i.e. "arm" or "arm64" for arch, or
+	// "shared" or "static" for link.
+	Variation string
 }
 
-type variantMap map[string]string
+// A variationMap stores a map of Mutator to Variation to specify a variant of a module.
+type variationMap map[string]string
 
-func (vm variantMap) clone() variantMap {
-	newVm := make(variantMap)
+func (vm variationMap) clone() variationMap {
+	newVm := make(variationMap)
 	for k, v := range vm {
 		newVm[k] = v
 	}
@@ -166,7 +173,7 @@ func (vm variantMap) clone() variantMap {
 	return newVm
 }
 
-func (vm variantMap) equal(other variantMap) bool {
+func (vm variationMap) equal(other variationMap) bool {
 	return reflect.DeepEqual(vm, other)
 }
 
@@ -373,8 +380,7 @@ func (c *Context) RegisterBottomUpMutator(name string, mutator BottomUpMutator) 
 // order is unpredictable.
 //
 // In order for dependencies to be satisifed in a later pass, all dependencies
-// of a module either must have an identical variant or must have a single
-// variant.
+// of a module either must have an identical variant or must have no variations.
 //
 // The mutator type names given here must be unique to all bottom up or early
 // mutators in the Context.
@@ -709,14 +715,14 @@ func (c *Context) processSubdirs(
 	return nil, nil
 }
 
-func (c *Context) createVariants(origModule *moduleInfo, mutatorName string,
-	variantNames []string) ([]*moduleInfo, []error) {
+func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
+	variationNames []string) ([]*moduleInfo, []error) {
 
 	newModules := []*moduleInfo{}
 
 	var errs []error
 
-	for i, variantName := range variantNames {
+	for i, variationName := range variationNames {
 		typeName := origModule.typeName
 		factory, ok := c.moduleFactories[typeName]
 		if !ok {
@@ -750,27 +756,27 @@ func (c *Context) createVariants(origModule *moduleInfo, mutatorName string,
 			}
 		}
 
-		newVariants := origModule.variants.clone()
-		newVariants[mutatorName] = variantName
+		newVariant := origModule.variant.clone()
+		newVariant[mutatorName] = variationName
 
 		m := *origModule
 		newModule := &m
 		newModule.directDeps = append([]*moduleInfo(nil), origModule.directDeps...)
 		newModule.logicModule = newLogicModule
-		newModule.variants = newVariants
-		newModule.dependencyVariants = origModule.dependencyVariants.clone()
+		newModule.variant = newVariant
+		newModule.dependencyVariant = origModule.dependencyVariant.clone()
 		newModule.moduleProperties = newProperties
 
 		if newModule.variantName == "" {
-			newModule.variantName = variantName
+			newModule.variantName = variationName
 		} else {
-			newModule.variantName += "_" + variantName
+			newModule.variantName += "_" + variationName
 		}
 
 		newModules = append(newModules, newModule)
 		c.moduleInfo[newModule.logicModule] = newModule
 
-		newErrs := c.convertDepsToVariant(newModule, mutatorName, variantName)
+		newErrs := c.convertDepsToVariation(newModule, mutatorName, variationName)
 		if len(newErrs) > 0 {
 			errs = append(errs, newErrs...)
 		}
@@ -784,22 +790,22 @@ func (c *Context) createVariants(origModule *moduleInfo, mutatorName string,
 	return newModules, errs
 }
 
-func (c *Context) convertDepsToVariant(module *moduleInfo,
-	mutatorName, variantName string) (errs []error) {
+func (c *Context) convertDepsToVariation(module *moduleInfo,
+	mutatorName, variationName string) (errs []error) {
 
 	for i, dep := range module.directDeps {
 		if dep.logicModule == nil {
 			var newDep *moduleInfo
 			for _, m := range dep.splitModules {
-				if m.variants[mutatorName] == variantName {
+				if m.variant[mutatorName] == variationName {
 					newDep = m
 					break
 				}
 			}
 			if newDep == nil {
 				errs = append(errs, &Error{
-					Err: fmt.Errorf("failed to find variant %q for module %q needed by %q",
-						variantName, dep.properties.Name, module.properties.Name),
+					Err: fmt.Errorf("failed to find variation %q for module %q needed by %q",
+						variationName, dep.properties.Name, module.properties.Name),
 					Pos: module.pos,
 				})
 				continue
@@ -811,7 +817,7 @@ func (c *Context) convertDepsToVariant(module *moduleInfo,
 	return errs
 }
 
-func (c *Context) prettyPrintVariant(variant variantMap) string {
+func (c *Context) prettyPrintVariant(variant variationMap) string {
 	names := make([]string, 0, len(variant))
 	for _, m := range c.variantMutatorNames {
 		if v, ok := variant[m]; ok {
@@ -936,7 +942,7 @@ func (c *Context) ResolveDependencies(config interface{}) []error {
 // DynamicDependerModule interface then this set consists of the union of those
 // module names listed in its "deps" property, those returned by its
 // DynamicDependencies method, and those added by calling AddDependencies or
-// AddVariantDependencies on DynamicDependencyModuleContext.  Otherwise it
+// AddVariationDependencies on DynamicDependencyModuleContext.  Otherwise it
 // is simply those names listed in its "deps" property.
 func (c *Context) moduleDeps(module *moduleInfo,
 	config interface{}) (errs []error) {
@@ -1032,7 +1038,7 @@ func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 		return nil
 	} else {
 		for _, m := range depInfo.modules {
-			if m.variants.equal(module.dependencyVariants) {
+			if m.variant.equal(module.dependencyVariant) {
 				module.directDeps = append(module.directDeps, m)
 				return nil
 			}
@@ -1042,12 +1048,12 @@ func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 	return []error{&Error{
 		Err: fmt.Errorf("dependency %q of %q missing variant %q",
 			depInfo.modules[0].properties.Name, module.properties.Name,
-			c.prettyPrintVariant(module.dependencyVariants)),
+			c.prettyPrintVariant(module.dependencyVariant)),
 		Pos: depsPos,
 	}}
 }
 
-func (c *Context) addVariantDependency(module *moduleInfo, variant []Variant,
+func (c *Context) addVariationDependency(module *moduleInfo, variations []Variation,
 	depName string) []error {
 
 	depsPos := module.propertyPos["deps"]
@@ -1064,16 +1070,16 @@ func (c *Context) addVariantDependency(module *moduleInfo, variant []Variant,
 	// We can't just append variant.Variant to module.dependencyVariants.variantName and
 	// compare the strings because the result won't be in mutator registration order.
 	// Create a new map instead, and then deep compare the maps.
-	newVariants := module.dependencyVariants.clone()
-	for _, v := range variant {
-		newVariants[v.Mutator] = v.Variant
+	newVariant := module.dependencyVariant.clone()
+	for _, v := range variations {
+		newVariant[v.Mutator] = v.Variation
 	}
 
 	for _, m := range depInfo.modules {
-		if newVariants.equal(m.variants) {
-			// AddVariantDependency allows adding a dependency on itself, but only if
+		if newVariant.equal(m.variant) {
+			// AddVariationDependency allows adding a dependency on itself, but only if
 			// that module is earlier in the module list than this one, since we always
-			// run the generator in order for the variants of a module
+			// run GenerateBuildActions in order for the variants of a module
 			if depInfo == module.group && beforeInModuleList(module, m, module.group.modules) {
 				return []error{&Error{
 					Err: fmt.Errorf("%q depends on later version of itself", depName),
@@ -1088,7 +1094,7 @@ func (c *Context) addVariantDependency(module *moduleInfo, variant []Variant,
 	return []error{&Error{
 		Err: fmt.Errorf("dependency %q of %q missing variant %q",
 			depInfo.modules[0].properties.Name, module.properties.Name,
-			c.prettyPrintVariant(newVariants)),
+			c.prettyPrintVariant(newVariant)),
 		Pos: depsPos,
 	}}
 }
