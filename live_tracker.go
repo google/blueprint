@@ -167,3 +167,25 @@ func (l *liveTracker) addNinjaStringDeps(str *ninjaString) error {
 	}
 	return nil
 }
+
+func (l *liveTracker) RemoveVariableIfLive(v Variable) bool {
+	l.Lock()
+	defer l.Unlock()
+
+	_, isLive := l.variables[v]
+	if isLive {
+		delete(l.variables, v)
+	}
+	return isLive
+}
+
+func (l *liveTracker) RemoveRuleIfLive(r Rule) bool {
+	l.Lock()
+	defer l.Unlock()
+
+	_, isLive := l.rules[r]
+	if isLive {
+		delete(l.rules, r)
+	}
+	return isLive
+}

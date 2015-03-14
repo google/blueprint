@@ -118,6 +118,8 @@ type BaseModuleContext interface {
 
 type DynamicDependerModuleContext interface {
 	BaseModuleContext
+
+	AddVariationDependencies([]Variation, ...string)
 }
 
 type ModuleContext interface {
@@ -149,21 +151,21 @@ var _ BaseModuleContext = (*baseModuleContext)(nil)
 type baseModuleContext struct {
 	context *Context
 	config  interface{}
-	group   *moduleGroup
+	module  *moduleInfo
 	errs    []error
 }
 
 func (d *baseModuleContext) ModuleName() string {
-	return d.group.properties.Name
+	return d.module.properties.Name
 }
 
 func (d *baseModuleContext) ContainsProperty(name string) bool {
-	_, ok := d.group.propertyPos[name]
+	_, ok := d.module.propertyPos[name]
 	return ok
 }
 
 func (d *baseModuleContext) ModuleDir() string {
-	return filepath.Dir(d.group.relBlueprintsFile)
+	return filepath.Dir(d.module.relBlueprintsFile)
 }
 
 func (d *baseModuleContext) Config() interface{} {
@@ -184,14 +186,14 @@ func (d *baseModuleContext) ModuleErrorf(format string,
 
 	d.errs = append(d.errs, &Error{
 		Err: fmt.Errorf(format, args...),
-		Pos: d.group.pos,
+		Pos: d.module.pos,
 	})
 }
 
 func (d *baseModuleContext) PropertyErrorf(property, format string,
 	args ...interface{}) {
 
-	pos, ok := d.group.propertyPos[property]
+	pos, ok := d.module.propertyPos[property]
 	if !ok {
 		panic(fmt.Errorf("property %q was not set for this module", property))
 	}
@@ -210,24 +212,23 @@ var _ ModuleContext = (*moduleContext)(nil)
 
 type moduleContext struct {
 	baseModuleContext
-	module        *moduleInfo
 	scope         *localScope
 	ninjaFileDeps []string
 	actionDefs    localBuildActions
 }
 
-func (m *moduleContext) OtherModuleName(module Module) string {
-	info := m.context.moduleInfo[module]
-	return info.group.properties.Name
+func (m *moduleContext) OtherModuleName(logicModule Module) string {
+	module := m.context.moduleInfo[logicModule]
+	return module.properties.Name
 }
 
-func (m *moduleContext) OtherModuleErrorf(module Module, format string,
+func (m *moduleContext) OtherModuleErrorf(logicModule Module, format string,
 	args ...interface{}) {
 
-	info := m.context.moduleInfo[module]
+	module := m.context.moduleInfo[logicModule]
 	m.errs = append(m.errs, &Error{
 		Err: fmt.Errorf(format, args...),
-		Pos: info.group.pos,
+		Pos: module.pos,
 	})
 }
 
@@ -250,7 +251,7 @@ func (m *moduleContext) VisitDepsDepthFirstIf(pred func(Module) bool,
 }
 
 func (m *moduleContext) ModuleSubDir() string {
-	return m.module.subName()
+	return m.module.variantName
 }
 
 func (m *moduleContext) Variable(pctx *PackageContext, name, value string) {
@@ -309,12 +310,36 @@ func (m *moduleContext) VisitAllModuleVariants(visit func(Module)) {
 }
 
 //
+// DynamicDependerModuleContext
+//
+
+type dynamicDependerModuleContext struct {
+	baseModuleContext
+
+	module *moduleInfo
+}
+
+// AddVariationDependencies adds deps as dependencies of the current module, but uses the variations
+// argument to select which variant of the dependency to use.  A variant of the dependency must
+// exist that matches the all of the non-local variations of the current module, plus the variations
+// argument.
+func (mctx *dynamicDependerModuleContext) AddVariationDependencies(variations []Variation,
+	deps ...string) {
+
+	for _, dep := range deps {
+		errs := mctx.context.addVariationDependency(mctx.module, variations, dep)
+		if len(errs) > 0 {
+			mctx.errs = append(mctx.errs, errs...)
+		}
+	}
+}
+
+//
 // MutatorContext
 //
 
 type mutatorContext struct {
 	baseModuleContext
-	module               *moduleInfo
 	name                 string
 	dependenciesModified bool
 }
@@ -323,6 +348,13 @@ type baseMutatorContext interface {
 	BaseModuleContext
 
 	Module() Module
+}
+
+type EarlyMutatorContext interface {
+	baseMutatorContext
+
+	CreateVariations(...string) []Module
+	CreateLocalVariations(...string) []Module
 }
 
 type TopDownMutatorContext interface {
@@ -338,12 +370,12 @@ type BottomUpMutatorContext interface {
 	baseMutatorContext
 
 	AddDependency(module Module, name string)
-	CreateVariants(...string) []Module
-	SetDependencyVariant(string)
+	CreateVariations(...string) []Module
+	SetDependencyVariation(string)
 }
 
 // A Mutator function is called for each Module, and can use
-// MutatorContext.CreateSubVariants to split a Module into multiple Modules,
+// MutatorContext.CreateVariations to split a Module into multiple Modules,
 // modifying properties on the new modules to differentiate them.  It is called
 // after parsing all Blueprint files, but before generating any build rules,
 // and is always called on dependencies before being called on the depending module.
@@ -353,44 +385,59 @@ type BottomUpMutatorContext interface {
 // if a second Mutator chooses to split the module a second time.
 type TopDownMutator func(mctx TopDownMutatorContext)
 type BottomUpMutator func(mctx BottomUpMutatorContext)
+type EarlyMutator func(mctx EarlyMutatorContext)
 
-// Split a module into mulitple variants, one for each name in the variantNames
-// parameter.  It returns a list of new modules in the same order as the variantNames
+// Split a module into mulitple variants, one for each name in the variationNames
+// parameter.  It returns a list of new modules in the same order as the variationNames
 // list.
 //
 // If any of the dependencies of the module being operated on were already split
-// by calling CreateVariants with the same name, the dependency will automatically
+// by calling CreateVariations with the same name, the dependency will automatically
 // be updated to point the matching variant.
 //
 // If a module is split, and then a module depending on the first module is not split
 // when the Mutator is later called on it, the dependency of the depending module will
 // automatically be updated to point to the first variant.
-func (mctx *mutatorContext) CreateVariants(variantNames ...string) []Module {
+func (mctx *mutatorContext) CreateVariations(variationNames ...string) []Module {
+	return mctx.createVariations(variationNames, false)
+}
+
+// Split a module into mulitple variants, one for each name in the variantNames
+// parameter.  It returns a list of new modules in the same order as the variantNames
+// list.
+//
+// Local variations do not affect automatic dependency resolution - dependencies added
+// to the split module via deps or DynamicDependerModule must exactly match a variant
+// that contains all the non-local variations.
+func (mctx *mutatorContext) CreateLocalVariations(variationNames ...string) []Module {
+	return mctx.createVariations(variationNames, true)
+}
+
+func (mctx *mutatorContext) createVariations(variationNames []string, local bool) []Module {
 	ret := []Module{}
-	modules, errs := mctx.context.createVariants(mctx.module, mctx.name, variantNames)
+	modules, errs := mctx.context.createVariations(mctx.module, mctx.name, variationNames)
 	if len(errs) > 0 {
 		mctx.errs = append(mctx.errs, errs...)
 	}
 
-	for _, module := range modules {
+	for i, module := range modules {
 		ret = append(ret, module.logicModule)
+		if !local {
+			module.dependencyVariant[mctx.name] = variationNames[i]
+		}
 	}
 
-	if len(ret) != len(variantNames) {
+	if len(ret) != len(variationNames) {
 		panic("oops!")
 	}
 
 	return ret
 }
 
-// Set all dangling dependencies on the current module to point to the variant
+// Set all dangling dependencies on the current module to point to the variation
 // with given name.
-func (mctx *mutatorContext) SetDependencyVariant(variantName string) {
-	subName := subName{
-		mutatorName: mctx.name,
-		variantName: variantName,
-	}
-	mctx.context.convertDepsToVariant(mctx.module, subName)
+func (mctx *mutatorContext) SetDependencyVariation(variationName string) {
+	mctx.context.convertDepsToVariation(mctx.module, mctx.name, variationName)
 }
 
 func (mctx *mutatorContext) Module() Module {
@@ -398,11 +445,14 @@ func (mctx *mutatorContext) Module() Module {
 }
 
 // Add a dependency to the given module.  The depender can be a specific variant
-// of a module, but the dependee must be a module that only has a single variant.
+// of a module, but the dependee must be a module that has no variations.
 // Does not affect the ordering of the current mutator pass, but will be ordered
 // correctly for all future mutator passes.
 func (mctx *mutatorContext) AddDependency(module Module, depName string) {
-	mctx.context.addDependency(mctx.context.moduleInfo[module], depName)
+	errs := mctx.context.addDependency(mctx.context.moduleInfo[module], depName)
+	if len(errs) > 0 {
+		mctx.errs = append(mctx.errs, errs...)
+	}
 	mctx.dependenciesModified = true
 }
 

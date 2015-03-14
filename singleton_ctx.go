@@ -72,17 +72,17 @@ func (s *singletonContext) Config() interface{} {
 
 func (s *singletonContext) ModuleName(logicModule Module) string {
 	module := s.context.moduleInfo[logicModule]
-	return module.group.properties.Name
+	return module.properties.Name
 }
 
 func (s *singletonContext) ModuleDir(logicModule Module) string {
 	module := s.context.moduleInfo[logicModule]
-	return filepath.Dir(module.group.relBlueprintsFile)
+	return filepath.Dir(module.relBlueprintsFile)
 }
 
 func (s *singletonContext) BlueprintFile(logicModule Module) string {
 	module := s.context.moduleInfo[logicModule]
-	return module.group.relBlueprintsFile
+	return module.relBlueprintsFile
 }
 
 func (s *singletonContext) ModuleErrorf(logicModule Module, format string,
@@ -91,7 +91,7 @@ func (s *singletonContext) ModuleErrorf(logicModule Module, format string,
 	module := s.context.moduleInfo[logicModule]
 	s.errs = append(s.errs, &Error{
 		Err: fmt.Errorf(format, args...),
-		Pos: module.group.pos,
+		Pos: module.pos,
 	})
 }
 

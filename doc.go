@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // Blueprint is a meta-build system that reads in Blueprints files that describe
-// modules that need to be built, and produces a Ninja 
+// modules that need to be built, and produces a Ninja
 // (http://martine.github.io/ninja/) manifest describing the commands that need
 // to be run and their dependencies.  Where most build systems use built-in
 // rules or a domain-specific langauge to describe the logic how modules are
@@ -25,7 +25,7 @@
 //
 // Blueprint uses a bootstrapping process to allow the code for Blueprint,
 // the code for the build logic, and the code for the project being compiled
-// to all live in the project.  Dependencies between the layers are fully 
+// to all live in the project.  Dependencies between the layers are fully
 // tracked - a change to the logic code will cause the logic to be recompiled,
 // regenerate the project build manifest, and run modified project rules.  A
 // change to Blueprint itself will cause Blueprint to rebuild, and then rebuild
