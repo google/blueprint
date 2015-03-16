@@ -734,6 +734,8 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 
 		if i == 0 {
 			// Reuse the existing module for the first new variant
+			// This both saves creating a new module, and causes the insertion in c.moduleInfo below
+			// with logicModule as the key to replace the original entry in c.moduleInfo
 			newLogicModule = origModule.logicModule
 			newProperties = origModule.moduleProperties
 		} else {
@@ -774,6 +776,10 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 		}
 
 		newModules = append(newModules, newModule)
+
+		// Insert the new variant into the global module map.  If this is the first variant then
+		// it reuses logicModule from the original module, which causes this to replace the
+		// original module in the global module map.
 		c.moduleInfo[newModule.logicModule] = newModule
 
 		newErrs := c.convertDepsToVariation(newModule, mutatorName, variationName)
