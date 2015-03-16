@@ -16,7 +16,7 @@
 // modules that need to be built, and produces a Ninja
 // (http://martine.github.io/ninja/) manifest describing the commands that need
 // to be run and their dependencies.  Where most build systems use built-in
-// rules or a domain-specific langauge to describe the logic how modules are
+// rules or a domain-specific language to describe the logic how modules are
 // converted to build rules, Blueprint delegates this to per-project build logic
 // written in Go.  For large, heterogenous projects this allows the inherent
 // complexity of the build logic to be maintained in a high-level language,
