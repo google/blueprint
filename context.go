@@ -1479,12 +1479,12 @@ func spliceModulesAtIndex(modules []*moduleInfo, i int, newModules []*moduleInfo
 	}
 
 	// Move the end of the slice over by spliceSize-1
-	copy(modules[i+spliceSize:], modules[i+1:])
+	copy(dest[i+spliceSize:], modules[i+1:])
 
 	// Copy the new modules into the slice
-	copy(modules[i:], newModules)
+	copy(dest[i:], newModules)
 
-	return modules
+	return dest
 }
 
 func (c *Context) initSpecialVariables() {
