@@ -125,7 +125,8 @@ func (p *parser) next() {
 	if p.tok != scanner.EOF {
 		p.tok = p.scanner.Scan()
 		for p.tok == scanner.Comment {
-			p.comments = append(p.comments, Comment{p.scanner.TokenText(), p.scanner.Position})
+			lines := strings.Split(p.scanner.TokenText(), "\n")
+			p.comments = append(p.comments, Comment{lines, p.scanner.Position})
 			p.tok = p.scanner.Scan()
 		}
 	}
@@ -688,6 +689,6 @@ func (s *Scope) String() string {
 }
 
 type Comment struct {
-	Comment string
+	Comment []string
 	Pos     scanner.Position
 }

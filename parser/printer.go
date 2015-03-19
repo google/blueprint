@@ -19,36 +19,21 @@ import (
 	"strconv"
 	"strings"
 	"text/scanner"
+	"unicode"
 )
 
 var noPos = scanner.Position{}
-
-type whitespace int
-
-const (
-	wsDontCare whitespace = iota
-	wsBoth
-	wsAfter
-	wsBefore
-	wsCanBreak     // allow extra line breaks or comments
-	wsBothCanBreak // wsBoth plus allow extra line breaks or comments
-	wsForceBreak
-	wsForceDoubleBreak
-)
-
-type tokenState struct {
-	ws     whitespace
-	token  string
-	pos    scanner.Position
-	indent int
-}
 
 type printer struct {
 	defs     []Definition
 	comments []Comment
 
 	curComment int
-	prev       tokenState
+
+	pos scanner.Position
+
+	pendingSpace   bool
+	pendingNewline int
 
 	output []byte
 
@@ -63,8 +48,12 @@ func newPrinter(file *File) *printer {
 		defs:       file.Defs,
 		comments:   file.Comments,
 		indentList: []int{0},
-		prev: tokenState{
-			ws: wsCanBreak,
+
+		// pendingNewLine is initialized to -1 to eat initial spaces if the first token is a comment
+		pendingNewline: -1,
+
+		pos: scanner.Position{
+			Line: 1,
 		},
 	}
 }
@@ -75,7 +64,6 @@ func Print(file *File) ([]byte, error) {
 	for _, def := range p.defs {
 		p.printDef(def)
 	}
-	p.prev.ws = wsDontCare
 	p.flush()
 	return p.output, nil
 }
@@ -99,21 +87,23 @@ func (p *printer) printDef(def Definition) {
 }
 
 func (p *printer) printAssignment(assignment *Assignment) {
-	p.printToken(assignment.Name.Name, assignment.Name.Pos, wsDontCare)
-	p.printToken(assignment.Assigner, assignment.Pos, wsBoth)
+	p.printToken(assignment.Name.Name, assignment.Name.Pos)
+	p.requestSpace()
+	p.printToken(assignment.Assigner, assignment.Pos)
+	p.requestSpace()
 	p.printValue(assignment.OrigValue)
-	p.prev.ws = wsForceBreak
+	p.requestNewline()
 }
 
 func (p *printer) printModule(module *Module) {
-	p.printToken(module.Type.Name, module.Type.Pos, wsDontCare)
+	p.printToken(module.Type.Name, module.Type.Pos)
 	p.printMap(module.Properties, module.LbracePos, module.RbracePos)
-	p.prev.ws = wsForceDoubleBreak
+	p.requestDoubleNewline()
 }
 
 func (p *printer) printValue(value Value) {
 	if value.Variable != "" {
-		p.printToken(value.Variable, value.Pos, wsDontCare)
+		p.printToken(value.Variable, value.Pos)
 	} else if value.Expression != nil {
 		p.printExpression(*value.Expression)
 	} else {
@@ -125,9 +115,9 @@ func (p *printer) printValue(value Value) {
 			} else {
 				s = "false"
 			}
-			p.printToken(s, value.Pos, wsDontCare)
+			p.printToken(s, value.Pos)
 		case String:
-			p.printToken(strconv.Quote(value.StringValue), value.Pos, wsDontCare)
+			p.printToken(strconv.Quote(value.StringValue), value.Pos)
 		case List:
 			p.printList(value.ListValue, value.Pos, value.EndPos)
 		case Map:
@@ -139,184 +129,219 @@ func (p *printer) printValue(value Value) {
 }
 
 func (p *printer) printList(list []Value, pos, endPos scanner.Position) {
-	p.printToken("[", pos, wsBefore)
+	p.requestSpace()
+	p.printToken("[", pos)
 	if len(list) > 1 || pos.Line != endPos.Line {
-		p.prev.ws = wsForceBreak
+		p.requestNewline()
 		p.indent(p.curIndent() + 4)
 		for _, value := range list {
 			p.printValue(value)
-			p.printToken(",", noPos, wsForceBreak)
+			p.printToken(",", noPos)
+			p.requestNewline()
 		}
-		p.unindent()
+		p.unindent(endPos)
 	} else {
 		for _, value := range list {
 			p.printValue(value)
 		}
 	}
-	p.printToken("]", endPos, wsDontCare)
+	p.printToken("]", endPos)
 }
 
 func (p *printer) printMap(list []*Property, pos, endPos scanner.Position) {
-	p.printToken("{", pos, wsBefore)
+	p.requestSpace()
+	p.printToken("{", pos)
 	if len(list) > 0 || pos.Line != endPos.Line {
-		p.prev.ws = wsForceBreak
+		p.requestNewline()
 		p.indent(p.curIndent() + 4)
 		for _, prop := range list {
 			p.printProperty(prop)
-			p.printToken(",", noPos, wsForceBreak)
+			p.printToken(",", noPos)
+			p.requestNewline()
 		}
-		p.unindent()
+		p.unindent(endPos)
 	}
-	p.printToken("}", endPos, wsDontCare)
+	p.printToken("}", endPos)
 }
 
 func (p *printer) printExpression(expression Expression) {
 	p.printValue(expression.Args[0])
-	p.printToken(string(expression.Operator), expression.Pos, wsBothCanBreak)
+	p.requestSpace()
+	p.printToken(string(expression.Operator), expression.Pos)
+	if expression.Args[0].Pos.Line == expression.Args[1].Pos.Line {
+		p.requestSpace()
+	} else {
+		p.requestNewline()
+	}
 	p.printValue(expression.Args[1])
 }
 
 func (p *printer) printProperty(property *Property) {
-	p.printToken(property.Name.Name, property.Name.Pos, wsDontCare)
-	p.printToken(":", property.Pos, wsAfter)
+	p.printToken(property.Name.Name, property.Name.Pos)
+	p.printToken(":", property.Pos)
+	p.requestSpace()
 	p.printValue(property.Value)
 }
 
 // Print a single token, including any necessary comments or whitespace between
 // this token and the previously printed token
-func (p *printer) printToken(s string, pos scanner.Position, ws whitespace) {
-	this := tokenState{
-		token:  s,
-		pos:    pos,
-		ws:     ws,
-		indent: p.curIndent(),
+func (p *printer) printToken(s string, pos scanner.Position) {
+	newline := p.pendingNewline != 0
+
+	if pos == noPos {
+		pos = p.pos
 	}
 
-	if this.pos == noPos {
-		this.pos = p.prev.pos
+	if newline {
+		p.printEndOfLineCommentsBefore(pos)
+		p.requestNewlinesForPos(pos)
 	}
 
-	// Print the previously stored token
-	allowLineBreak := false
-	lineBreak := 0
+	p.printInLineCommentsBefore(pos)
 
-	switch p.prev.ws {
-	case wsBothCanBreak, wsCanBreak, wsForceBreak, wsForceDoubleBreak:
-		allowLineBreak = true
-	}
+	p.flushSpace()
 
-	p.output = append(p.output, p.prev.token...)
+	p.output = append(p.output, s...)
 
-	commentIndent := max(p.prev.indent, this.indent)
-	p.printComments(this.pos, allowLineBreak, commentIndent)
-
-	switch p.prev.ws {
-	case wsForceBreak:
-		lineBreak = 1
-	case wsForceDoubleBreak:
-		lineBreak = 2
-	}
-
-	if allowLineBreak && p.prev.pos.IsValid() &&
-		pos.Line-p.prev.pos.Line > lineBreak {
-		lineBreak = pos.Line - p.prev.pos.Line
-	}
-
-	if lineBreak > 0 {
-		p.printLineBreak(lineBreak, this.indent)
-	} else {
-		p.printWhitespace(this.ws)
-	}
-
-	p.prev = this
+	p.pos = pos
 }
 
-func (p *printer) printWhitespace(ws whitespace) {
-	if p.prev.ws == wsBoth || ws == wsBoth ||
-		p.prev.ws == wsBothCanBreak || ws == wsBothCanBreak ||
-		p.prev.ws == wsAfter || ws == wsBefore {
-		p.output = append(p.output, ' ')
-	}
-}
-
-// Pr int all comments that occur before position pos
-func (p *printer) printComments(pos scanner.Position, allowLineBreak bool, indent int) {
-	if allowLineBreak {
-		for _, c := range p.skippedComments {
-			p.printComment(c, indent)
-		}
-		p.skippedComments = []Comment{}
-	}
+// Print any in-line (single line /* */) comments that appear _before_ pos
+func (p *printer) printInLineCommentsBefore(pos scanner.Position) {
 	for p.curComment < len(p.comments) && p.comments[p.curComment].Pos.Offset < pos.Offset {
-		if !allowLineBreak && p.comments[p.curComment].Comment[0:2] == "//" {
-			p.skippedComments = append(p.skippedComments, p.comments[p.curComment])
+		c := p.comments[p.curComment]
+		if c.Comment[0][0:2] == "//" || len(c.Comment) > 1 {
+			p.skippedComments = append(p.skippedComments, c)
 		} else {
-			p.printComment(p.comments[p.curComment], indent)
+			p.flushSpace()
+			p.printComment(c)
+			p.requestSpace()
 		}
 		p.curComment++
 	}
 }
 
-// Print a single comment, which may be a multi-line comment
-func (p *printer) printComment(comment Comment, indent int) {
-	commentLines := strings.Split(comment.Comment, "\n")
-	pos := comment.Pos
-	for _, line := range commentLines {
-		if p.prev.pos.IsValid() && pos.Line > p.prev.pos.Line {
-			// Comment is on the next line
-			if p.prev.ws == wsForceDoubleBreak {
-				p.printLineBreak(2, indent)
-				p.prev.ws = wsForceBreak
-			} else {
-				p.printLineBreak(pos.Line-p.prev.pos.Line, indent)
-			}
-		} else if p.prev.pos.IsValid() {
-			// Comment is on the current line
-			p.printWhitespace(wsBoth)
+// Print any comments, including end of line comments, that appear _before_ the line specified
+// by pos
+func (p *printer) printEndOfLineCommentsBefore(pos scanner.Position) {
+	for _, c := range p.skippedComments {
+		if !p.requestNewlinesForPos(c.Pos) {
+			p.requestSpace()
 		}
-		p.output = append(p.output, strings.TrimSpace(line)...)
-		p.prev.pos = pos
-		pos.Line++
+		p.printComment(c)
+		p._requestNewline()
 	}
-	if comment.Comment[0:2] == "//" {
-		if p.prev.ws != wsForceDoubleBreak {
-			p.prev.ws = wsForceBreak
+	p.skippedComments = []Comment{}
+	for p.curComment < len(p.comments) && p.comments[p.curComment].Pos.Line < pos.Line {
+		c := p.comments[p.curComment]
+		if !p.requestNewlinesForPos(c.Pos) {
+			p.requestSpace()
 		}
-	} else {
-		p.prev.ws = wsBothCanBreak
+		p.printComment(c)
+		p._requestNewline()
+		p.curComment++
 	}
 }
 
-// Print one or two line breaks.  n <= 0 is only valid if forceLineBreak is set,
-// n > 2 is collapsed to a single blank line.
-func (p *printer) printLineBreak(n, indent int) {
-	if n > 2 {
-		n = 2
+// Compare the line numbers of the previous and current positions to determine whether extra
+// newlines should be inserted.  A second newline is allowed anywhere requestNewline() is called.
+func (p *printer) requestNewlinesForPos(pos scanner.Position) bool {
+	if pos.Line > p.pos.Line {
+		p._requestNewline()
+		if pos.Line > p.pos.Line+1 {
+			p.pendingNewline = 2
+		}
+		return true
 	}
 
-	for i := 0; i < n; i++ {
+	return false
+}
+
+func (p *printer) requestSpace() {
+	p.pendingSpace = true
+}
+
+// Ask for a newline to be inserted before the next token, but do not insert any comments.  Used
+// by the comment printers.
+func (p *printer) _requestNewline() {
+	if p.pendingNewline == 0 {
+		p.pendingNewline = 1
+	}
+}
+
+// Ask for a newline to be inserted before the next token.  Also inserts any end-of line comments
+// for the current line
+func (p *printer) requestNewline() {
+	pos := p.pos
+	pos.Line++
+	p.printEndOfLineCommentsBefore(pos)
+	p._requestNewline()
+}
+
+// Ask for two newlines to be inserted before the next token.  Also inserts any end-of line comments
+// for the current line
+func (p *printer) requestDoubleNewline() {
+	p.requestNewline()
+	p.pendingNewline = 2
+}
+
+// Flush any pending whitespace, ignoring pending spaces if there is a pending newline
+func (p *printer) flushSpace() {
+	if p.pendingNewline == 1 {
 		p.output = append(p.output, '\n')
+		p.pad(p.curIndent())
+	} else if p.pendingNewline == 2 {
+		p.output = append(p.output, "\n\n"...)
+		p.pad(p.curIndent())
+	} else if p.pendingSpace == true && p.pendingNewline != -1 {
+		p.output = append(p.output, ' ')
 	}
 
-	p.pad(0, indent)
+	p.pendingSpace = false
+	p.pendingNewline = 0
+}
+
+// Print a single comment, which may be a multi-line comment
+func (p *printer) printComment(comment Comment) {
+	pos := comment.Pos
+	for i, line := range comment.Comment {
+		line = strings.TrimRightFunc(line, unicode.IsSpace)
+		p.flushSpace()
+		if i != 0 {
+			lineIndent := strings.IndexFunc(line, func(r rune) bool { return !unicode.IsSpace(r) })
+			lineIndent = max(lineIndent, p.curIndent())
+			p.pad(lineIndent - p.curIndent())
+			pos.Line++
+		}
+		p.output = append(p.output, strings.TrimSpace(line)...)
+		if i < len(comment.Comment)-1 {
+			p._requestNewline()
+		}
+	}
+	p.pos = pos
 }
 
 // Print any comments that occur after the last token, and a trailing newline
 func (p *printer) flush() {
 	for _, c := range p.skippedComments {
-		p.printComment(c, p.curIndent())
+		if !p.requestNewlinesForPos(c.Pos) {
+			p.requestSpace()
+		}
+		p.printComment(c)
 	}
-	p.printToken("", noPos, wsDontCare)
 	for p.curComment < len(p.comments) {
-		p.printComment(p.comments[p.curComment], p.curIndent())
+		c := p.comments[p.curComment]
+		if !p.requestNewlinesForPos(c.Pos) {
+			p.requestSpace()
+		}
+		p.printComment(c)
 		p.curComment++
 	}
 	p.output = append(p.output, '\n')
 }
 
 // Print whitespace to pad from column l to column max
-func (p *printer) pad(l, max int) {
-	l = max - l
+func (p *printer) pad(l int) {
 	if l > len(p.wsBuf) {
 		p.wsBuf = make([]byte, l)
 		for i := range p.wsBuf {
@@ -330,7 +355,8 @@ func (p *printer) indent(i int) {
 	p.indentList = append(p.indentList, i)
 }
 
-func (p *printer) unindent() {
+func (p *printer) unindent(pos scanner.Position) {
+	p.printEndOfLineCommentsBefore(pos)
 	p.indentList = p.indentList[0 : len(p.indentList)-1]
 }
 

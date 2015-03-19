@@ -229,15 +229,15 @@ var validParseTestCases = []struct {
 		},
 		[]Comment{
 			Comment{
-				Comment: "// comment1",
+				Comment: []string{"// comment1"},
 				Pos:     mkpos(3, 2, 3),
 			},
 			Comment{
-				Comment: "// comment2",
+				Comment: []string{"// comment2"},
 				Pos:     mkpos(26, 4, 4),
 			},
 			Comment{
-				Comment: "// comment3",
+				Comment: []string{"// comment3"},
 				Pos:     mkpos(56, 5, 19),
 			},
 		},

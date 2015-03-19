@@ -195,7 +195,62 @@ module { // test
     ],
     //test
 }
+
 //test2
+`,
+	},
+	{
+		input: `
+/*test {
+    test: true,
+}*/
+
+test {
+/*test: true,*/
+}
+
+// This
+/* Is */
+// A
+
+// Multiline
+// Comment
+
+test {}
+
+// This
+/* Is */
+// A
+// Trailing
+
+// Multiline
+// Comment
+`,
+		output: `
+/*test {
+    test: true,
+}*/
+
+test {
+    /*test: true,*/
+}
+
+// This
+/* Is */
+// A
+
+// Multiline
+// Comment
+
+test {}
+
+// This
+/* Is */
+// A
+// Trailing
+
+// Multiline
+// Comment
 `,
 	},
 }
