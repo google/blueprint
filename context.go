@@ -718,6 +718,11 @@ func (c *Context) processSubdirs(
 func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 	variationNames []string) ([]*moduleInfo, []error) {
 
+	if len(variationNames) == 0 {
+		panic(fmt.Errorf("mutator %q passed zero-length variation list for module %q",
+				mutatorName, origModule.properties.Name))
+	}
+
 	newModules := []*moduleInfo{}
 
 	var errs []error
