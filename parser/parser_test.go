@@ -477,7 +477,7 @@ var validParseTestCases = []struct {
 func TestParseValidInput(t *testing.T) {
 	for _, testCase := range validParseTestCases {
 		r := bytes.NewBufferString(testCase.input)
-		file, errs := Parse("", r, NewScope(nil))
+		file, errs := ParseAndEval("", r, NewScope(nil))
 		if len(errs) != 0 {
 			t.Errorf("test case: %s", testCase.input)
 			t.Errorf("unexpected errors:")

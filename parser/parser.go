@@ -42,11 +42,7 @@ type File struct {
 	Comments []Comment
 }
 
-func Parse(filename string, r io.Reader, scope *Scope) (file *File, errs []error) {
-
-	p := newParser(r, scope)
-	p.scanner.Filename = filename
-
+func parse(p *parser) (file *File, errs []error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if r == errTooManyErrors {
@@ -66,30 +62,42 @@ func Parse(filename string, r io.Reader, scope *Scope) (file *File, errs []error
 		Defs:     defs,
 		Comments: comments,
 	}, errs
+
+}
+
+func ParseAndEval(filename string, r io.Reader, scope *Scope) (file *File, errs []error) {
+	p := newParser(r, scope)
+	p.eval = true
+	p.scanner.Filename = filename
+
+	return parse(p)
+}
+
+func Parse(filename string, r io.Reader, scope *Scope) (file *File, errs []error) {
+	p := newParser(r, scope)
+	p.scanner.Filename = filename
+
+	return parse(p)
 }
 
 type parser struct {
-	scanner       scanner.Scanner
-	tok           rune
-	errors        []error
-	scope         *Scope
-	parseComments bool
-	comments      []Comment
+	scanner  scanner.Scanner
+	tok      rune
+	errors   []error
+	scope    *Scope
+	comments []Comment
+	eval     bool
 }
 
 func newParser(r io.Reader, scope *Scope) *parser {
 	p := &parser{}
 	p.scope = scope
-	p.parseComments = true
 	p.scanner.Init(r)
 	p.scanner.Error = func(sc *scanner.Scanner, msg string) {
 		p.errorf(msg)
 	}
 	p.scanner.Mode = scanner.ScanIdents | scanner.ScanStrings |
 		scanner.ScanRawStrings | scanner.ScanComments
-	if !p.parseComments {
-		p.scanner.Mode |= scanner.SkipComments
-	}
 	p.next()
 	return p
 }
@@ -183,12 +191,18 @@ func (p *parser) parseAssignment(name string,
 
 	if p.scope != nil {
 		if assigner == "+=" {
-			p.scope.Append(assignment)
-		} else {
-			err := p.scope.Add(assignment)
-			if err != nil {
-				p.errorf("%s", err.Error())
+			if old, err := p.scope.Get(assignment.Name.Name); err == nil {
+				if old.Referenced {
+					p.errorf("modified variable with += after referencing")
+				}
+				old.Value, err = p.evaluateOperator(old.Value, assignment.Value, '+', assignment.Pos)
+				return
 			}
+		}
+
+		err := p.scope.Add(assignment)
+		if err != nil {
+			p.errorf("%s", err.Error())
 		}
 	}
 
@@ -280,35 +294,41 @@ func (p *parser) parseExpression() (value Value) {
 	}
 }
 
-func evaluateOperator(value1, value2 Value, operator rune, pos scanner.Position) (Value, error) {
-	if value1.Type != value2.Type {
-		return Value{}, fmt.Errorf("mismatched type in operator %c: %s != %s", operator,
-			value1.Type, value2.Type)
-	}
+func (p *parser) evaluateOperator(value1, value2 Value, operator rune,
+	pos scanner.Position) (Value, error) {
 
-	value := value1
-	value.Variable = ""
+	value := Value{}
 
-	switch operator {
-	case '+':
-		switch value1.Type {
-		case String:
-			value.StringValue = value1.StringValue + value2.StringValue
-		case List:
-			value.ListValue = append([]Value{}, value1.ListValue...)
-			value.ListValue = append(value.ListValue, value2.ListValue...)
-		case Map:
-			var err error
-			value.MapValue, err = addMaps(value.MapValue, value2.MapValue, pos)
-			if err != nil {
-				return Value{}, err
+	if p.eval {
+		if value1.Type != value2.Type {
+			return Value{}, fmt.Errorf("mismatched type in operator %c: %s != %s", operator,
+				value1.Type, value2.Type)
+		}
+
+		value = value1
+		value.Variable = ""
+
+		switch operator {
+		case '+':
+			switch value1.Type {
+			case String:
+				value.StringValue = value1.StringValue + value2.StringValue
+			case List:
+				value.ListValue = append([]Value{}, value1.ListValue...)
+				value.ListValue = append(value.ListValue, value2.ListValue...)
+			case Map:
+				var err error
+				value.MapValue, err = p.addMaps(value.MapValue, value2.MapValue, pos)
+				if err != nil {
+					return Value{}, err
+				}
+			default:
+				return Value{}, fmt.Errorf("operator %c not supported on type %s", operator,
+					value1.Type)
 			}
 		default:
-			return Value{}, fmt.Errorf("operator %c not supported on type %s", operator,
-				value1.Type)
+			panic("unknown operator " + string(operator))
 		}
-	default:
-		panic("unknown operator " + string(operator))
 	}
 
 	value.Expression = &Expression{
@@ -320,7 +340,7 @@ func evaluateOperator(value1, value2 Value, operator rune, pos scanner.Position)
 	return value, nil
 }
 
-func addMaps(map1, map2 []*Property, pos scanner.Position) ([]*Property, error) {
+func (p *parser) addMaps(map1, map2 []*Property, pos scanner.Position) ([]*Property, error) {
 	ret := make([]*Property, 0, len(map1))
 
 	inMap1 := make(map[string]*Property)
@@ -342,7 +362,7 @@ func addMaps(map1, map2 []*Property, pos scanner.Position) ([]*Property, error) 
 		if prop2, ok := inBoth[prop1.Name.Name]; ok {
 			var err error
 			newProp := *prop1
-			newProp.Value, err = evaluateOperator(prop1.Value, prop2.Value, '+', pos)
+			newProp.Value, err = p.evaluateOperator(prop1.Value, prop2.Value, '+', pos)
 			if err != nil {
 				return nil, err
 			}
@@ -368,7 +388,7 @@ func (p *parser) parseOperator(value1 Value) Value {
 
 	value2 := p.parseExpression()
 
-	value, err := evaluateOperator(value1, value2, operator, pos)
+	value, err := p.evaluateOperator(value1, value2, operator, pos)
 	if err != nil {
 		p.errorf(err.Error())
 		return Value{}
@@ -404,11 +424,14 @@ func (p *parser) parseVariable() (value Value) {
 		value.BoolValue = false
 	default:
 		variable := p.scanner.TokenText()
-		assignment, err := p.scope.Get(variable)
-		if err != nil {
-			p.errorf(err.Error())
+		if p.eval {
+			assignment, err := p.scope.Get(variable)
+			if err != nil {
+				p.errorf(err.Error())
+			}
+			assignment.Referenced = true
+			value = assignment.Value
 		}
-		value = assignment.Value
 		value.Variable = variable
 	}
 	value.Pos = p.scanner.Position
@@ -440,7 +463,7 @@ func (p *parser) parseListValue() (value Value) {
 	var elements []Value
 	for p.tok != ']' {
 		element := p.parseExpression()
-		if element.Type != String {
+		if p.eval && element.Type != String {
 			p.errorf("Expected string in list, found %s", element.String())
 			return
 		}
@@ -644,27 +667,12 @@ func (s *Scope) Add(assignment *Assignment) error {
 	return nil
 }
 
-func (s *Scope) Append(assignment *Assignment) error {
-	var err error
-	if old, ok := s.vars[assignment.Name.Name]; ok {
-		if old.Referenced {
-			return fmt.Errorf("modified variable with += after referencing")
-		}
-		old.Value, err = evaluateOperator(old.Value, assignment.Value, '+', assignment.Pos)
-	} else {
-		err = s.Add(assignment)
-	}
-
-	return err
-}
-
 func (s *Scope) Remove(name string) {
 	delete(s.vars, name)
 }
 
 func (s *Scope) Get(name string) (*Assignment, error) {
 	if a, ok := s.vars[name]; ok {
-		a.Referenced = true
 		return a, nil
 	}
 
