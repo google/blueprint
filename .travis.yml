@@ -1,0 +1,13 @@
+language: go
+
+install:
+    - sudo apt-get install ninja-build
+
+script:
+    - go test ./...
+    - cp build.ninja.in build.ninja.in.orig
+    - mkdir stage
+    - cd stage 
+    - ../bootstrap.bash
+    - ninja
+    - diff -us ../build.ninja.in ../build.ninja.in.orig
