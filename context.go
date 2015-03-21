@@ -430,7 +430,7 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 
 	scope = parser.NewScope(scope)
 	scope.Remove("subdirs")
-	file, errs := parser.Parse(filename, r, scope)
+	file, errs := parser.ParseAndEval(filename, r, scope)
 	if len(errs) > 0 {
 		for i, err := range errs {
 			if parseErr, ok := err.(*parser.ParseError); ok {
