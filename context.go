@@ -15,11 +15,11 @@
 package blueprint
 
 import (
-	"blueprint/parser"
-	"blueprint/proptools"
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/google/blueprint/parser"
+	"github.com/google/blueprint/proptools"
 	"io"
 	"os"
 	"path/filepath"
@@ -720,7 +720,7 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 
 	if len(variationNames) == 0 {
 		panic(fmt.Errorf("mutator %q passed zero-length variation list for module %q",
-				mutatorName, origModule.properties.Name))
+			mutatorName, origModule.properties.Name))
 	}
 
 	newModules := []*moduleInfo{}

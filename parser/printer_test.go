@@ -133,11 +133,11 @@ baz += foo
 //test
 test /* test */ {
     srcs: [
-        /*"blueprint/bootstrap/bootstrap.go",
-    "blueprint/bootstrap/cleanup.go",*/
-        "blueprint/bootstrap/command.go",
-        "blueprint/bootstrap/doc.go", //doc.go
-        "blueprint/bootstrap/config.go", //config.go
+        /*"bootstrap/bootstrap.go",
+    "bootstrap/cleanup.go",*/
+        "bootstrap/command.go",
+        "bootstrap/doc.go", //doc.go
+        "bootstrap/config.go", //config.go
     ],
     deps: ["libabc"],
     incs: []
@@ -153,11 +153,11 @@ test2 {
 //test
 test /* test */ {
     srcs: [
-        /*"blueprint/bootstrap/bootstrap.go",
-        "blueprint/bootstrap/cleanup.go",*/
-        "blueprint/bootstrap/command.go",
-        "blueprint/bootstrap/config.go", //config.go
-        "blueprint/bootstrap/doc.go", //doc.go
+        /*"bootstrap/bootstrap.go",
+        "bootstrap/cleanup.go",*/
+        "bootstrap/command.go",
+        "bootstrap/config.go", //config.go
+        "bootstrap/doc.go", //doc.go
     ],
     deps: ["libabc"],
     incs: [],

@@ -15,9 +15,9 @@
 package main
 
 import (
-	"blueprint"
-	"blueprint/bootstrap"
 	"flag"
+	"github.com/google/blueprint"
+	"github.com/google/blueprint/bootstrap"
 )
 
 var runAsPrimaryBuilder bool

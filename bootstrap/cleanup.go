@@ -15,10 +15,10 @@
 package bootstrap
 
 import (
-	"blueprint"
 	"bufio"
 	"errors"
 	"fmt"
+	"github.com/google/blueprint"
 	"os"
 	"path/filepath"
 	"strings"

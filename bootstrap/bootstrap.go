@@ -15,9 +15,9 @@
 package bootstrap
 
 import (
-	"blueprint"
-	"blueprint/pathtools"
 	"fmt"
+	"github.com/google/blueprint"
+	"github.com/google/blueprint/pathtools"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -27,7 +27,7 @@ import (
 const bootstrapDir = ".bootstrap"
 
 var (
-	pctx = blueprint.NewPackageContext("blueprint/bootstrap")
+	pctx = blueprint.NewPackageContext("github.com/google/blueprint/bootstrap")
 
 	gcCmd   = pctx.StaticVariable("gcCmd", "$goToolDir/${goChar}g")
 	linkCmd = pctx.StaticVariable("linkCmd", "$goToolDir/${goChar}l")

@@ -15,11 +15,11 @@
 package bootstrap
 
 import (
-	"blueprint"
-	"blueprint/deptools"
 	"bytes"
 	"flag"
 	"fmt"
+	"github.com/google/blueprint"
+	"github.com/google/blueprint/deptools"
 	"io/ioutil"
 	"os"
 	"path/filepath"
