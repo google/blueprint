@@ -6,10 +6,10 @@
 package main
 
 import (
-	"blueprint/parser"
 	"bytes"
 	"flag"
 	"fmt"
+	"github.com/google/blueprint/parser"
 	"io"
 	"io/ioutil"
 	"os"

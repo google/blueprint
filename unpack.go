@@ -15,9 +15,9 @@
 package blueprint
 
 import (
-	"blueprint/parser"
-	"blueprint/proptools"
 	"fmt"
+	"github.com/google/blueprint/parser"
+	"github.com/google/blueprint/proptools"
 	"reflect"
 	"strings"
 )

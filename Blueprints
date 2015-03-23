@@ -4,7 +4,7 @@ bootstrap_go_package(
         "blueprint-parser",
         "blueprint-proptools",
     ],
-    pkgPath = "blueprint",
+    pkgPath = "github.com/google/blueprint",
     srcs = [
         "context.go",
         "live_tracker.go",
@@ -22,7 +22,7 @@ bootstrap_go_package(
 
 bootstrap_go_package(
     name = "blueprint-parser",
-    pkgPath = "blueprint/parser",
+    pkgPath = "github.com/google/blueprint/parser",
     srcs = [
         "parser/modify.go",
         "parser/parser.go",
@@ -33,13 +33,13 @@ bootstrap_go_package(
 
 bootstrap_go_package(
     name = "blueprint-deptools",
-    pkgPath = "blueprint/deptools",
+    pkgPath = "github.com/google/blueprint/deptools",
     srcs = ["deptools/depfile.go"],
 )
 
 bootstrap_go_package(
     name = "blueprint-pathtools",
-    pkgPath = "blueprint/pathtools",
+    pkgPath = "github.com/google/blueprint/pathtools",
     srcs = [
         "pathtools/lists.go",
         "pathtools/glob.go",
@@ -48,7 +48,7 @@ bootstrap_go_package(
 
 bootstrap_go_package(
     name = "blueprint-proptools",
-    pkgPath = "blueprint/proptools",
+    pkgPath = "github.com/google/blueprint/proptools",
     srcs = ["proptools/proptools.go"],
 )
 
@@ -59,7 +59,7 @@ bootstrap_go_package(
         "blueprint-deptools",
         "blueprint-pathtools",
     ],
-    pkgPath = "blueprint/bootstrap",
+    pkgPath = "github.com/google/blueprint/bootstrap",
     srcs = [
         "bootstrap/bootstrap.go",
         "bootstrap/cleanup.go",

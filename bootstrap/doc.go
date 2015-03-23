@@ -38,9 +38,9 @@
 //   package main
 //
 //   import (
-//       "blueprint"
-//       "blueprint/bootstrap"
 //       "flag"
+//       "github.com/google/blueprint"
+//       "github.com/google/blueprint/bootstrap"
 //       "path/filepath"
 //
 //       "my/custom/build/logic"
