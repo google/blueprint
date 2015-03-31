@@ -1177,7 +1177,7 @@ func (c *Context) updateDependencies() (errs []error) {
 		})
 
 		// Iterate backwards through the cycle list.
-		curModule := cycle[len(cycle)-1]
+		curModule := cycle[0]
 		for i := len(cycle) - 1; i >= 0; i-- {
 			nextModule := cycle[i]
 			errs = append(errs, &Error{
