@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/blueprint/parser"
+	"github.com/google/blueprint/pathtools"
 	"github.com/google/blueprint/proptools"
 	"io"
 	"os"
@@ -471,6 +472,7 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 	}
 
 	subdirs, newErrs := c.processSubdirs(scope)
+
 	if len(newErrs) > 0 {
 		errs = append(errs, newErrs...)
 	}
@@ -590,75 +592,48 @@ func (c *Context) parseBlueprintsFile(filename string, scope *parser.Scope, root
 	modulesCh <- modules
 
 	for _, subdir := range subdirs {
-		subdir = filepath.Join(dir, subdir)
+		globPattern := filepath.Join(dir, subdir)
+		matches, matchedDirs, err := pathtools.Glob(globPattern)
+		if err != nil {
+			errsCh <- []error{err}
+			return
+		}
 
-		dirPart, filePart := filepath.Split(subdir)
-		dirPart = filepath.Clean(dirPart)
+		// Depend on all searched directories so we pick up future changes.
+		for _, matchedDir := range matchedDirs {
+			depsCh <- matchedDir
+		}
 
-		if filePart == "*" {
-			foundSubdirs, err := listSubdirs(dirPart)
-			if err != nil {
-				errsCh <- []error{err}
-				return
+		for _, foundSubdir := range matches {
+			fileInfo, subdirStatErr := os.Stat(foundSubdir)
+			if subdirStatErr != nil {
+				errsCh <- []error{subdirStatErr}
+				continue
 			}
 
-			for _, foundSubdir := range foundSubdirs {
-				subBlueprints := filepath.Join(dirPart, foundSubdir,
-					"Blueprints")
+			// Skip files
+			if !fileInfo.IsDir() {
+				continue
+			}
 
-				_, err := os.Stat(subBlueprints)
-				if os.IsNotExist(err) {
-					// There is no Blueprints file in this subdirectory.  We
-					// need to add the directory to the list of dependencies
-					// so that if someone adds a Blueprints file in the
-					// future we'll pick it up.
-					depsCh <- filepath.Dir(subBlueprints)
-				} else {
-					depsCh <- subBlueprints
-					blueprintsCh <- stringAndScope{
-						subBlueprints,
-						subScope,
-					}
+			subBlueprints := filepath.Join(foundSubdir, "Blueprints")
+
+			_, err := os.Stat(subBlueprints)
+			if os.IsNotExist(err) {
+				// There is no Blueprints file in this subdirectory.  We
+				// need to add the directory to the list of dependencies
+				// so that if someone adds a Blueprints file in the
+				// future we'll pick it up.
+				depsCh <- filepath.Dir(subBlueprints)
+			} else {
+				depsCh <- subBlueprints
+				blueprintsCh <- stringAndScope{
+					subBlueprints,
+					subScope,
 				}
 			}
-
-			// We now depend on the directory itself because if any new
-			// subdirectories get added or removed we need to rebuild the
-			// Ninja manifest.
-			depsCh <- dirPart
-		} else {
-			subBlueprints := filepath.Join(subdir, "Blueprints")
-			depsCh <- subBlueprints
-			blueprintsCh <- stringAndScope{
-				subBlueprints,
-				subScope,
-			}
-
 		}
 	}
-}
-
-func listSubdirs(dir string) ([]string, error) {
-	d, err := os.Open(dir)
-	if err != nil {
-		return nil, err
-	}
-	defer d.Close()
-
-	infos, err := d.Readdir(-1)
-	if err != nil {
-		return nil, err
-	}
-
-	var subdirs []string
-	for _, info := range infos {
-		isDotFile := strings.HasPrefix(info.Name(), ".")
-		if info.IsDir() && !isDotFile {
-			subdirs = append(subdirs, info.Name())
-		}
-	}
-
-	return subdirs, nil
 }
 
 func (c *Context) processSubdirs(
@@ -673,19 +648,6 @@ func (c *Context) processSubdirs(
 				if value.Type != parser.String {
 					// The parser should not produce this.
 					panic("non-string value found in list")
-				}
-
-				dirPart, filePart := filepath.Split(value.StringValue)
-				if (filePart != "*" && strings.ContainsRune(filePart, '*')) ||
-					strings.ContainsRune(dirPart, '*') {
-
-					errs = append(errs, &Error{
-						Err: fmt.Errorf("subdirs may only wildcard whole " +
-							"directories"),
-						Pos: value.Pos,
-					})
-
-					continue
 				}
 
 				subdirs = append(subdirs, value.StringValue)
