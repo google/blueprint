@@ -15,10 +15,12 @@
 package parser
 
 import (
+	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
 	"text/scanner"
+	"text/tabwriter"
 	"unicode"
 )
 
@@ -32,7 +34,6 @@ type printer struct {
 
 	pos scanner.Position
 
-	pendingSpace   bool
 	pendingNewline int
 
 	output []byte
@@ -65,7 +66,23 @@ func Print(file *File) ([]byte, error) {
 		p.printDef(def)
 	}
 	p.flush()
-	return p.output, nil
+
+	const (
+		minwidth = 1
+		tabwidth = 4
+		padding  = 1
+		padchar  = ' '
+		flags    = 0
+	)
+
+	var buf bytes.Buffer
+	w := tabwriter.NewWriter(&buf, minwidth, tabwidth, padding, padchar, flags)
+	_, err := w.Write(p.output)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }
 
 func (p *printer) Print() ([]byte, error) {
@@ -90,13 +107,14 @@ func (p *printer) printAssignment(assignment *Assignment) {
 	p.printToken(assignment.Name.Name, assignment.Name.Pos)
 	p.requestSpace()
 	p.printToken(assignment.Assigner, assignment.Pos)
-	p.requestSpace()
+	p.printToken(" ", noPos)
 	p.printValue(assignment.OrigValue)
 	p.requestNewline()
 }
 
 func (p *printer) printModule(module *Module) {
 	p.printToken(module.Type.Name, module.Type.Pos)
+	p.printToken(" ", noPos)
 	p.printMap(module.Properties, module.LbracePos, module.RbracePos)
 	p.requestDoubleNewline()
 }
@@ -129,7 +147,6 @@ func (p *printer) printValue(value Value) {
 }
 
 func (p *printer) printList(list []Value, pos, endPos scanner.Position) {
-	p.requestSpace()
 	p.printToken("[", pos)
 	if len(list) > 1 || pos.Line != endPos.Line {
 		p.requestNewline()
@@ -149,7 +166,6 @@ func (p *printer) printList(list []Value, pos, endPos scanner.Position) {
 }
 
 func (p *printer) printMap(list []*Property, pos, endPos scanner.Position) {
-	p.requestSpace()
 	p.printToken("{", pos)
 	if len(list) > 0 || pos.Line != endPos.Line {
 		p.requestNewline()
@@ -258,7 +274,10 @@ func (p *printer) requestNewlinesForPos(pos scanner.Position) bool {
 }
 
 func (p *printer) requestSpace() {
-	p.pendingSpace = true
+	if p.pendingNewline != -1 {
+		p.flushSpace()
+		p.output = append(p.output, '\v')
+	}
 }
 
 // Ask for a newline to be inserted before the next token, but do not insert any comments.  Used
@@ -293,11 +312,8 @@ func (p *printer) flushSpace() {
 	} else if p.pendingNewline == 2 {
 		p.output = append(p.output, "\n\n"...)
 		p.pad(p.curIndent())
-	} else if p.pendingSpace == true && p.pendingNewline != -1 {
-		p.output = append(p.output, ' ')
 	}
 
-	p.pendingSpace = false
 	p.pendingNewline = 0
 }
 
