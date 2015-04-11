@@ -35,17 +35,17 @@
 // the module type looks like a function call, and the properties of the module
 // look like optional arguments.  For example, a simple module might look like:
 //
-// cc_library(
-//     name = "cmd",
-//     srcs = [
-//         "main.c",
-//     ],
-//     deps = [
-//         "libc",
-//     ],
-// )
+//   cc_library(
+//       name = "cmd",
+//       srcs = [
+//           "main.c",
+//       ],
+//       deps = [
+//           "libc",
+//       ],
+//   )
 //
-// subdirs = ["subdir1", "subdir2"]
+//   subdirs = ["subdir1", "subdir2"]
 //
 // The modules from the top level Blueprints file and recursively through any
 // subdirectories listed by the "subdirs" variable are read by Blueprint, and
