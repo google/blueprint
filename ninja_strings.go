@@ -80,7 +80,12 @@ type stateFunc func(*parseState, int, rune) (stateFunc, error)
 // occurrences are expected to be variables or $$) and returns a list of the
 // variable names that the string references.
 func parseNinjaString(scope scope, str string) (*ninjaString, error) {
-	result := &ninjaString{}
+	// naively pre-allocate slices by counting $ signs
+	n := strings.Count(str, "$")
+	result := &ninjaString{
+		strings:   make([]string, 0, n+1),
+		variables: make([]Variable, 0, n),
+	}
 
 	parseState := &parseState{
 		scope:  scope,
