@@ -113,6 +113,10 @@ func (l *liveTracker) addPool(p Pool) error {
 	_, ok := l.pools[p]
 	if !ok {
 		def, err := p.def(l.config)
+		if err == errPoolIsBuiltin {
+			// No need to do anything for built-in rules.
+			return nil
+		}
 		if err != nil {
 			return err
 		}

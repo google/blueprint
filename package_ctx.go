@@ -98,7 +98,12 @@ var Phony Rule = &builtinRule{
 	name_: "phony",
 }
 
+var Console Pool = &builtinPool{
+	name_: "console",
+}
+
 var errRuleIsBuiltin = errors.New("the rule is a built-in")
+var errPoolIsBuiltin = errors.New("the pool is a built-in")
 var errVariableIsArg = errors.New("argument variables have no value")
 
 // checkCalledFromInit panics if a Go package's init function is not on the
@@ -555,6 +560,30 @@ func (p *poolFunc) def(config interface{}) (*poolDef, error) {
 
 func (p *poolFunc) String() string {
 	return p.pctx.pkgPath + "." + p.name_
+}
+
+type builtinPool struct {
+	name_  string
+}
+
+func (p *builtinPool) packageContext() *PackageContext {
+	return nil
+}
+
+func (p *builtinPool) name() string {
+	return p.name_
+}
+
+func (p *builtinPool) fullName(pkgNames map[*PackageContext]string) string {
+	return p.name_
+}
+
+func (p *builtinPool) def(config interface{}) (*poolDef, error) {
+	return nil, errPoolIsBuiltin
+}
+
+func (p *builtinPool) String() string {
+	return "<builtin>:" + p.name_
 }
 
 type staticRule struct {
