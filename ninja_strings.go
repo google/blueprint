@@ -59,6 +59,21 @@ type parseState struct {
 	result      *ninjaString
 }
 
+func (ps *parseState) pushVariable(v Variable) {
+	if len(ps.result.variables) == len(ps.result.strings) {
+		// Last push was a variable, we need a blank string separator
+		ps.result.strings = append(ps.result.strings, "")
+	}
+	ps.result.variables = append(ps.result.variables, v)
+}
+
+func (ps *parseState) pushString(s string) {
+	if len(ps.result.strings) != len(ps.result.variables) {
+		panic("oops, pushed string after string")
+	}
+	ps.result.strings = append(ps.result.strings, s)
+}
+
 type stateFunc func(*parseState, int, rune) (stateFunc, error)
 
 // parseNinjaString parses an unescaped ninja string (i.e. all $<something>
@@ -98,7 +113,7 @@ func parseStringState(state *parseState, i int, r rune) (stateFunc, error) {
 		return parseDollarStartState, nil
 
 	case r == eof:
-		state.result.strings = append(state.result.strings, state.str[state.stringStart:i])
+		state.pushString(state.str[state.stringStart:i])
 		return nil, nil
 
 	default:
@@ -112,7 +127,7 @@ func parseDollarStartState(state *parseState, i int, r rune) (stateFunc, error) 
 		r >= '0' && r <= '9', r == '_', r == '-':
 		// The beginning of a of the variable name.  Output the string and
 		// keep going.
-		state.result.strings = append(state.result.strings, state.str[state.stringStart:i-1])
+		state.pushString(state.str[state.stringStart:i-1])
 		return parseDollarState, nil
 
 	case r == '$':
@@ -123,7 +138,7 @@ func parseDollarStartState(state *parseState, i int, r rune) (stateFunc, error) 
 	case r == '{':
 		// This is a bracketted variable name (e.g. "${blah.blah}").  Output
 		// the string and keep going.
-		state.result.strings = append(state.result.strings, state.str[state.stringStart:i-1])
+		state.pushString(state.str[state.stringStart:i-1])
 		state.varStart = i + 1
 		return parseBracketsState, nil
 
@@ -153,14 +168,11 @@ func parseDollarState(state *parseState, i int, r rune) (stateFunc, error) {
 			return nil, err
 		}
 
-		state.result.variables = append(state.result.variables, v)
+		state.pushVariable(v)
 		state.varStart = i + 1
+		state.stringStart = i
 
-		// We always have a string in between variables, even if it's an
-		// empty one.
-		state.result.strings = append(state.result.strings, "")
-
-		return parseDollarState, nil
+		return parseDollarStartState, nil
 
 	case r == eof:
 		// This is the end of the variable name.
@@ -169,10 +181,10 @@ func parseDollarState(state *parseState, i int, r rune) (stateFunc, error) {
 			return nil, err
 		}
 
-		state.result.variables = append(state.result.variables, v)
+		state.pushVariable(v)
 
 		// We always end with a string, even if it's an empty one.
-		state.result.strings = append(state.result.strings, "")
+		state.pushString("")
 
 		return nil, nil
 
@@ -184,7 +196,7 @@ func parseDollarState(state *parseState, i int, r rune) (stateFunc, error) {
 			return nil, err
 		}
 
-		state.result.variables = append(state.result.variables, v)
+		state.pushVariable(v)
 		state.stringStart = i
 		return parseStringState, nil
 	}
@@ -210,7 +222,7 @@ func parseBracketsState(state *parseState, i int, r rune) (stateFunc, error) {
 			return nil, err
 		}
 
-		state.result.variables = append(state.result.variables, v)
+		state.pushVariable(v)
 		state.stringStart = i + 1
 		return parseStringState, nil
 
