@@ -1377,10 +1377,12 @@ func (c *Context) runTopDownMutator(config interface{},
 func (c *Context) runBottomUpMutator(config interface{},
 	name string, mutator BottomUpMutator) (errs []error) {
 
-	dependenciesModified := false
-
 	for _, module := range c.modulesSorted {
 		newModules := make([]*moduleInfo, 0, 1)
+
+		if module.splitModules != nil {
+			panic("split module found in sorted module list")
+		}
 
 		mctx := &mutatorContext{
 			baseModuleContext: baseModuleContext{
@@ -1405,10 +1407,6 @@ func (c *Context) runBottomUpMutator(config interface{},
 			}
 		}
 
-		if mctx.dependenciesModified {
-			dependenciesModified = true
-		}
-
 		if module.splitModules != nil {
 			newModules = append(newModules, module.splitModules...)
 		} else {
@@ -1418,11 +1416,9 @@ func (c *Context) runBottomUpMutator(config interface{},
 		module.group.modules = spliceModules(module.group.modules, module, newModules)
 	}
 
-	if dependenciesModified {
-		errs = c.updateDependencies()
-		if len(errs) > 0 {
-			return errs
-		}
+	errs = c.updateDependencies()
+	if len(errs) > 0 {
+		return errs
 	}
 
 	return errs
