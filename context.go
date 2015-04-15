@@ -1753,6 +1753,7 @@ func (c *Context) makeUniquePackageNames(
 			// No collision so far.  Tentatively set the package's name to be
 			// its short name.
 			pkgNames[pctx] = pctx.shortName
+			pkgs[pctx.shortName] = pctx
 		}
 	}
 
