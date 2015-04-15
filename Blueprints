@@ -2,6 +2,7 @@ bootstrap_go_package(
     name = "blueprint",
     deps = [
         "blueprint-parser",
+        "blueprint-pathtools",
         "blueprint-proptools",
     ],
     pkgPath = "github.com/google/blueprint",

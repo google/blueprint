@@ -59,3 +59,27 @@ func wildElements(pattern string) []int {
 func isWild(pattern string) bool {
 	return strings.ContainsAny(pattern, "*?[")
 }
+
+func GlobPatternList(patterns []string, prefix string) (globedList []string, depDirs []string, err error) {
+	var (
+		matches []string
+		deps         []string
+	)
+
+	globedList = make([]string, 0)
+	depDirs = make([]string, 0)
+
+	for _, pattern := range patterns {
+		if isWild(pattern) {
+			matches, deps, err = Glob(filepath.Join(prefix, pattern))
+			if err != nil {
+				return nil, nil, err
+			}
+			globedList = append(globedList, matches...)
+			depDirs = append(depDirs, deps...)
+		} else {
+			globedList = append(globedList, filepath.Join(prefix, pattern))
+		}
+	}
+	return globedList, depDirs, nil
+}
