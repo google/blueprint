@@ -66,6 +66,11 @@ var ninjaParseTestCases = []struct {
 		strs:  []string{"","$$"},
 	},
 	{
+		input: "foo bar",
+		vars:  nil,
+		strs:  []string{"foo bar"},
+	},
+	{
 		input: "foo $ bar",
 		err:   "invalid character after '$' at byte offset 5",
 	},
@@ -90,7 +95,7 @@ var ninjaParseTestCases = []struct {
 func TestParseNinjaString(t *testing.T) {
 	for _, testCase := range ninjaParseTestCases {
 		scope := newLocalScope(nil, "namespace")
-		var expectedVars []Variable
+		expectedVars := []Variable{}
 		for _, varName := range testCase.vars {
 			v, err := scope.LookupVariable(varName)
 			if err != nil {
@@ -107,7 +112,7 @@ func TestParseNinjaString(t *testing.T) {
 			if !reflect.DeepEqual(output.variables, expectedVars) {
 				t.Errorf("incorrect variable list:")
 				t.Errorf("     input: %q", testCase.input)
-				t.Errorf("  expected: %#v", testCase.vars)
+				t.Errorf("  expected: %#v", expectedVars)
 				t.Errorf("       got: %#v", output.variables)
 			}
 			if !reflect.DeepEqual(output.strings, testCase.strs) {

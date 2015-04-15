@@ -16,11 +16,7 @@ package pathtools
 
 import (
 	"path/filepath"
-	"regexp"
-)
-
-var (
-	replaceRegexp = regexp.MustCompile(`\.[^\.]+$`)
+	"strings"
 )
 
 // PrefixPaths returns a list of paths consisting of prefix joined with each
@@ -43,5 +39,9 @@ func ReplaceExtensions(paths []string, extension string) []string {
 }
 
 func ReplaceExtension(path string, extension string) string {
-	return replaceRegexp.ReplaceAllString(path, "."+extension)
+	dot := strings.LastIndex(path, ".")
+	if dot == -1 {
+		return path
+	}
+	return path[:dot+1] + extension
 }

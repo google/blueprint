@@ -18,12 +18,14 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"github.com/google/blueprint"
-	"github.com/google/blueprint/deptools"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime/pprof"
+	"runtime"
+
+	"github.com/google/blueprint"
+	"github.com/google/blueprint/deptools"
 )
 
 var (
@@ -52,6 +54,8 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	if !flag.Parsed() {
 		flag.Parse()
 	}
+
+	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	if cpuprofile != "" {
 		f, err := os.Create(cpuprofile)

@@ -22,9 +22,12 @@ import (
 )
 
 const (
-	indentWidth = 4
-	lineWidth   = 80
+	indentWidth    = 4
+	maxIndentDepth = 2
+	lineWidth      = 80
 )
+
+var indentString = strings.Repeat(" ", indentWidth*maxIndentDepth)
 
 type ninjaWriter struct {
 	writer io.Writer
@@ -108,72 +111,42 @@ func (n *ninjaWriter) Build(rule string, outputs, explicitDeps, implicitDeps,
 	const lineWrapLen = len(" $")
 	const maxLineLen = lineWidth - lineWrapLen
 
-	line := "build"
-
-	appendWithWrap := func(s string) (err error) {
-		if len(line)+len(s) > maxLineLen {
-			_, err = fmt.Fprintf(n.writer, "%s $\n", line)
-			line = strings.Repeat(" ", indentWidth*2)
-			s = strings.TrimLeftFunc(s, unicode.IsSpace)
-		}
-		line += s
-		return
+	wrapper := ninjaWriterWithWrap{
+		ninjaWriter: n,
+		maxLineLen:  maxLineLen,
 	}
+
+	wrapper.WriteString("build")
 
 	for _, output := range outputs {
-		err := appendWithWrap(" " + output)
-		if err != nil {
-			return err
-		}
+		wrapper.WriteStringWithSpace(output)
 	}
 
-	err := appendWithWrap(":")
-	if err != nil {
-		return err
-	}
+	wrapper.WriteString(":")
 
-	err = appendWithWrap(" " + rule)
-	if err != nil {
-		return err
-	}
+	wrapper.WriteStringWithSpace(rule)
 
 	for _, dep := range explicitDeps {
-		err := appendWithWrap(" " + dep)
-		if err != nil {
-			return err
-		}
+		wrapper.WriteStringWithSpace(dep)
 	}
 
 	if len(implicitDeps) > 0 {
-		err := appendWithWrap(" |")
-		if err != nil {
-			return err
-		}
+		wrapper.WriteStringWithSpace("|")
 
 		for _, dep := range implicitDeps {
-			err := appendWithWrap(" " + dep)
-			if err != nil {
-				return err
-			}
+			wrapper.WriteStringWithSpace(dep)
 		}
 	}
 
 	if len(orderOnlyDeps) > 0 {
-		err := appendWithWrap(" ||")
-		if err != nil {
-			return err
-		}
+		wrapper.WriteStringWithSpace("||")
 
 		for _, dep := range orderOnlyDeps {
-			err := appendWithWrap(" " + dep)
-			if err != nil {
-				return err
-			}
+			wrapper.WriteStringWithSpace(dep)
 		}
 	}
 
-	_, err = fmt.Fprintln(n.writer, line)
-	return err
+	return wrapper.Flush()
 }
 
 func (n *ninjaWriter) Assign(name, value string) error {
@@ -184,8 +157,7 @@ func (n *ninjaWriter) Assign(name, value string) error {
 
 func (n *ninjaWriter) ScopedAssign(name, value string) error {
 	n.justDidBlankLine = false
-	indent := strings.Repeat(" ", indentWidth)
-	_, err := fmt.Fprintf(n.writer, "%s%s = %s\n", indent, name, value)
+	_, err := fmt.Fprintf(n.writer, "%s%s = %s\n", indentString[:indentWidth], name, value)
 	return err
 }
 
@@ -195,27 +167,18 @@ func (n *ninjaWriter) Default(targets ...string) error {
 	const lineWrapLen = len(" $")
 	const maxLineLen = lineWidth - lineWrapLen
 
-	line := "default"
-
-	appendWithWrap := func(s string) (err error) {
-		if len(line)+len(s) > maxLineLen {
-			_, err = fmt.Fprintf(n.writer, "%s $\n", line)
-			line = strings.Repeat(" ", indentWidth*2)
-			s = strings.TrimLeftFunc(s, unicode.IsSpace)
-		}
-		line += s
-		return
+	wrapper := ninjaWriterWithWrap{
+		ninjaWriter: n,
+		maxLineLen:  maxLineLen,
 	}
+
+	wrapper.WriteString("default")
 
 	for _, target := range targets {
-		err := appendWithWrap(" " + target)
-		if err != nil {
-			return err
-		}
+		wrapper.WriteString(" " + target)
 	}
 
-	_, err := fmt.Fprintln(n.writer, line)
-	return err
+	return wrapper.Flush()
 }
 
 func (n *ninjaWriter) BlankLine() (err error) {
@@ -227,32 +190,55 @@ func (n *ninjaWriter) BlankLine() (err error) {
 	return err
 }
 
-func writeAssignments(w io.Writer, indent int, assignments ...string) error {
-	var maxNameLen int
-	for i := 0; i < len(assignments); i += 2 {
-		name := assignments[i]
-		err := validateNinjaName(name)
-		if err != nil {
-			return err
-		}
-		if maxNameLen < len(name) {
-			maxNameLen = len(name)
-		}
+type ninjaWriterWithWrap struct {
+	*ninjaWriter
+	maxLineLen int
+	writtenLen int
+	err        error
+}
+
+func (n *ninjaWriterWithWrap) writeString(s string, space bool) {
+	if n.err != nil {
+		return
 	}
 
-	indentStr := strings.Repeat(" ", indent*indentWidth)
-	extraIndentStr := strings.Repeat(" ", (indent+1)*indentWidth)
-	replacer := strings.NewReplacer("\n", "$\n"+extraIndentStr)
-
-	for i := 0; i < len(assignments); i += 2 {
-		name := assignments[i]
-		value := replacer.Replace(assignments[i+1])
-		_, err := fmt.Fprintf(w, "%s% *s = %s\n", indentStr, maxNameLen, name,
-			value)
-		if err != nil {
-			return err
-		}
+	spaceLen := 0
+	if space {
+		spaceLen = 1
 	}
 
-	return nil
+	if n.writtenLen+len(s)+spaceLen > n.maxLineLen {
+		_, n.err = io.WriteString(n.writer, " $\n")
+		if n.err != nil {
+			return
+		}
+		_, n.err = io.WriteString(n.writer, indentString[:indentWidth*2])
+		if n.err != nil {
+			return
+		}
+		n.writtenLen = indentWidth * 2
+		s = strings.TrimLeftFunc(s, unicode.IsSpace)
+	} else if space {
+		io.WriteString(n.writer, " ")
+		n.writtenLen++
+	}
+
+	_, n.err = io.WriteString(n.writer, s)
+	n.writtenLen += len(s)
+}
+
+func (n *ninjaWriterWithWrap) WriteString(s string) {
+	n.writeString(s, false)
+}
+
+func (n *ninjaWriterWithWrap) WriteStringWithSpace(s string) {
+	n.writeString(s, true)
+}
+
+func (n *ninjaWriterWithWrap) Flush() error {
+	if n.err != nil {
+		return n.err
+	}
+	_, err := io.WriteString(n.writer, "\n")
+	return err
 }
