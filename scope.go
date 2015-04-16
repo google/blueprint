@@ -170,6 +170,11 @@ func (s *basicScope) IsRuleVisible(rule Rule) bool {
 }
 
 func (s *basicScope) IsPoolVisible(pool Pool) bool {
+	_, isBuiltin := pool.(*builtinPool)
+	if isBuiltin {
+		return true
+	}
+
 	name := pool.name()
 
 	for s != nil {
