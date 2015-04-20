@@ -58,12 +58,12 @@ var ninjaParseTestCases = []struct {
 	{
 		input: "$foo${bar}",
 		vars:  []string{"foo", "bar"},
-		strs:  []string{"","", ""},
+		strs:  []string{"", "", ""},
 	},
 	{
 		input: "$foo$$",
 		vars:  []string{"foo"},
-		strs:  []string{"","$$"},
+		strs:  []string{"", "$$"},
 	},
 	{
 		input: "foo bar",

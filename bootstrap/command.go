@@ -21,8 +21,8 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"runtime/pprof"
 	"runtime"
+	"runtime/pprof"
 
 	"github.com/google/blueprint"
 	"github.com/google/blueprint/deptools"

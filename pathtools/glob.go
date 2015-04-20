@@ -63,7 +63,7 @@ func isWild(pattern string) bool {
 func GlobPatternList(patterns []string, prefix string) (globedList []string, depDirs []string, err error) {
 	var (
 		matches []string
-		deps         []string
+		deps    []string
 	)
 
 	globedList = make([]string, 0)
