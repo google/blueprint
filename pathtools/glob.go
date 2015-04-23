@@ -15,6 +15,7 @@
 package pathtools
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -22,38 +23,44 @@ import (
 // Glob returns the list of files that match the given pattern along with the
 // list of directories that were searched to construct the file list.
 func Glob(pattern string) (matches, dirs []string, err error) {
-	matches, err = filepath.Glob(pattern)
-	if err != nil {
-		return nil, nil, err
+	if !isWild(pattern) {
+		// If there are no wilds in the pattern, just return whether the file at the pattern
+		// exists or not.  Uses filepath.Glob instead of manually statting to get consistent
+		// results.
+		matches, err = filepath.Glob(filepath.Clean(pattern))
+		return matches, dirs, err
 	}
 
-	wildIndices := wildElements(pattern)
-
-	if len(wildIndices) > 0 {
-		for _, match := range matches {
-			dir := filepath.Dir(match)
-			dirElems := strings.Split(dir, string(filepath.Separator))
-
-			for _, index := range wildIndices {
-				dirs = append(dirs, strings.Join(dirElems[:index],
-					string(filepath.Separator)))
+	dir, file := saneSplit(pattern)
+	dirMatches, dirs, err := Glob(dir)
+	for _, m := range dirMatches {
+		if info, _ := os.Stat(m); info.IsDir() {
+			dirs = append(dirs, m)
+			newMatches, err := filepath.Glob(filepath.Join(m, file))
+			if err != nil {
+				return nil, nil, err
 			}
+			matches = append(matches, newMatches...)
 		}
 	}
 
-	return
+	return matches, dirs, nil
 }
 
-func wildElements(pattern string) []int {
-	elems := strings.Split(pattern, string(filepath.Separator))
-
-	var result []int
-	for i, elem := range elems {
-		if isWild(elem) {
-			result = append(result, i)
-		}
+// Faster version of dir, file := filepath.Dir(path), filepath.File(path)
+// Similar to filepath.Split, but returns "." if dir is empty and trims trailing slash if dir is
+// not "/"
+func saneSplit(path string) (dir, file string) {
+	dir, file = filepath.Split(path)
+	switch dir {
+	case "":
+		dir = "."
+	case "/":
+		// Nothing
+	default:
+		dir = dir[:len(dir)-1]
 	}
-	return result
+	return dir, file
 }
 
 func isWild(pattern string) bool {
