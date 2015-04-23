@@ -27,6 +27,7 @@ var globTestCases = []struct {
 	pattern string
 	matches []string
 	dirs    []string
+	err     error
 }{
 	// Current directory tests
 	{
@@ -127,6 +128,71 @@ var globTestCases = []struct {
 		matches:  []string{"c/f/f.ext", "c/g/g.ext"},
 		dirs:     []string{"c", "c/f", "c/g", "c/h"},
 	},
+
+	// recursive tests
+	{
+		pattern: "**/a",
+		matches: []string{"a", "a/a", "a/a/a", "b/a"},
+		dirs:    []string{".", "a", "a/a", "a/b", "b", "c", "c/f", "c/g", "c/h"},
+	},
+	{
+		pattern: "a/**/a",
+		matches: []string{"a/a", "a/a/a"},
+		dirs:    []string{"a", "a/a", "a/b"},
+	},
+	{
+		pattern: "a/**/*",
+		matches: []string{"a/a", "a/b", "a/a/a", "a/b/b"},
+		dirs:    []string{"a", "a/a", "a/b"},
+	},
+
+	// absolute recursive tests
+	{
+		pattern: filepath.Join(pwd, "testdata/**/*.ext"),
+		matches: []string{
+			filepath.Join(pwd, "testdata/d.ext"),
+			filepath.Join(pwd, "testdata/e.ext"),
+			filepath.Join(pwd, "testdata/c/f/f.ext"),
+			filepath.Join(pwd, "testdata/c/g/g.ext"),
+		},
+		dirs: []string{
+			filepath.Join(pwd, "testdata"),
+			filepath.Join(pwd, "testdata/a"),
+			filepath.Join(pwd, "testdata/a/a"),
+			filepath.Join(pwd, "testdata/a/b"),
+			filepath.Join(pwd, "testdata/b"),
+			filepath.Join(pwd, "testdata/c"),
+			filepath.Join(pwd, "testdata/c/f"),
+			filepath.Join(pwd, "testdata/c/g"),
+			filepath.Join(pwd, "testdata/c/h"),
+		},
+	},
+
+	// recursive error tests
+	{
+		pattern: "**/**/*",
+		err:     GlobMultipleRecursiveErr,
+	},
+	{
+		pattern: "a/**/**/*",
+		err:     GlobMultipleRecursiveErr,
+	},
+	{
+		pattern: "**/a/**/*",
+		err:     GlobMultipleRecursiveErr,
+	},
+	{
+		pattern: "**/**/a/*",
+		err:     GlobMultipleRecursiveErr,
+	},
+	{
+		pattern: "a/**",
+		err:     GlobLastRecursiveErr,
+	},
+	{
+		pattern: "**/**",
+		err:     GlobLastRecursiveErr,
+	},
 }
 
 func TestGlob(t *testing.T) {
@@ -134,9 +200,9 @@ func TestGlob(t *testing.T) {
 	defer os.Chdir("..")
 	for _, testCase := range globTestCases {
 		matches, dirs, err := Glob(testCase.pattern)
-		if err != nil {
+		if err != testCase.err {
 			t.Errorf(" pattern: %q", testCase.pattern)
-			t.Errorf("   error: %s", err.Error())
+			t.Errorf("   error: %s", err)
 			continue
 		}
 
