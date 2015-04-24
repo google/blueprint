@@ -132,7 +132,7 @@ func parseDollarStartState(state *parseState, i int, r rune) (stateFunc, error) 
 		r >= '0' && r <= '9', r == '_', r == '-':
 		// The beginning of a of the variable name.  Output the string and
 		// keep going.
-		state.pushString(state.str[state.stringStart:i-1])
+		state.pushString(state.str[state.stringStart : i-1])
 		return parseDollarState, nil
 
 	case r == '$':
@@ -143,7 +143,7 @@ func parseDollarStartState(state *parseState, i int, r rune) (stateFunc, error) 
 	case r == '{':
 		// This is a bracketted variable name (e.g. "${blah.blah}").  Output
 		// the string and keep going.
-		state.pushString(state.str[state.stringStart:i-1])
+		state.pushString(state.str[state.stringStart : i-1])
 		state.varStart = i + 1
 		return parseBracketsState, nil
 

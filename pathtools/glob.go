@@ -15,55 +15,222 @@
 package pathtools
 
 import (
+	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 )
 
+var GlobMultipleRecursiveErr = errors.New("pattern contains multiple **")
+var GlobLastRecursiveErr = errors.New("pattern ** as last path element")
+
 // Glob returns the list of files that match the given pattern along with the
 // list of directories that were searched to construct the file list.
+// The supported glob patterns are equivalent to filepath.Glob, with an extension
+// that recursive glob (** matching zero or more complete path entries) is
+// supported.
 func Glob(pattern string) (matches, dirs []string, err error) {
-	matches, err = filepath.Glob(pattern)
+	return GlobWithExcludes(pattern, nil)
+}
+
+// Glob returns the list of files that match the given pattern but do not match
+// the given exclude patterns, along with the list of directories that were searched
+// to construct the file list.  The supported glob and exclude patterns are equivalent
+// to filepath.Glob, with an extension that recursive glob (** matching zero or more
+// complete path entries) is supported.
+func GlobWithExcludes(pattern string, excludes []string) (matches, dirs []string, err error) {
+	if !isWild(pattern) {
+		// If there are no wilds in the pattern, just return whether the file at the pattern
+		// exists or not.  Uses filepath.Glob instead of manually statting to get consistent
+		// results.
+		matches, err = filepath.Glob(pattern)
+	} else if filepath.Base(pattern) == "**" {
+		return nil, nil, GlobLastRecursiveErr
+	} else {
+		matches, dirs, err = glob(pattern, false)
+	}
+
 	if err != nil {
 		return nil, nil, err
 	}
 
-	wildIndices := wildElements(pattern)
+	matches, err = filterExcludes(matches, excludes)
+	if err != nil {
+		return nil, nil, err
+	}
 
-	if len(wildIndices) > 0 {
-		for _, match := range matches {
-			dir := filepath.Dir(match)
-			dirElems := strings.Split(dir, string(filepath.Separator))
+	return matches, dirs, nil
+}
 
-			for _, index := range wildIndices {
-				dirs = append(dirs, strings.Join(dirElems[:index],
-					string(filepath.Separator)))
+// glob is a recursive helper function to handle globbing each level of the pattern individually,
+// allowing searched directories to be tracked.  Also handles the recursive glob pattern, **.
+func glob(pattern string, hasRecursive bool) (matches, dirs []string, err error) {
+	if !isWild(pattern) {
+		// If there are no wilds in the pattern, just return whether the file at the pattern
+		// exists or not.  Uses filepath.Glob instead of manually statting to get consistent
+		// results.
+		matches, err = filepath.Glob(pattern)
+		return matches, dirs, err
+	}
+
+	dir, file := saneSplit(pattern)
+
+	if file == "**" {
+		if hasRecursive {
+			return matches, dirs, GlobMultipleRecursiveErr
+		}
+		hasRecursive = true
+	}
+
+	dirMatches, dirs, err := glob(dir, hasRecursive)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for _, m := range dirMatches {
+		if info, _ := os.Stat(m); info.IsDir() {
+			if file == "**" {
+				recurseDirs, err := walkAllDirs(m)
+				if err != nil {
+					return nil, nil, err
+				}
+				matches = append(matches, recurseDirs...)
+			} else {
+				dirs = append(dirs, m)
+				newMatches, err := filepath.Glob(filepath.Join(m, file))
+				if err != nil {
+					return nil, nil, err
+				}
+				matches = append(matches, newMatches...)
 			}
 		}
 	}
 
-	return
+	return matches, dirs, nil
 }
 
-func wildElements(pattern string) []int {
-	elems := strings.Split(pattern, string(filepath.Separator))
-
-	var result []int
-	for i, elem := range elems {
-		if isWild(elem) {
-			result = append(result, i)
-		}
+// Faster version of dir, file := filepath.Dir(path), filepath.File(path) with no allocations
+// Similar to filepath.Split, but returns "." if dir is empty and trims trailing slash if dir is
+// not "/".  Returns ".", "" if path is "."
+func saneSplit(path string) (dir, file string) {
+	if path == "." {
+		return ".", ""
 	}
-	return result
+	dir, file = filepath.Split(path)
+	switch dir {
+	case "":
+		dir = "."
+	case "/":
+		// Nothing
+	default:
+		dir = dir[:len(dir)-1]
+	}
+	return dir, file
 }
 
 func isWild(pattern string) bool {
 	return strings.ContainsAny(pattern, "*?[")
 }
 
+// Returns a list of all directories under dir
+func walkAllDirs(dir string) (dirs []string, err error) {
+	err = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.Mode().IsDir() {
+			dirs = append(dirs, path)
+		}
+		return nil
+	})
+
+	return dirs, err
+}
+
+// Filters the strings in matches based on the glob patterns in excludes.  Hierarchical (a/*) and
+// recursive (**) glob patterns are supported.
+func filterExcludes(matches []string, excludes []string) ([]string, error) {
+	if len(excludes) == 0 {
+		return matches, nil
+	}
+
+	var ret []string
+matchLoop:
+	for _, m := range matches {
+		for _, e := range excludes {
+			exclude, err := match(e, m)
+			if err != nil {
+				return nil, err
+			}
+			if exclude {
+				continue matchLoop
+			}
+		}
+		ret = append(ret, m)
+	}
+
+	return ret, nil
+}
+
+// match returns true if name matches pattern using the same rules as filepath.Match, but supporting
+// hierarchical patterns (a/*) and recursive globs (**).
+func match(pattern, name string) (bool, error) {
+	if filepath.Base(pattern) == "**" {
+		return false, GlobLastRecursiveErr
+	}
+
+	for {
+		var patternFile, nameFile string
+		pattern, patternFile = saneSplit(pattern)
+		name, nameFile = saneSplit(name)
+
+		if patternFile == "**" {
+			return matchPrefix(pattern, filepath.Join(name, nameFile))
+		}
+
+		if nameFile == "" && patternFile == "" {
+			return true, nil
+		} else if nameFile == "" || patternFile == "" {
+			return false, nil
+		}
+
+		match, err := filepath.Match(patternFile, nameFile)
+		if err != nil || !match {
+			return match, err
+		}
+	}
+}
+
+// matchPrefix returns true if the beginning of name matches pattern using the same ruels as
+// filepath.Match, but supporting hierarchical patterns (a/*).  Recursive globs (**) are not
+// supported, they should have been handled in match().
+func matchPrefix(pattern, name string) (bool, error) {
+	pattern, patternFile := saneSplit(pattern)
+	name, nameFile := saneSplit(name)
+
+	if patternFile == "**" {
+		return false, GlobMultipleRecursiveErr
+	}
+
+	if patternFile == "" {
+		return true, nil
+	} else if nameFile == "" {
+		return false, nil
+	}
+
+	match, err := matchPrefix(pattern, name)
+	if err != nil || !match {
+		return match, err
+	}
+
+	return filepath.Match(patternFile, nameFile)
+}
+
 func GlobPatternList(patterns []string, prefix string) (globedList []string, depDirs []string, err error) {
 	var (
 		matches []string
-		deps         []string
+		deps    []string
 	)
 
 	globedList = make([]string, 0)

@@ -563,7 +563,7 @@ func (p *poolFunc) String() string {
 }
 
 type builtinPool struct {
-	name_  string
+	name_ string
 }
 
 func (p *builtinPool) packageContext() *PackageContext {
