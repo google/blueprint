@@ -24,10 +24,11 @@ import (
 var pwd, _ = os.Getwd()
 
 var globTestCases = []struct {
-	pattern string
-	matches []string
-	dirs    []string
-	err     error
+	pattern  string
+	matches  []string
+	excludes []string
+	dirs     []string
+	err      error
 }{
 	// Current directory tests
 	{
@@ -119,14 +120,14 @@ var globTestCases = []struct {
 
 	// clean tests
 	{
-		pattern:  "./c/*/*.ext",
-		matches:  []string{"c/f/f.ext", "c/g/g.ext"},
-		dirs:     []string{"c", "c/f", "c/g", "c/h"},
+		pattern: "./c/*/*.ext",
+		matches: []string{"c/f/f.ext", "c/g/g.ext"},
+		dirs:    []string{"c", "c/f", "c/g", "c/h"},
 	},
 	{
-		pattern:  "c/../c/*/*.ext",
-		matches:  []string{"c/f/f.ext", "c/g/g.ext"},
-		dirs:     []string{"c", "c/f", "c/g", "c/h"},
+		pattern: "c/../c/*/*.ext",
+		matches: []string{"c/f/f.ext", "c/g/g.ext"},
+		dirs:    []string{"c", "c/f", "c/g", "c/h"},
 	},
 
 	// recursive tests
@@ -193,15 +194,189 @@ var globTestCases = []struct {
 		pattern: "**/**",
 		err:     GlobLastRecursiveErr,
 	},
+
+	// exclude tests
+	{
+		pattern:  "*.ext",
+		excludes: []string{"d.ext"},
+		matches:  []string{"e.ext"},
+		dirs:     []string{"."},
+	},
+	{
+		pattern:  "*/*",
+		excludes: []string{"a/b"},
+		matches:  []string{"a/a", "b/a", "c/c", "c/f", "c/g", "c/h"},
+		dirs:     []string{".", "a", "b", "c"},
+	},
+	{
+		pattern:  "*/*",
+		excludes: []string{"a/b", "c/c"},
+		matches:  []string{"a/a", "b/a", "c/f", "c/g", "c/h"},
+		dirs:     []string{".", "a", "b", "c"},
+	},
+	{
+		pattern:  "*/*",
+		excludes: []string{"c/*", "*/a"},
+		matches:  []string{"a/b"},
+		dirs:     []string{".", "a", "b", "c"},
+	},
+	{
+		pattern:  "*/*",
+		excludes: []string{"*/*"},
+		matches:  nil,
+		dirs:     []string{".", "a", "b", "c"},
+	},
+
+	// absolute exclude tests
+	{
+		pattern:  filepath.Join(pwd, "testdata/c/*/*.ext"),
+		excludes: []string{filepath.Join(pwd, "testdata/c/*/f.ext")},
+		matches: []string{
+			filepath.Join(pwd, "testdata/c/g/g.ext"),
+		},
+		dirs: []string{
+			filepath.Join(pwd, "testdata/c"),
+			filepath.Join(pwd, "testdata/c/f"),
+			filepath.Join(pwd, "testdata/c/g"),
+			filepath.Join(pwd, "testdata/c/h"),
+		},
+	},
+	{
+		pattern:  filepath.Join(pwd, "testdata/c/*/*.ext"),
+		excludes: []string{filepath.Join(pwd, "testdata/c/f/*.ext")},
+		matches: []string{
+			filepath.Join(pwd, "testdata/c/g/g.ext"),
+		},
+		dirs: []string{
+			filepath.Join(pwd, "testdata/c"),
+			filepath.Join(pwd, "testdata/c/f"),
+			filepath.Join(pwd, "testdata/c/g"),
+			filepath.Join(pwd, "testdata/c/h"),
+		},
+	},
+
+	// recursive exclude tests
+	{
+		pattern:  "*.ext",
+		excludes: []string{"**/*.ext"},
+		matches:  nil,
+		dirs:     []string{"."},
+	},
+	{
+		pattern:  "*/*",
+		excludes: []string{"**/b"},
+		matches:  []string{"a/a", "b/a", "c/c", "c/f", "c/g", "c/h"},
+		dirs:     []string{".", "a", "b", "c"},
+	},
+	{
+		pattern:  "*/*",
+		excludes: []string{"a/**/*"},
+		matches:  []string{"b/a", "c/c", "c/f", "c/g", "c/h"},
+		dirs:     []string{".", "a", "b", "c"},
+	},
+	{
+		pattern:  "**/*",
+		excludes: []string{"**/*"},
+		matches:  nil,
+		dirs:     []string{".", "a", "a/a", "a/b", "b", "c", "c/f", "c/g", "c/h"},
+	},
+	{
+		pattern:  "*/*/*",
+		excludes: []string{"a/**/a"},
+		matches:  []string{"a/b/b", "c/f/f.ext", "c/g/g.ext", "c/h/h"},
+		dirs:     []string{".", "a", "b", "c", "a/a", "a/b", "c/f", "c/g", "c/h"},
+	},
+	{
+		pattern:  "*/*/*",
+		excludes: []string{"**/a"},
+		matches:  []string{"a/b/b", "c/f/f.ext", "c/g/g.ext", "c/h/h"},
+		dirs:     []string{".", "a", "b", "c", "a/a", "a/b", "c/f", "c/g", "c/h"},
+	},
+	{
+		pattern:  "c/*/*.ext",
+		excludes: []string{"c/**/f.ext"},
+		matches:  []string{"c/g/g.ext"},
+		dirs:     []string{"c", "c/f", "c/g", "c/h"},
+	},
+
+	// absoulte recursive exclude tests
+	{
+		pattern:  filepath.Join(pwd, "testdata/c/*/*.ext"),
+		excludes: []string{filepath.Join(pwd, "testdata/**/f.ext")},
+		matches: []string{
+			filepath.Join(pwd, "testdata/c/g/g.ext"),
+		},
+		dirs: []string{
+			filepath.Join(pwd, "testdata/c"),
+			filepath.Join(pwd, "testdata/c/f"),
+			filepath.Join(pwd, "testdata/c/g"),
+			filepath.Join(pwd, "testdata/c/h"),
+		},
+	},
+
+	// clean exclude tests
+	{
+		pattern:  "./c/*/*.ext",
+		excludes: []string{"./c/*/f.ext"},
+		matches:  []string{"c/g/g.ext"},
+		dirs:     []string{"c", "c/f", "c/g", "c/h"},
+	},
+	{
+		pattern:  "c/*/*.ext",
+		excludes: []string{"./c/*/f.ext"},
+		matches:  []string{"c/g/g.ext"},
+		dirs:     []string{"c", "c/f", "c/g", "c/h"},
+	},
+	{
+		pattern:  "./c/*/*.ext",
+		excludes: []string{"c/*/f.ext"},
+		matches:  []string{"c/g/g.ext"},
+		dirs:     []string{"c", "c/f", "c/g", "c/h"},
+	},
+
+	// recursive exclude error tests
+	{
+		pattern:  "**/*",
+		excludes: []string{"**/**/*"},
+		err:      GlobMultipleRecursiveErr,
+	},
+	{
+		pattern:  "**/*",
+		excludes: []string{"a/**/**/*"},
+		err:      GlobMultipleRecursiveErr,
+	},
+	{
+		pattern:  "**/*",
+		excludes: []string{"**/a/**/*"},
+		err:      GlobMultipleRecursiveErr,
+	},
+	{
+		pattern:  "**/*",
+		excludes: []string{"**/**/a/*"},
+		err:      GlobMultipleRecursiveErr,
+	},
+	{
+		pattern:  "**/*",
+		excludes: []string{"a/**"},
+		err:      GlobLastRecursiveErr,
+	},
+	{
+		pattern:  "**/*",
+		excludes: []string{"**/**"},
+		err:      GlobLastRecursiveErr,
+	},
 }
 
 func TestGlob(t *testing.T) {
 	os.Chdir("testdata")
 	defer os.Chdir("..")
 	for _, testCase := range globTestCases {
-		matches, dirs, err := Glob(testCase.pattern)
+		matches, dirs, err := GlobWithExcludes(testCase.pattern, testCase.excludes)
 		if err != testCase.err {
 			t.Errorf(" pattern: %q", testCase.pattern)
+			if testCase.excludes != nil {
+				t.Errorf("excludes: %q", testCase.excludes)
+			}
 			t.Errorf("   error: %s", err)
 			continue
 		}
@@ -209,12 +384,18 @@ func TestGlob(t *testing.T) {
 		if !reflect.DeepEqual(matches, testCase.matches) {
 			t.Errorf("incorrect matches list:")
 			t.Errorf(" pattern: %q", testCase.pattern)
+			if testCase.excludes != nil {
+				t.Errorf("excludes: %q", testCase.excludes)
+			}
 			t.Errorf("     got: %#v", matches)
 			t.Errorf("expected: %#v", testCase.matches)
 		}
 		if !reflect.DeepEqual(dirs, testCase.dirs) {
 			t.Errorf("incorrect dirs list:")
 			t.Errorf(" pattern: %q", testCase.pattern)
+			if testCase.excludes != nil {
+				t.Errorf("excludes: %q", testCase.excludes)
+			}
 			t.Errorf("     got: %#v", dirs)
 			t.Errorf("expected: %#v", testCase.dirs)
 		}
