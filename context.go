@@ -485,8 +485,10 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 		errs = append(errs, err)
 	}
 
+	subBlueprintsName, _, err := getStringFromScope(scope, "subname")
+
 	blueprints, deps, newErrs := c.findSubdirBlueprints(filepath.Dir(filename), subdirs, build,
-		subdirsPos, buildPos)
+		subBlueprintsName, subdirsPos, buildPos)
 	if len(newErrs) > 0 {
 		errs = append(errs, newErrs...)
 	}
@@ -617,7 +619,7 @@ func (c *Context) parseBlueprintsFile(filename string, scope *parser.Scope, root
 	modulesCh <- modules
 }
 
-func (c *Context) findSubdirBlueprints(dir string, subdirs, build []string,
+func (c *Context) findSubdirBlueprints(dir string, subdirs, build []string, subBlueprintsName string,
 	subdirsPos, buildPos scanner.Position) (blueprints, deps []string, errs []error) {
 
 	for _, subdir := range subdirs {
@@ -653,15 +655,23 @@ func (c *Context) findSubdirBlueprints(dir string, subdirs, build []string,
 				continue
 			}
 
-			subBlueprints := filepath.Join(foundSubdir, "Blueprints")
+			var subBlueprints string
+			if subBlueprintsName != "" {
+				subBlueprints = filepath.Join(foundSubdir, subBlueprintsName)
+				_, err = os.Stat(subBlueprints)
+			}
 
-			_, err := os.Stat(subBlueprints)
+			if os.IsNotExist(err) || subBlueprints == "" {
+				subBlueprints = filepath.Join(foundSubdir, "Blueprints")
+				_, err = os.Stat(subBlueprints)
+			}
+
 			if os.IsNotExist(err) {
 				// There is no Blueprints file in this subdirectory.  We
 				// need to add the directory to the list of dependencies
 				// so that if someone adds a Blueprints file in the
 				// future we'll pick it up.
-				deps = append(deps, filepath.Dir(subBlueprints))
+				deps = append(deps, filepath.Dir(foundSubdir))
 			} else {
 				deps = append(deps, subBlueprints)
 				blueprints = append(blueprints, subBlueprints)
@@ -740,6 +750,24 @@ func getStringListFromScope(scope *parser.Scope, v string) ([]string, scanner.Po
 	}
 
 	return nil, scanner.Position{}, nil
+}
+
+func getStringFromScope(scope *parser.Scope, v string) (string, scanner.Position, error) {
+	if assignment, err := scope.Get(v); err == nil {
+		switch assignment.Value.Type {
+		case parser.String:
+			return assignment.Value.StringValue, assignment.Pos, nil
+		case parser.Bool, parser.List:
+			return "", scanner.Position{}, &Error{
+				Err: fmt.Errorf("%q must be a string", v),
+				Pos: assignment.Pos,
+			}
+		default:
+			panic(fmt.Errorf("unknown value type: %d", assignment.Value.Type))
+		}
+	}
+
+	return "", scanner.Position{}, nil
 }
 
 func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
