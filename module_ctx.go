@@ -120,6 +120,7 @@ type DynamicDependerModuleContext interface {
 	BaseModuleContext
 
 	AddVariationDependencies([]Variation, ...string)
+	AddFarVariationDependencies([]Variation, ...string)
 }
 
 type ModuleContext interface {
@@ -327,7 +328,25 @@ func (mctx *dynamicDependerModuleContext) AddVariationDependencies(variations []
 	deps ...string) {
 
 	for _, dep := range deps {
-		errs := mctx.context.addVariationDependency(mctx.module, variations, dep)
+		errs := mctx.context.addVariationDependency(mctx.module, variations, dep, false)
+		if len(errs) > 0 {
+			mctx.errs = append(mctx.errs, errs...)
+		}
+	}
+}
+
+// AddFarVariationDependencies adds deps as dependencies of the current module, but uses the
+// variations argument to select which variant of the dependency to use.  A variant of the
+// dependency must exist that matches the variations argument, but may also have other variations.
+// For any unspecified variation the first variant will be used.
+//
+// Unlike AddVariationDependencies, the variations of the current module are ignored - the
+// depdendency only needs to match the supplied variations.
+func (mctx *dynamicDependerModuleContext) AddFarVariationDependencies(variations []Variation,
+	deps ...string) {
+
+	for _, dep := range deps {
+		errs := mctx.context.addVariationDependency(mctx.module, variations, dep, true)
 		if len(errs) > 0 {
 			mctx.errs = append(mctx.errs, errs...)
 		}

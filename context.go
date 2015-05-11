@@ -175,6 +175,17 @@ func (vm variationMap) clone() variationMap {
 	return newVm
 }
 
+// Compare this variationMap to another one.  Returns true if the every entry in this map
+// is either the same in the other map or doesn't exist in the other map.
+func (vm variationMap) subset(other variationMap) bool {
+	for k, v1 := range vm {
+		if v2, ok := other[k]; ok && v1 != v2 {
+			return false
+		}
+	}
+	return true
+}
+
 func (vm variationMap) equal(other variationMap) bool {
 	return reflect.DeepEqual(vm, other)
 }
@@ -1120,7 +1131,7 @@ func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 }
 
 func (c *Context) addVariationDependency(module *moduleInfo, variations []Variation,
-	depName string) []error {
+	depName string, far bool) []error {
 
 	depsPos := module.propertyPos["deps"]
 
@@ -1136,13 +1147,24 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 	// We can't just append variant.Variant to module.dependencyVariants.variantName and
 	// compare the strings because the result won't be in mutator registration order.
 	// Create a new map instead, and then deep compare the maps.
-	newVariant := module.dependencyVariant.clone()
+	var newVariant variationMap
+	if !far {
+		newVariant = module.dependencyVariant.clone()
+	} else {
+		newVariant = make(variationMap)
+	}
 	for _, v := range variations {
 		newVariant[v.Mutator] = v.Variation
 	}
 
 	for _, m := range depInfo.modules {
-		if newVariant.equal(m.variant) {
+		var found bool
+		if far {
+			found = m.variant.subset(newVariant)
+		} else {
+			found = m.variant.equal(newVariant)
+		}
+		if found {
 			// AddVariationDependency allows adding a dependency on itself, but only if
 			// that module is earlier in the module list than this one, since we always
 			// run GenerateBuildActions in order for the variants of a module
