@@ -18,9 +18,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/google/blueprint/parser"
-	"github.com/google/blueprint/pathtools"
-	"github.com/google/blueprint/proptools"
 	"io"
 	"os"
 	"path/filepath"
@@ -31,6 +28,10 @@ import (
 	"strings"
 	"text/scanner"
 	"text/template"
+
+	"github.com/google/blueprint/parser"
+	"github.com/google/blueprint/pathtools"
+	"github.com/google/blueprint/proptools"
 )
 
 var ErrBuildActionsNotReady = errors.New("build actions are not ready")
@@ -415,22 +416,25 @@ func (c *Context) SetIgnoreUnknownModuleTypes(ignoreUnknownModuleTypes bool) {
 // Parse parses a single Blueprints file from r, creating Module objects for
 // each of the module definitions encountered.  If the Blueprints file contains
 // an assignment to the "subdirs" variable, then the subdirectories listed are
-// returned in the subdirs first return value.
+// searched for Blueprints files returned in the subBlueprints return value.
+// If the Blueprints file contains an assignment to the "build" variable, then
+// the file listed are returned in the subBlueprints return value.
 //
 // rootDir specifies the path to the root directory of the source tree, while
 // filename specifies the path to the Blueprints file.  These paths are used for
 // error reporting and for determining the module's directory.
 func (c *Context) parse(rootDir, filename string, r io.Reader,
-	scope *parser.Scope) (subdirs []string, modules []*moduleInfo, errs []error,
-	outScope *parser.Scope) {
+	scope *parser.Scope) (modules []*moduleInfo, subBlueprints []stringAndScope, deps []string,
+	errs []error) {
 
 	relBlueprintsFile, err := filepath.Rel(rootDir, filename)
 	if err != nil {
-		return nil, nil, []error{err}, nil
+		return nil, nil, nil, []error{err}
 	}
 
 	scope = parser.NewScope(scope)
 	scope.Remove("subdirs")
+	scope.Remove("build")
 	file, errs := parser.ParseAndEval(filename, r, scope)
 	if len(errs) > 0 {
 		for i, err := range errs {
@@ -445,7 +449,7 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 
 		// If there were any parse errors don't bother trying to interpret the
 		// result.
-		return nil, nil, errs, nil
+		return nil, nil, nil, errs
 	}
 
 	for _, def := range file.Defs {
@@ -471,13 +475,30 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 		}
 	}
 
-	subdirs, newErrs := c.processSubdirs(scope)
+	subdirs, subdirsPos, err := getStringListFromScope(scope, "subdirs")
+	if err != nil {
+		errs = append(errs, err)
+	}
 
+	build, buildPos, err := getStringListFromScope(scope, "build")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	subBlueprintsName, _, err := getStringFromScope(scope, "subname")
+
+	blueprints, deps, newErrs := c.findSubdirBlueprints(filepath.Dir(filename), subdirs, build,
+		subBlueprintsName, subdirsPos, buildPos)
 	if len(newErrs) > 0 {
 		errs = append(errs, newErrs...)
 	}
 
-	return subdirs, modules, errs, scope
+	subBlueprintsAndScope := make([]stringAndScope, len(blueprints))
+	for i, b := range blueprints {
+		subBlueprintsAndScope[i] = stringAndScope{b, scope}
+	}
+
+	return modules, subBlueprintsAndScope, deps, errs
 }
 
 type stringAndScope struct {
@@ -571,17 +592,23 @@ func (c *Context) parseBlueprintsFile(filename string, scope *parser.Scope, root
 	errsCh chan<- []error, modulesCh chan<- []*moduleInfo, blueprintsCh chan<- stringAndScope,
 	depsCh chan<- string) {
 
-	dir := filepath.Dir(filename)
-
 	file, err := os.Open(filename)
 	if err != nil {
 		errsCh <- []error{err}
 		return
 	}
 
-	subdirs, modules, errs, subScope := c.parse(rootDir, filename, file, scope)
+	modules, subBlueprints, deps, errs := c.parse(rootDir, filename, file, scope)
 	if len(errs) > 0 {
 		errsCh <- errs
+	}
+
+	for _, b := range subBlueprints {
+		blueprintsCh <- b
+	}
+
+	for _, d := range deps {
+		depsCh <- d
 	}
 
 	err = file.Close()
@@ -590,24 +617,36 @@ func (c *Context) parseBlueprintsFile(filename string, scope *parser.Scope, root
 	}
 
 	modulesCh <- modules
+}
+
+func (c *Context) findSubdirBlueprints(dir string, subdirs, build []string, subBlueprintsName string,
+	subdirsPos, buildPos scanner.Position) (blueprints, deps []string, errs []error) {
 
 	for _, subdir := range subdirs {
 		globPattern := filepath.Join(dir, subdir)
 		matches, matchedDirs, err := pathtools.Glob(globPattern)
 		if err != nil {
-			errsCh <- []error{err}
-			return
+			errs = append(errs, &Error{
+				Err: fmt.Errorf("%q: %s", globPattern, err.Error()),
+				Pos: subdirsPos,
+			})
+			continue
+		}
+
+		if len(matches) == 0 {
+			errs = append(errs, &Error{
+				Err: fmt.Errorf("%q: not found", globPattern),
+				Pos: subdirsPos,
+			})
 		}
 
 		// Depend on all searched directories so we pick up future changes.
-		for _, matchedDir := range matchedDirs {
-			depsCh <- matchedDir
-		}
+		deps = append(deps, matchedDirs...)
 
 		for _, foundSubdir := range matches {
 			fileInfo, subdirStatErr := os.Stat(foundSubdir)
 			if subdirStatErr != nil {
-				errsCh <- []error{subdirStatErr}
+				errs = append(errs, subdirStatErr)
 				continue
 			}
 
@@ -616,33 +655,79 @@ func (c *Context) parseBlueprintsFile(filename string, scope *parser.Scope, root
 				continue
 			}
 
-			subBlueprints := filepath.Join(foundSubdir, "Blueprints")
+			var subBlueprints string
+			if subBlueprintsName != "" {
+				subBlueprints = filepath.Join(foundSubdir, subBlueprintsName)
+				_, err = os.Stat(subBlueprints)
+			}
 
-			_, err := os.Stat(subBlueprints)
+			if os.IsNotExist(err) || subBlueprints == "" {
+				subBlueprints = filepath.Join(foundSubdir, "Blueprints")
+				_, err = os.Stat(subBlueprints)
+			}
+
 			if os.IsNotExist(err) {
 				// There is no Blueprints file in this subdirectory.  We
 				// need to add the directory to the list of dependencies
 				// so that if someone adds a Blueprints file in the
 				// future we'll pick it up.
-				depsCh <- filepath.Dir(subBlueprints)
+				deps = append(deps, filepath.Dir(foundSubdir))
 			} else {
-				depsCh <- subBlueprints
-				blueprintsCh <- stringAndScope{
-					subBlueprints,
-					subScope,
-				}
+				deps = append(deps, subBlueprints)
+				blueprints = append(blueprints, subBlueprints)
 			}
 		}
 	}
+
+	for _, file := range build {
+		globPattern := filepath.Join(dir, file)
+		matches, matchedDirs, err := pathtools.Glob(globPattern)
+		if err != nil {
+			errs = append(errs, &Error{
+				Err: fmt.Errorf("%q: %s", globPattern, err.Error()),
+				Pos: buildPos,
+			})
+			continue
+		}
+
+		if len(matches) == 0 {
+			errs = append(errs, &Error{
+				Err: fmt.Errorf("%q: not found", globPattern),
+				Pos: buildPos,
+			})
+		}
+
+		// Depend on all searched directories so we pick up future changes.
+		deps = append(deps, matchedDirs...)
+
+		for _, foundBlueprints := range matches {
+			fileInfo, err := os.Stat(foundBlueprints)
+			if os.IsNotExist(err) {
+				errs = append(errs, &Error{
+					Err: fmt.Errorf("%q not found", foundBlueprints),
+				})
+				continue
+			}
+
+			if fileInfo.IsDir() {
+				errs = append(errs, &Error{
+					Err: fmt.Errorf("%q is a directory", foundBlueprints),
+				})
+				continue
+			}
+
+			blueprints = append(blueprints, foundBlueprints)
+		}
+	}
+
+	return blueprints, deps, errs
 }
 
-func (c *Context) processSubdirs(
-	scope *parser.Scope) (subdirs []string, errs []error) {
-
-	if assignment, err := scope.Get("subdirs"); err == nil {
+func getStringListFromScope(scope *parser.Scope, v string) ([]string, scanner.Position, error) {
+	if assignment, err := scope.Get(v); err == nil {
 		switch assignment.Value.Type {
 		case parser.List:
-			subdirs = make([]string, 0, len(assignment.Value.ListValue))
+			ret := make([]string, 0, len(assignment.Value.ListValue))
 
 			for _, value := range assignment.Value.ListValue {
 				if value.Type != parser.String {
@@ -650,31 +735,39 @@ func (c *Context) processSubdirs(
 					panic("non-string value found in list")
 				}
 
-				subdirs = append(subdirs, value.StringValue)
+				ret = append(ret, value.StringValue)
 			}
 
-			if len(errs) > 0 {
-				subdirs = nil
-			}
-
-			return
-
+			return ret, assignment.Pos, nil
 		case parser.Bool, parser.String:
-			errs = []error{
-				&Error{
-					Err: fmt.Errorf("subdirs must be a list of strings"),
-					Pos: assignment.Pos,
-				},
+			return nil, scanner.Position{}, &Error{
+				Err: fmt.Errorf("%q must be a list of strings", v),
+				Pos: assignment.Pos,
 			}
-
-			return
-
 		default:
 			panic(fmt.Errorf("unknown value type: %d", assignment.Value.Type))
 		}
 	}
 
-	return nil, nil
+	return nil, scanner.Position{}, nil
+}
+
+func getStringFromScope(scope *parser.Scope, v string) (string, scanner.Position, error) {
+	if assignment, err := scope.Get(v); err == nil {
+		switch assignment.Value.Type {
+		case parser.String:
+			return assignment.Value.StringValue, assignment.Pos, nil
+		case parser.Bool, parser.List:
+			return "", scanner.Position{}, &Error{
+				Err: fmt.Errorf("%q must be a string", v),
+				Pos: assignment.Pos,
+			}
+		default:
+			panic(fmt.Errorf("unknown value type: %d", assignment.Value.Type))
+		}
+	}
+
+	return "", scanner.Position{}, nil
 }
 
 func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,

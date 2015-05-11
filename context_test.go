@@ -71,7 +71,7 @@ func TestContextParse(t *testing.T) {
 		}
 	`)
 
-	_, _, errs, _ := ctx.parse(".", "Blueprint", r, nil)
+	_, _, _, errs := ctx.parse(".", "Blueprint", r, nil)
 	if len(errs) > 0 {
 		t.Errorf("unexpected parse errors:")
 		for _, err := range errs {
