@@ -230,7 +230,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			fallthrough
 		case reflect.Struct:
 			localFilterKey, localFilterValue := filterKey, filterValue
-			if k, v, err := hasFilter(field); err != nil {
+			if k, v, err := HasFilter(field.Tag); err != nil {
 				errs = append(errs, err)
 				if len(errs) >= maxErrors {
 					return errs
@@ -337,8 +337,8 @@ func hasTag(field reflect.StructField, name, value string) bool {
 	return false
 }
 
-func hasFilter(field reflect.StructField) (k, v string, err error) {
-	tag := field.Tag.Get("blueprint")
+func HasFilter(field reflect.StructTag) (k, v string, err error) {
+	tag := field.Get("blueprint")
 	for _, entry := range strings.Split(tag, ",") {
 		if strings.HasPrefix(entry, "filter") {
 			if !strings.HasPrefix(entry, "filter(") || !strings.HasSuffix(entry, ")") {

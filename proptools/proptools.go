@@ -30,6 +30,15 @@ func PropertyNameForField(fieldName string) string {
 	return propertyName
 }
 
+func FieldNameForProperty(propertyName string) string {
+	r, size := utf8.DecodeRuneInString(propertyName)
+	fieldName := string(unicode.ToUpper(r))
+	if len(propertyName) > size {
+		fieldName += propertyName[size:]
+	}
+	return fieldName
+}
+
 func CloneProperties(structValue reflect.Value) reflect.Value {
 	result := reflect.New(structValue.Type())
 	CopyProperties(result.Elem(), structValue)
