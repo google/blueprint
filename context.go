@@ -842,7 +842,7 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 
 		if newModule.variantName == "" {
 			newModule.variantName = variationName
-		} else {
+		} else if variationName != "" {
 			newModule.variantName += "_" + variationName
 		}
 
