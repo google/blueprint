@@ -977,8 +977,6 @@ func (c *Context) addModules(modules []*moduleInfo) (errs []error) {
 				ninjaName = toNinjaName(module.properties.Name) + strconv.Itoa(i)
 			}
 
-			c.moduleNinjaNames[ninjaName] = group
-
 			group := &moduleGroup{
 				name:      module.properties.Name,
 				ninjaName: ninjaName,
@@ -986,6 +984,7 @@ func (c *Context) addModules(modules []*moduleInfo) (errs []error) {
 			}
 			module.group = group
 			c.moduleGroups[name] = group
+			c.moduleNinjaNames[ninjaName] = group
 		}
 	}
 
