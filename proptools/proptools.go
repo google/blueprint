@@ -146,3 +146,49 @@ func ZeroProperties(structValue reflect.Value) {
 		}
 	}
 }
+
+func CloneEmptyProperties(structValue reflect.Value) reflect.Value {
+	result := reflect.New(structValue.Type())
+	cloneEmptyProperties(result.Elem(), structValue)
+	return result
+}
+
+func cloneEmptyProperties(dstValue, srcValue reflect.Value) {
+	typ := srcValue.Type()
+	for i := 0; i < srcValue.NumField(); i++ {
+		field := typ.Field(i)
+		if field.PkgPath != "" {
+			// The field is not exported so just skip it.
+			continue
+		}
+
+		srcFieldValue := srcValue.Field(i)
+		dstFieldValue := dstValue.Field(i)
+
+		switch srcFieldValue.Kind() {
+		case reflect.Bool, reflect.String, reflect.Slice, reflect.Int, reflect.Uint:
+			// Nothing
+		case reflect.Struct:
+			cloneEmptyProperties(dstFieldValue, srcFieldValue)
+		case reflect.Ptr, reflect.Interface:
+			if !srcFieldValue.IsNil() {
+				elem := srcFieldValue.Elem()
+				if srcFieldValue.Kind() == reflect.Interface {
+					if elem.Kind() != reflect.Ptr {
+						panic(fmt.Errorf("can't clone field %q: interface "+
+							"refers to a non-pointer", field.Name))
+					}
+					elem = elem.Elem()
+				}
+				if elem.Elem().Kind() != reflect.Struct {
+					panic(fmt.Errorf("can't clone field %q: points to a "+
+						"non-struct", field.Name))
+				}
+				dstFieldValue.Set(CloneEmptyProperties(elem.Elem()))
+			}
+		default:
+			panic(fmt.Errorf("unexpected kind for property struct field %q: %s",
+				field.Name, srcFieldValue.Kind()))
+		}
+	}
+}
