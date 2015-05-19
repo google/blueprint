@@ -390,6 +390,7 @@ type BottomUpMutatorContext interface {
 
 	AddDependency(module Module, name string)
 	CreateVariations(...string) []Module
+	CreateLocalVariations(...string) []Module
 	SetDependencyVariation(string)
 }
 
