@@ -155,11 +155,36 @@ default $
         .bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# Module:  bpfmt
+# Module:  bpfind
 # Variant:
 # Type:    bootstrap_go_binary
 # Factory: github.com/google/blueprint/bootstrap.newGoBinaryModule
 # Defined: Blueprints:82:1
+
+build .bootstrap/bpfind/obj/bpfind.a: g.bootstrap.gc $
+        ${g.bootstrap.srcDir}/bpfind/bpfind.go | ${g.bootstrap.gcCmd} $
+        .bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a $
+        .bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a $
+        .bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a $
+        .bootstrap/blueprint/pkg/github.com/google/blueprint.a
+    incFlags = -I .bootstrap/blueprint-parser/pkg -I .bootstrap/blueprint-pathtools/pkg -I .bootstrap/blueprint-proptools/pkg -I .bootstrap/blueprint/pkg
+    pkgPath = bpfind
+default .bootstrap/bpfind/obj/bpfind.a
+
+build .bootstrap/bpfind/obj/a.out: g.bootstrap.link $
+        .bootstrap/bpfind/obj/bpfind.a | ${g.bootstrap.linkCmd}
+    libDirFlags = -L .bootstrap/blueprint-parser/pkg -L .bootstrap/blueprint-pathtools/pkg -L .bootstrap/blueprint-proptools/pkg -L .bootstrap/blueprint/pkg
+default .bootstrap/bpfind/obj/a.out
+
+build .bootstrap/bin/bpfind: g.bootstrap.cp .bootstrap/bpfind/obj/a.out
+default .bootstrap/bin/bpfind
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Module:  bpfmt
+# Variant:
+# Type:    bootstrap_go_binary
+# Factory: github.com/google/blueprint/bootstrap.newGoBinaryModule
+# Defined: Blueprints:88:1
 
 build .bootstrap/bpfmt/obj/bpfmt.a: g.bootstrap.gc $
         ${g.bootstrap.srcDir}/bpfmt/bpfmt.go | ${g.bootstrap.gcCmd} $
@@ -181,7 +206,7 @@ default .bootstrap/bin/bpfmt
 # Variant:
 # Type:    bootstrap_go_binary
 # Factory: github.com/google/blueprint/bootstrap.newGoBinaryModule
-# Defined: Blueprints:88:1
+# Defined: Blueprints:94:1
 
 build .bootstrap/bpmodify/obj/bpmodify.a: g.bootstrap.gc $
         ${g.bootstrap.srcDir}/bpmodify/bpmodify.go | ${g.bootstrap.gcCmd} $
@@ -241,8 +266,8 @@ rule s.bootstrap.minibp
     generator = true
 
 build .bootstrap/main.ninja.in: s.bootstrap.bigbp $
-        ${g.bootstrap.srcDir}/Blueprints | .bootstrap/bin/bpfmt $
-        .bootstrap/bin/bpmodify .bootstrap/bin/minibp
+        ${g.bootstrap.srcDir}/Blueprints | .bootstrap/bin/bpfind $
+        .bootstrap/bin/bpfmt .bootstrap/bin/bpmodify .bootstrap/bin/minibp
 default .bootstrap/main.ninja.in
 build .bootstrap/notAFile: phony
 default .bootstrap/notAFile
