@@ -12,6 +12,7 @@
 #   BOOTSTRAP
 #   SRCDIR
 #   BOOTSTRAP_MANIFEST
+#   TOP_BLUEPRINT
 #   GOROOT
 #   GOOS
 #   GOARCH
@@ -38,6 +39,9 @@ set -e
 # the source tree.  It is used to bootstrap a build output directory from when
 # the script is run manually by a user.
 [ -z "$BOOTSTRAP_MANIFEST" ] && BOOTSTRAP_MANIFEST="${SRCDIR}/build.ninja.in"
+
+# TOP_BLUEPRINT Is the path to the top-level Blueprints file in the source tree
+[ -z "$TOP_BLUEPRINT" ] && TOP_BLUEPRINT="${SRCDIR}/Blueprints"
 
 # These variables should be set by auto-detecting or knowing a priori the host
 # Go toolchain properties.
@@ -80,7 +84,7 @@ if [ $REGEN_BOOTSTRAP_MANIFEST = true ]; then
     # that has been built in the past.
     if [ -x .bootstrap/bin/minibp ]; then
         echo "Regenerating $BOOTSTRAP_MANIFEST"
-        ./.bootstrap/bin/minibp -o $BOOTSTRAP_MANIFEST $SRCDIR/Blueprints
+        ./.bootstrap/bin/minibp -o $BOOTSTRAP_MANIFEST $TOP_BLUEPRINT
     else
         echo "Executable minibp not found at .bootstrap/bin/minibp" >&2
         exit 1
