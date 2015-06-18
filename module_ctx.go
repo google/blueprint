@@ -107,6 +107,7 @@ type DynamicDependerModule interface {
 type BaseModuleContext interface {
 	ModuleName() string
 	ModuleDir() string
+	ModuleFile() string
 	Config() interface{}
 
 	ContainsProperty(name string) bool
@@ -167,6 +168,10 @@ func (d *baseModuleContext) ContainsProperty(name string) bool {
 
 func (d *baseModuleContext) ModuleDir() string {
 	return filepath.Dir(d.module.relBlueprintsFile)
+}
+
+func (d *baseModuleContext) ModuleFile() string {
+	return d.module.relBlueprintsFile
 }
 
 func (d *baseModuleContext) Config() interface{} {
