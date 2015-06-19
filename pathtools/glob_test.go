@@ -334,6 +334,58 @@ var globTestCases = []struct {
 		dirs:     []string{"c", "c/f", "c/g", "c/h"},
 	},
 
+	// non-existant non-wild path tests
+	{
+		pattern: "d/*",
+		matches: nil,
+		dirs:    []string{"."},
+	},
+	{
+		pattern: "d",
+		matches: nil,
+		dirs:    []string{"."},
+	},
+	{
+		pattern: "a/d/*",
+		matches: nil,
+		dirs:    []string{"a"},
+	},
+	{
+		pattern: "a/d",
+		matches: nil,
+		dirs:    []string{"a"},
+	},
+	{
+		pattern: "a/a/d/*",
+		matches: nil,
+		dirs:    []string{"a/a"},
+	},
+	{
+		pattern: "a/a/d",
+		matches: nil,
+		dirs:    []string{"a/a"},
+	},
+	{
+		pattern: "a/d/a/*",
+		matches: nil,
+		dirs:    []string{"a"},
+	},
+	{
+		pattern: "a/d/a",
+		matches: nil,
+		dirs:    []string{"a"},
+	},
+	{
+		pattern: "a/d/a/*/a",
+		matches: nil,
+		dirs:    []string{"a"},
+	},
+	{
+		pattern: "a/d/a/**/a",
+		matches: nil,
+		dirs:    []string{"a"},
+	},
+
 	// recursive exclude error tests
 	{
 		pattern:  "**/*",

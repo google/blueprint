@@ -39,12 +39,7 @@ func Glob(pattern string) (matches, dirs []string, err error) {
 // exclude patterns are equivalent to filepath.Glob, with an extension that
 // recursive glob (** matching zero or more complete path entries) is supported.
 func GlobWithExcludes(pattern string, excludes []string) (matches, dirs []string, err error) {
-	if !isWild(pattern) {
-		// If there are no wilds in the pattern, just return whether the file at the pattern
-		// exists or not.  Uses filepath.Glob instead of manually statting to get consistent
-		// results.
-		matches, err = filepath.Glob(filepath.Clean(pattern))
-	} else if filepath.Base(pattern) == "**" {
+	if filepath.Base(pattern) == "**" {
 		return nil, nil, GlobLastRecursiveErr
 	} else {
 		matches, dirs, err = glob(pattern, false)
@@ -66,10 +61,27 @@ func GlobWithExcludes(pattern string, excludes []string) (matches, dirs []string
 // allowing searched directories to be tracked.  Also handles the recursive glob pattern, **.
 func glob(pattern string, hasRecursive bool) (matches, dirs []string, err error) {
 	if !isWild(pattern) {
-		// If there are no wilds in the pattern, just return whether the file at the pattern
-		// exists or not.  Uses filepath.Glob instead of manually statting to get consistent
-		// results.
-		matches, err = filepath.Glob(filepath.Clean(pattern))
+		// If there are no wilds in the pattern, check whether the file exists or not.
+		// Uses filepath.Glob instead of manually statting to get consistent results.
+		pattern = filepath.Clean(pattern)
+		matches, err = filepath.Glob(pattern)
+		if err != nil {
+			return matches, dirs, err
+		}
+
+		if len(matches) == 0 {
+			// Some part of the non-wild pattern didn't exist.  Add the last existing directory
+			// as a dependency.
+			var matchDirs []string
+			for len(matchDirs) == 0 {
+				pattern, _ = saneSplit(pattern)
+				matchDirs, err = filepath.Glob(pattern)
+				if err != nil {
+					return matches, dirs, err
+				}
+			}
+			dirs = append(dirs, matchDirs...)
+		}
 		return matches, dirs, err
 	}
 
