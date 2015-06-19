@@ -34,6 +34,9 @@ set -e
 # the bootstrap script.
 [ -z "$SRCDIR" ] && SRCDIR=`dirname "${BOOTSTRAP}"`
 
+# TOPNAME should be set to the name of the top-level Blueprints file
+[ -z "$TOPNAME" ] && TOPNAME="Blueprints"
+
 # BOOTSTRAP_MANIFEST is the path to the bootstrap Ninja file that is part of
 # the source tree.  It is used to bootstrap a build output directory from when
 # the script is run manually by a user.
@@ -80,7 +83,7 @@ if [ $REGEN_BOOTSTRAP_MANIFEST = true ]; then
     # that has been built in the past.
     if [ -x .bootstrap/bin/minibp ]; then
         echo "Regenerating $BOOTSTRAP_MANIFEST"
-        ./.bootstrap/bin/minibp -o $BOOTSTRAP_MANIFEST $SRCDIR/Blueprints
+        ./.bootstrap/bin/minibp -o $BOOTSTRAP_MANIFEST $SRCDIR/$TOPNAME
     else
         echo "Executable minibp not found at .bootstrap/bin/minibp" >&2
         exit 1
