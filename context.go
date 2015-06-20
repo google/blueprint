@@ -517,6 +517,73 @@ type stringAndScope struct {
 	*parser.Scope
 }
 
+func (c *Context) FindBlueprintsFiles(rootFile string) (blueprints []string,
+	errs []error) {
+
+	c.dependenciesReady = false
+
+	rootDir := filepath.Dir(rootFile)
+	blueprintsSet := make(map[string]bool)
+
+	// Channels to receive data back from parseBlueprintsFile goroutines
+	blueprintsCh := make(chan stringAndScope)
+	errsCh := make(chan []error)
+	modulesCh := make(chan []*moduleInfo)
+	depsCh := make(chan string)
+
+	// Channel to notify main loop that a parseBlueprintsFile goroutine has finished
+	doneCh := make(chan struct{})
+
+	// Number of outstanding goroutines to wait for
+	count := 0
+
+	startParseBlueprintsFile := func(filename string, scope *parser.Scope) {
+		count++
+		go func() {
+			c.parseBlueprintsFile(filename, scope, rootDir,
+				errsCh, modulesCh, blueprintsCh, depsCh)
+			doneCh <- struct{}{}
+		}()
+	}
+
+	tooManyErrors := false
+
+	blueprints = append(blueprints, rootFile)
+	startParseBlueprintsFile(rootFile, nil)
+
+loop:
+	for {
+		if len(errs) > maxErrors {
+			tooManyErrors = true
+		}
+
+		select {
+		case newErrs := <-errsCh:
+			errs = append(errs, newErrs...)
+		case <-depsCh:
+		case <-modulesCh:
+		case blueprint := <-blueprintsCh:
+			if tooManyErrors {
+				continue
+			}
+			if blueprintsSet[blueprint.string] {
+				continue
+			}
+
+			blueprintsSet[blueprint.string] = true
+			blueprints = append(blueprints, blueprint.string)
+			startParseBlueprintsFile(blueprint.string, blueprint.Scope)
+		case <-doneCh:
+			count--
+			if count == 0 {
+				break loop
+			}
+		}
+	}
+
+	return
+}
+
 // ParseBlueprintsFiles parses a set of Blueprints files starting with the file
 // at rootFile.  When it encounters a Blueprints file with a set of subdirs
 // listed it recursively parses any Blueprints files found in those
