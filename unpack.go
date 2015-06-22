@@ -16,10 +16,12 @@ package blueprint
 
 import (
 	"fmt"
+	"reflect"
+	"strconv"
+	"strings"
+
 	"github.com/google/blueprint/parser"
 	"github.com/google/blueprint/proptools"
-	"reflect"
-	"strings"
 )
 
 type packedProperty struct {
@@ -47,7 +49,7 @@ func unpackProperties(propertyDefs []*parser.Property,
 			panic("properties must be a pointer to a struct")
 		}
 
-		newErrs := unpackStructValue("", propertiesValue, propertyMap)
+		newErrs := unpackStructValue("", propertiesValue, propertyMap, "", "")
 		errs = append(errs, newErrs...)
 
 		if len(errs) >= maxErrors {
@@ -118,7 +120,7 @@ func buildPropertyMap(namePrefix string, propertyDefs []*parser.Property,
 }
 
 func unpackStructValue(namePrefix string, structValue reflect.Value,
-	propertyMap map[string]*packedProperty) []error {
+	propertyMap map[string]*packedProperty, filterKey, filterValue string) []error {
 
 	structType := structValue.Type()
 
@@ -169,6 +171,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 				panic(fmt.Errorf("field %s contains a non-struct pointer",
 					field.Name))
 			}
+
 		case reflect.Int, reflect.Uint:
 			if !hasTag(field, "blueprint", "mutated") {
 				panic(fmt.Errorf(`int field %s must be tagged blueprint:"mutated"`, field.Name))
@@ -187,18 +190,33 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			continue
 		}
 
-		var newErrs []error
+		packedProperty.unpacked = true
 
 		if hasTag(field, "blueprint", "mutated") {
 			errs = append(errs,
-				fmt.Errorf("mutated field %s cannot be set in a Blueprint file", propertyName))
+				&Error{
+					Err: fmt.Errorf("mutated field %s cannot be set in a Blueprint file", propertyName),
+					Pos: packedProperty.property.Pos,
+				})
 			if len(errs) >= maxErrors {
 				return errs
 			}
 			continue
 		}
 
-		packedProperty.unpacked = true
+		if filterKey != "" && !hasTag(field, filterKey, filterValue) {
+			errs = append(errs,
+				&Error{
+					Err: fmt.Errorf("filtered field %s cannot be set in a Blueprint file", propertyName),
+					Pos: packedProperty.property.Pos,
+				})
+			if len(errs) >= maxErrors {
+				return errs
+			}
+			continue
+		}
+
+		var newErrs []error
 
 		switch kind := fieldValue.Kind(); kind {
 		case reflect.Bool:
@@ -207,13 +225,29 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			newErrs = unpackString(fieldValue, packedProperty.property)
 		case reflect.Slice:
 			newErrs = unpackSlice(fieldValue, packedProperty.property)
-		case reflect.Struct:
-			newErrs = unpackStruct(propertyName+".", fieldValue,
-				packedProperty.property, propertyMap)
 		case reflect.Ptr, reflect.Interface:
-			structValue := fieldValue.Elem()
-			newErrs = unpackStruct(propertyName+".", structValue,
-				packedProperty.property, propertyMap)
+			fieldValue = fieldValue.Elem()
+			fallthrough
+		case reflect.Struct:
+			localFilterKey, localFilterValue := filterKey, filterValue
+			if k, v, err := hasFilter(field); err != nil {
+				errs = append(errs, err)
+				if len(errs) >= maxErrors {
+					return errs
+				}
+			} else if k != "" {
+				if filterKey != "" {
+					errs = append(errs, fmt.Errorf("nested filter tag not supported on field %q",
+						field.Name))
+					if len(errs) >= maxErrors {
+						return errs
+					}
+				} else {
+					localFilterKey, localFilterValue = k, v
+				}
+			}
+			newErrs = unpackStruct(propertyName+".", fieldValue,
+				packedProperty.property, propertyMap, localFilterKey, localFilterValue)
 		}
 		errs = append(errs, newErrs...)
 		if len(errs) >= maxErrors {
@@ -273,8 +307,8 @@ func unpackSlice(sliceValue reflect.Value, property *parser.Property) []error {
 }
 
 func unpackStruct(namePrefix string, structValue reflect.Value,
-	property *parser.Property,
-	propertyMap map[string]*packedProperty) []error {
+	property *parser.Property, propertyMap map[string]*packedProperty,
+	filterKey, filterValue string) []error {
 
 	if property.Value.Type != parser.Map {
 		return []error{
@@ -289,7 +323,7 @@ func unpackStruct(namePrefix string, structValue reflect.Value,
 		return errs
 	}
 
-	return unpackStructValue(namePrefix, structValue, propertyMap)
+	return unpackStructValue(namePrefix, structValue, propertyMap, filterKey, filterValue)
 }
 
 func hasTag(field reflect.StructField, name, value string) bool {
@@ -301,4 +335,30 @@ func hasTag(field reflect.StructField, name, value string) bool {
 	}
 
 	return false
+}
+
+func hasFilter(field reflect.StructField) (k, v string, err error) {
+	tag := field.Tag.Get("blueprint")
+	for _, entry := range strings.Split(tag, ",") {
+		if strings.HasPrefix(entry, "filter") {
+			if !strings.HasPrefix(entry, "filter(") || !strings.HasSuffix(entry, ")") {
+				return "", "", fmt.Errorf("unexpected format for filter %q: missing ()", entry)
+			}
+			entry = strings.TrimPrefix(entry, "filter(")
+			entry = strings.TrimSuffix(entry, ")")
+
+			s := strings.Split(entry, ":")
+			if len(s) != 2 {
+				return "", "", fmt.Errorf("unexpected format for filter %q: expected single ':'", entry)
+			}
+			k = s[0]
+			v, err = strconv.Unquote(s[1])
+			if err != nil {
+				return "", "", fmt.Errorf("unexpected format for filter %q: %s", entry, err.Error())
+			}
+			return k, v, nil
+		}
+	}
+
+	return "", "", nil
 }
