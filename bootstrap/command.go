@@ -34,6 +34,7 @@ var (
 	checkFile    string
 	manifestFile string
 	cpuprofile   string
+	runGoTests   bool
 )
 
 func init() {
@@ -42,6 +43,7 @@ func init() {
 	flag.StringVar(&checkFile, "c", "", "the existing file to check against")
 	flag.StringVar(&manifestFile, "m", "", "the bootstrap manifest file")
 	flag.StringVar(&cpuprofile, "cpuprofile", "", "write cpu profile to file")
+	flag.BoolVar(&runGoTests, "t", false, "build and run go tests during bootstrap")
 }
 
 func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...string) {
@@ -73,6 +75,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	bootstrapConfig := &Config{
 		generatingBootstrapper: generatingBootstrapper,
 		topLevelBlueprintsFile: flag.Arg(0),
+		runGoTests:             runGoTests,
 	}
 
 	ctx.RegisterModuleType("bootstrap_go_package", newGoPackageModuleFactory(bootstrapConfig))

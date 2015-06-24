@@ -45,4 +45,6 @@ type Config struct {
 	generatingBootstrapper bool
 
 	topLevelBlueprintsFile string
+
+	runGoTests bool
 }
