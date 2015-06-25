@@ -124,14 +124,6 @@ func isBootstrapBinaryModule(module blueprint.Module) bool {
 	return isBinary
 }
 
-func generatingBootstrapper(config interface{}) bool {
-	bootstrapConfig, ok := config.(Config)
-	if ok {
-		return bootstrapConfig.GeneratingBootstrapper()
-	}
-	return false
-}
-
 // ninjaHasMultipass returns true if Ninja will perform multiple passes
 // that can regenerate the build manifest.
 func ninjaHasMultipass(config interface{}) bool {
@@ -156,13 +148,20 @@ type goPackage struct {
 
 	// The path of the .a file that is to be built.
 	archiveFile string
+
+	// The bootstrap Config
+	config *Config
 }
 
 var _ goPackageProducer = (*goPackage)(nil)
 
-func newGoPackageModule() (blueprint.Module, []interface{}) {
-	module := &goPackage{}
-	return module, []interface{}{&module.properties}
+func newGoPackageModuleFactory(config *Config) func() (blueprint.Module, []interface{}) {
+	return func() (blueprint.Module, []interface{}) {
+		module := &goPackage{
+			config: config,
+		}
+		return module, []interface{}{&module.properties}
+	}
 }
 
 func (g *goPackage) GoPkgRoot() string {
@@ -190,7 +189,7 @@ func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
 	// the circular dependence that occurs when the builder requires a new Ninja
 	// file to be built, but building a new ninja file requires the builder to
 	// be built.
-	if generatingBootstrapper(ctx.Config()) {
+	if g.config.generatingBootstrapper {
 		buildGoPackage(ctx, g.pkgRoot, g.properties.PkgPath, g.archiveFile,
 			g.properties.Srcs)
 	} else {
@@ -204,11 +203,18 @@ type goBinary struct {
 		Srcs           []string
 		PrimaryBuilder bool
 	}
+
+	// The bootstrap Config
+	config *Config
 }
 
-func newGoBinaryModule() (blueprint.Module, []interface{}) {
-	module := &goBinary{}
-	return module, []interface{}{&module.properties}
+func newGoBinaryModuleFactory(config *Config) func() (blueprint.Module, []interface{}) {
+	return func() (blueprint.Module, []interface{}) {
+		module := &goBinary{
+			config: config,
+		}
+		return module, []interface{}{&module.properties}
+	}
 }
 
 func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
@@ -225,7 +231,7 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 	// the circular dependence that occurs when the builder requires a new Ninja
 	// file to be built, but building a new ninja file requires the builder to
 	// be built.
-	if generatingBootstrapper(ctx.Config()) {
+	if g.config.generatingBootstrapper {
 		buildGoPackage(ctx, objDir, name, archiveFile, g.properties.Srcs)
 
 		var libDirFlags []string
@@ -339,10 +345,17 @@ func phonyGoTarget(ctx blueprint.ModuleContext, target string, srcs []string,
 
 }
 
-type singleton struct{}
+type singleton struct {
+	// The bootstrap Config
+	config *Config
+}
 
-func newSingleton() blueprint.Singleton {
-	return &singleton{}
+func newSingletonFactory(config *Config) func() blueprint.Singleton {
+	return func() blueprint.Singleton {
+		return &singleton{
+			config: config,
+		}
+	}
 }
 
 func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
@@ -388,13 +401,13 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	// Get the filename of the top-level Blueprints file to pass to minibp.
 	// This comes stored in a global variable that's set by Main.
 	topLevelBlueprints := filepath.Join("$srcDir",
-		filepath.Base(topLevelBlueprintsFile))
+		filepath.Base(s.config.topLevelBlueprintsFile))
 
 	mainNinjaFile := filepath.Join(bootstrapDir, "main.ninja.in")
 	mainNinjaDepFile := mainNinjaFile + ".d"
 	bootstrapNinjaFile := filepath.Join(bootstrapDir, "bootstrap.ninja.in")
 
-	if generatingBootstrapper(ctx.Config()) {
+	if s.config.generatingBootstrapper {
 		// We're generating a bootstrapper Ninja file, so we need to set things
 		// up to rebuild the build.ninja file using the primary builder.
 
