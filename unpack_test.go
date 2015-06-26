@@ -16,15 +16,19 @@ package blueprint
 
 import (
 	"bytes"
-	"github.com/google/blueprint/parser"
-	"github.com/google/blueprint/proptools"
+	"fmt"
 	"reflect"
 	"testing"
+	"text/scanner"
+
+	"github.com/google/blueprint/parser"
+	"github.com/google/blueprint/proptools"
 )
 
 var validUnpackTestCases = []struct {
 	input  string
 	output interface{}
+	errs   []error
 }{
 	{`
 		m {
@@ -36,6 +40,7 @@ var validUnpackTestCases = []struct {
 		}{
 			Name: "abc",
 		},
+		nil,
 	},
 
 	{`
@@ -48,6 +53,7 @@ var validUnpackTestCases = []struct {
 		}{
 			IsGood: true,
 		},
+		nil,
 	},
 
 	{`
@@ -61,6 +67,7 @@ var validUnpackTestCases = []struct {
 		}{
 			Stuff: []string{"asdf", "jkl;", "qwert", "uiop", "bnm,"},
 		},
+		nil,
 	},
 
 	{`
@@ -79,6 +86,7 @@ var validUnpackTestCases = []struct {
 				Name: "abc",
 			},
 		},
+		nil,
 	},
 
 	{`
@@ -95,6 +103,7 @@ var validUnpackTestCases = []struct {
 				Name: "def",
 			},
 		},
+		nil,
 	},
 
 	{`
@@ -119,6 +128,64 @@ var validUnpackTestCases = []struct {
 			Bar: false,
 			Baz: []string{"def", "ghi"},
 		},
+		nil,
+	},
+
+	{`
+		m {
+			nested: {
+				foo: "abc",
+			},
+			bar: false,
+			baz: ["def", "ghi"],
+		}
+		`,
+		struct {
+			Nested struct {
+				Foo string `allowNested:"true"`
+			} `blueprint:"filter(allowNested:\"true\")"`
+			Bar bool
+			Baz []string
+		}{
+			Nested: struct {
+				Foo string `allowNested:"true"`
+			}{
+				Foo: "abc",
+			},
+			Bar: false,
+			Baz: []string{"def", "ghi"},
+		},
+		nil,
+	},
+
+	{`
+		m {
+			nested: {
+				foo: "abc",
+			},
+			bar: false,
+			baz: ["def", "ghi"],
+		}
+		`,
+		struct {
+			Nested struct {
+				Foo string
+			} `blueprint:"filter(allowNested:\"true\")"`
+			Bar bool
+			Baz []string
+		}{
+			Nested: struct{ Foo string }{
+				Foo: "",
+			},
+			Bar: false,
+			Baz: []string{"def", "ghi"},
+		},
+		[]error{
+			&Error{
+				Err: fmt.Errorf("filtered field nested.foo cannot be set in a Blueprint file"),
+				Pos: scanner.Position{"", 27, 4, 8},
+			},
+		},
 	},
 }
 
@@ -139,13 +206,18 @@ func TestUnpackProperties(t *testing.T) {
 		properties := proptools.CloneProperties(reflect.ValueOf(testCase.output))
 		proptools.ZeroProperties(properties.Elem())
 		_, errs = unpackProperties(module.Properties, properties.Interface())
-		if len(errs) != 0 {
+		if len(errs) != 0 && len(testCase.errs) == 0 {
 			t.Errorf("test case: %s", testCase.input)
 			t.Errorf("unexpected unpack errors:")
 			for _, err := range errs {
 				t.Errorf("  %s", err)
 			}
 			t.FailNow()
+		} else if !reflect.DeepEqual(errs, testCase.errs) {
+			t.Errorf("test case: %s", testCase.input)
+			t.Errorf("incorrect errors:")
+			t.Errorf("  expected: %+v", testCase.errs)
+			t.Errorf("       got: %+v", errs)
 		}
 
 		output := properties.Elem().Interface()
