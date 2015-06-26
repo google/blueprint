@@ -16,7 +16,6 @@ package blueprint
 
 import (
 	"fmt"
-	"path/filepath"
 )
 
 type Singleton interface {
@@ -71,28 +70,21 @@ func (s *singletonContext) Config() interface{} {
 }
 
 func (s *singletonContext) ModuleName(logicModule Module) string {
-	module := s.context.moduleInfo[logicModule]
-	return module.properties.Name
+	return s.context.ModuleName(logicModule)
 }
 
 func (s *singletonContext) ModuleDir(logicModule Module) string {
-	module := s.context.moduleInfo[logicModule]
-	return filepath.Dir(module.relBlueprintsFile)
+	return s.context.ModuleDir(logicModule)
 }
 
 func (s *singletonContext) BlueprintFile(logicModule Module) string {
-	module := s.context.moduleInfo[logicModule]
-	return module.relBlueprintsFile
+	return s.context.BlueprintFile(logicModule)
 }
 
 func (s *singletonContext) ModuleErrorf(logicModule Module, format string,
 	args ...interface{}) {
 
-	module := s.context.moduleInfo[logicModule]
-	s.errs = append(s.errs, &Error{
-		Err: fmt.Errorf(format, args...),
-		Pos: module.pos,
-	})
+	s.errs = append(s.errs, s.context.ModuleErrorf(logicModule, format, args...))
 }
 
 func (s *singletonContext) Errorf(format string, args ...interface{}) {
@@ -153,25 +145,25 @@ func (s *singletonContext) SetBuildDir(pctx *PackageContext, value string) {
 }
 
 func (s *singletonContext) VisitAllModules(visit func(Module)) {
-	s.context.visitAllModules(visit)
+	s.context.VisitAllModules(visit)
 }
 
 func (s *singletonContext) VisitAllModulesIf(pred func(Module) bool,
 	visit func(Module)) {
 
-	s.context.visitAllModulesIf(pred, visit)
+	s.context.VisitAllModulesIf(pred, visit)
 }
 
 func (s *singletonContext) VisitDepsDepthFirst(module Module,
 	visit func(Module)) {
 
-	s.context.visitDepsDepthFirst(s.context.moduleInfo[module], visit)
+	s.context.VisitDepsDepthFirst(module, visit)
 }
 
 func (s *singletonContext) VisitDepsDepthFirstIf(module Module,
 	pred func(Module) bool, visit func(Module)) {
 
-	s.context.visitDepsDepthFirstIf(s.context.moduleInfo[module], pred, visit)
+	s.context.VisitDepsDepthFirstIf(module, pred, visit)
 }
 
 func (s *singletonContext) AddNinjaFileDeps(deps ...string) {

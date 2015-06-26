@@ -84,16 +84,38 @@ build $
         ${g.bootstrap.srcDir}/bootstrap/cleanup.go $
         ${g.bootstrap.srcDir}/bootstrap/command.go $
         ${g.bootstrap.srcDir}/bootstrap/config.go $
-        ${g.bootstrap.srcDir}/bootstrap/doc.go | ${g.bootstrap.gcCmd} $
+        ${g.bootstrap.srcDir}/bootstrap/doc.go $
+        ${g.bootstrap.srcDir}/bootstrap/writedocs.go | ${g.bootstrap.gcCmd} $
         .bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a $
         .bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a $
         .bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a $
         .bootstrap/blueprint/pkg/github.com/google/blueprint.a $
-        .bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a
-    incFlags = -I .bootstrap/blueprint-parser/pkg -I .bootstrap/blueprint-pathtools/pkg -I .bootstrap/blueprint-proptools/pkg -I .bootstrap/blueprint/pkg -I .bootstrap/blueprint-deptools/pkg
+        .bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a $
+        .bootstrap/blueprint-bootstrap-bpdoc/pkg/github.com/google/blueprint/bootstrap/bpdoc.a
+    incFlags = -I .bootstrap/blueprint-parser/pkg -I .bootstrap/blueprint-pathtools/pkg -I .bootstrap/blueprint-proptools/pkg -I .bootstrap/blueprint/pkg -I .bootstrap/blueprint-deptools/pkg -I .bootstrap/blueprint-bootstrap-bpdoc/pkg
     pkgPath = github.com/google/blueprint/bootstrap
 default $
         .bootstrap/blueprint-bootstrap/pkg/github.com/google/blueprint/bootstrap.a
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Module:  blueprint-bootstrap-bpdoc
+# Variant:
+# Type:    bootstrap_go_package
+# Factory: github.com/google/blueprint/bootstrap.func·002
+# Defined: Blueprints:89:1
+
+build $
+        .bootstrap/blueprint-bootstrap-bpdoc/pkg/github.com/google/blueprint/bootstrap/bpdoc.a $
+        : g.bootstrap.gc ${g.bootstrap.srcDir}/bootstrap/bpdoc/bpdoc.go | $
+        ${g.bootstrap.gcCmd} $
+        .bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a $
+        .bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a $
+        .bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a $
+        .bootstrap/blueprint/pkg/github.com/google/blueprint.a
+    incFlags = -I .bootstrap/blueprint-parser/pkg -I .bootstrap/blueprint-pathtools/pkg -I .bootstrap/blueprint-proptools/pkg -I .bootstrap/blueprint/pkg
+    pkgPath = github.com/google/blueprint/bootstrap/bpdoc
+default $
+        .bootstrap/blueprint-bootstrap-bpdoc/pkg/github.com/google/blueprint/bootstrap/bpdoc.a
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  blueprint-deptools
@@ -159,7 +181,7 @@ default $
 # Variant:
 # Type:    bootstrap_go_binary
 # Factory: github.com/google/blueprint/bootstrap.func·003
-# Defined: Blueprints:96:1
+# Defined: Blueprints:110:1
 
 build .bootstrap/bpfmt/obj/bpfmt.a: g.bootstrap.gc $
         ${g.bootstrap.srcDir}/bpfmt/bpfmt.go | ${g.bootstrap.gcCmd} $
@@ -181,7 +203,7 @@ default .bootstrap/bin/bpfmt
 # Variant:
 # Type:    bootstrap_go_binary
 # Factory: github.com/google/blueprint/bootstrap.func·003
-# Defined: Blueprints:102:1
+# Defined: Blueprints:116:1
 
 build .bootstrap/bpmodify/obj/bpmodify.a: g.bootstrap.gc $
         ${g.bootstrap.srcDir}/bpmodify/bpmodify.go | ${g.bootstrap.gcCmd} $
@@ -203,7 +225,7 @@ default .bootstrap/bin/bpmodify
 # Variant:
 # Type:    bootstrap_go_binary
 # Factory: github.com/google/blueprint/bootstrap.func·003
-# Defined: Blueprints:108:1
+# Defined: Blueprints:122:1
 
 build .bootstrap/gotestmain/obj/gotestmain.a: g.bootstrap.gc $
         ${g.bootstrap.srcDir}/gotestmain/gotestmain.go | ${g.bootstrap.gcCmd}
@@ -222,7 +244,7 @@ default .bootstrap/bin/gotestmain
 # Variant:
 # Type:    bootstrap_go_binary
 # Factory: github.com/google/blueprint/bootstrap.func·003
-# Defined: Blueprints:87:1
+# Defined: Blueprints:101:1
 
 build .bootstrap/minibp/obj/minibp.a: g.bootstrap.gc $
         ${g.bootstrap.srcDir}/bootstrap/minibp/main.go | ${g.bootstrap.gcCmd} $
@@ -231,14 +253,15 @@ build .bootstrap/minibp/obj/minibp.a: g.bootstrap.gc $
         .bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a $
         .bootstrap/blueprint/pkg/github.com/google/blueprint.a $
         .bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a $
+        .bootstrap/blueprint-bootstrap-bpdoc/pkg/github.com/google/blueprint/bootstrap/bpdoc.a $
         .bootstrap/blueprint-bootstrap/pkg/github.com/google/blueprint/bootstrap.a
-    incFlags = -I .bootstrap/blueprint-parser/pkg -I .bootstrap/blueprint-pathtools/pkg -I .bootstrap/blueprint-proptools/pkg -I .bootstrap/blueprint/pkg -I .bootstrap/blueprint-deptools/pkg -I .bootstrap/blueprint-bootstrap/pkg
+    incFlags = -I .bootstrap/blueprint-parser/pkg -I .bootstrap/blueprint-pathtools/pkg -I .bootstrap/blueprint-proptools/pkg -I .bootstrap/blueprint/pkg -I .bootstrap/blueprint-deptools/pkg -I .bootstrap/blueprint-bootstrap-bpdoc/pkg -I .bootstrap/blueprint-bootstrap/pkg
     pkgPath = minibp
 default .bootstrap/minibp/obj/minibp.a
 
 build .bootstrap/minibp/obj/a.out: g.bootstrap.link $
         .bootstrap/minibp/obj/minibp.a | ${g.bootstrap.linkCmd}
-    libDirFlags = -L .bootstrap/blueprint-parser/pkg -L .bootstrap/blueprint-pathtools/pkg -L .bootstrap/blueprint-proptools/pkg -L .bootstrap/blueprint/pkg -L .bootstrap/blueprint-deptools/pkg -L .bootstrap/blueprint-bootstrap/pkg
+    libDirFlags = -L .bootstrap/blueprint-parser/pkg -L .bootstrap/blueprint-pathtools/pkg -L .bootstrap/blueprint-proptools/pkg -L .bootstrap/blueprint/pkg -L .bootstrap/blueprint-deptools/pkg -L .bootstrap/blueprint-bootstrap-bpdoc/pkg -L .bootstrap/blueprint-bootstrap/pkg
 default .bootstrap/minibp/obj/a.out
 
 build .bootstrap/bin/minibp: g.bootstrap.cp .bootstrap/minibp/obj/a.out
@@ -247,6 +270,10 @@ default .bootstrap/bin/minibp
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Singleton: bootstrap
 # Factory:   github.com/google/blueprint/bootstrap.func·008
+
+rule s.bootstrap.bigbpDocs
+    command = .bootstrap/bin/minibp -p --docs ${out} ${g.bootstrap.srcDir}/Blueprints
+    description = minibp docs ${out}
 
 rule s.bootstrap.bigbp
     command = .bootstrap/bin/minibp -p -d .bootstrap/main.ninja.in.d -m ${g.bootstrap.bootstrapManifest} -o ${out} ${in}
@@ -259,10 +286,13 @@ rule s.bootstrap.minibp
     description = minibp ${out}
     generator = true
 
+build .bootstrap/docs/minibp.html: s.bootstrap.bigbpDocs | $
+        .bootstrap/bin/minibp
+default .bootstrap/docs/minibp.html
 build .bootstrap/main.ninja.in: s.bootstrap.bigbp $
         ${g.bootstrap.srcDir}/Blueprints | .bootstrap/bin/bpfmt $
         .bootstrap/bin/bpmodify .bootstrap/bin/gotestmain $
-        .bootstrap/bin/minibp
+        .bootstrap/bin/minibp .bootstrap/docs/minibp.html
 default .bootstrap/main.ninja.in
 build .bootstrap/notAFile: phony
 default .bootstrap/notAFile

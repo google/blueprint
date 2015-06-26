@@ -16,12 +16,13 @@ package bootstrap
 
 import (
 	"fmt"
-	"github.com/google/blueprint"
-	"github.com/google/blueprint/pathtools"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/google/blueprint"
+	"github.com/google/blueprint/pathtools"
 )
 
 const bootstrapDir = ".bootstrap"
@@ -116,6 +117,8 @@ var (
 
 	BinDir     = filepath.Join(bootstrapDir, "bin")
 	minibpFile = filepath.Join(BinDir, "minibp")
+
+	docsDir = filepath.Join(bootstrapDir, "docs")
 )
 
 type goPackageProducer interface {
@@ -505,13 +508,13 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	// creating the binary that we'll use to generate the non-bootstrap
 	// build.ninja file.
 	var primaryBuilders []*goBinary
-	var allGoBinaries []string
+	var rebootstrapDeps []string
 	ctx.VisitAllModulesIf(isBootstrapBinaryModule,
 		func(module blueprint.Module) {
 			binaryModule := module.(*goBinary)
 			binaryModuleName := ctx.ModuleName(binaryModule)
 			binaryModulePath := filepath.Join(BinDir, binaryModuleName)
-			allGoBinaries = append(allGoBinaries, binaryModulePath)
+			rebootstrapDeps = append(rebootstrapDeps, binaryModulePath)
 			if binaryModule.properties.PrimaryBuilder {
 				primaryBuilders = append(primaryBuilders, binaryModule)
 			}
@@ -552,6 +555,9 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	mainNinjaFile := filepath.Join(bootstrapDir, "main.ninja.in")
 	mainNinjaDepFile := mainNinjaFile + ".d"
 	bootstrapNinjaFile := filepath.Join(bootstrapDir, "bootstrap.ninja.in")
+	docsFile := filepath.Join(docsDir, primaryBuilderName+".html")
+
+	rebootstrapDeps = append(rebootstrapDeps, docsFile)
 
 	if s.config.generatingBootstrapper {
 		// We're generating a bootstrapper Ninja file, so we need to set things
@@ -563,6 +569,24 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// or version; starting over" messages from Ninja, presumably because
 		// two Ninja processes try to write to the same log concurrently.
 		ctx.SetBuildDir(pctx, bootstrapDir)
+
+		// Generate build system docs for the primary builder.  Generating docs reads the source
+		// files used to build the primary builder, but that dependency will be picked up through
+		// the dependency on the primary builder itself.  There are no dependencies on the
+		// Blueprints files, as any relevant changes to the Blueprints files would have caused
+		// a rebuild of the primary builder.
+		bigbpDocs := ctx.Rule(pctx, "bigbpDocs",
+			blueprint.RuleParams{
+				Command: fmt.Sprintf("%s %s --docs $out %s", primaryBuilderFile,
+					primaryBuilderExtraFlags, topLevelBlueprints),
+				Description: fmt.Sprintf("%s docs $out", primaryBuilderName),
+			})
+
+		ctx.Build(pctx, blueprint.BuildParams{
+			Rule:      bigbpDocs,
+			Outputs:   []string{docsFile},
+			Implicits: []string{primaryBuilderFile},
+		})
 
 		// We generate the depfile here that includes the dependencies for all
 		// the Blueprints files that contribute to generating the big build
@@ -584,7 +608,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			Rule:      bigbp,
 			Outputs:   []string{mainNinjaFile},
 			Inputs:    []string{topLevelBlueprints},
-			Implicits: allGoBinaries,
+			Implicits: rebootstrapDeps,
 		})
 
 		// When the current build.ninja file is a bootstrapper, we always want
@@ -639,13 +663,12 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			Args:      args,
 		})
 	} else {
-		var allGoTests []string
 		ctx.VisitAllModulesIf(isGoTestProducer,
 			func(module blueprint.Module) {
 				testModule := module.(goTestProducer)
 				target := testModule.GoTestTarget()
 				if target != "" {
-					allGoTests = append(allGoTests, target)
+					rebootstrapDeps = append(rebootstrapDeps, target)
 				}
 			})
 
@@ -661,8 +684,8 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// rule.  We do this by depending on that file and then setting up a
 		// phony rule to generate it that uses the depfile.
 		buildNinjaDeps := []string{"$bootstrapCmd", mainNinjaFile}
-		buildNinjaDeps = append(buildNinjaDeps, allGoBinaries...)
-		buildNinjaDeps = append(buildNinjaDeps, allGoTests...)
+		buildNinjaDeps = append(buildNinjaDeps, rebootstrapDeps...)
+
 		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:      rebootstrap,
 			Outputs:   []string{"build.ninja"},
@@ -677,6 +700,12 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			Args: map[string]string{
 				"depfile": mainNinjaDepFile,
 			},
+		})
+
+		ctx.Build(pctx, blueprint.BuildParams{
+			Rule:      phony,
+			Outputs:   []string{docsFile},
+			Implicits: []string{primaryBuilderFile},
 		})
 
 		// If the bootstrap Ninja invocation caused a new bootstrapNinjaFile to be

@@ -33,6 +33,7 @@ var (
 	depFile      string
 	checkFile    string
 	manifestFile string
+	docFile      string
 	cpuprofile   string
 	runGoTests   bool
 )
@@ -42,6 +43,7 @@ func init() {
 	flag.StringVar(&depFile, "d", "", "the dependency file to output")
 	flag.StringVar(&checkFile, "c", "", "the existing file to check against")
 	flag.StringVar(&manifestFile, "m", "", "the bootstrap manifest file")
+	flag.StringVar(&docFile, "docs", "", "build documentation file to output")
 	flag.StringVar(&cpuprofile, "cpuprofile", "", "write cpu profile to file")
 	flag.BoolVar(&runGoTests, "t", false, "build and run go tests during bootstrap")
 }
@@ -89,6 +91,19 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 
 	// Add extra ninja file dependencies
 	deps = append(deps, extraNinjaFileDeps...)
+
+	errs = ctx.ResolveDependencies(config)
+	if len(errs) > 0 {
+		fatalErrors(errs)
+	}
+
+	if docFile != "" {
+		err := writeDocs(ctx, filepath.Dir(bootstrapConfig.topLevelBlueprintsFile), docFile)
+		if err != nil {
+			fatalErrors([]error{err})
+		}
+		return
+	}
 
 	extraDeps, errs := ctx.PrepareBuildActions(config)
 	if len(errs) > 0 {

@@ -73,6 +73,7 @@ bootstrap_go_package(
         "blueprint",
         "blueprint-deptools",
         "blueprint-pathtools",
+        "blueprint-bootstrap-bpdoc",
     ],
     pkgPath = "github.com/google/blueprint/bootstrap",
     srcs = [
@@ -81,6 +82,19 @@ bootstrap_go_package(
         "bootstrap/command.go",
         "bootstrap/config.go",
         "bootstrap/doc.go",
+        "bootstrap/writedocs.go",
+    ],
+)
+
+bootstrap_go_package(
+    name = "blueprint-bootstrap-bpdoc",
+    deps = [
+        "blueprint",
+        "blueprint-proptools",
+    ],
+    pkgPath = "github.com/google/blueprint/bootstrap/bpdoc",
+    srcs = [
+        "bootstrap/bpdoc/bpdoc.go",
     ],
 )
 

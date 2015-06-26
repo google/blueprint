@@ -1000,7 +1000,12 @@ func (c *Context) addModules(modules []*moduleInfo) (errs []error) {
 // objects via the Config method on the DynamicDependerModuleContext objects
 // passed to their DynamicDependencies method.
 func (c *Context) ResolveDependencies(config interface{}) []error {
-	errs := c.resolveDependencies(config)
+	errs := c.runEarlyMutators(config)
+	if len(errs) > 0 {
+		return errs
+	}
+
+	errs = c.resolveDependencies(config)
 	if len(errs) > 0 {
 		return errs
 	}
@@ -1360,11 +1365,6 @@ func (c *Context) updateDependencies() (errs []error) {
 // SingletonContext.AddNinjaFileDeps() methods.
 func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs []error) {
 	c.buildActionsReady = false
-
-	errs = c.runEarlyMutators(config)
-	if len(errs) > 0 {
-		return nil, errs
-	}
 
 	if !c.dependenciesReady {
 		errs := c.ResolveDependencies(config)
@@ -2004,6 +2004,64 @@ func (c *Context) AllTargets() (map[string]string, error) {
 	}
 
 	return targets, nil
+}
+
+// ModuleTypePropertyStructs returns a mapping from module type name to a list of pointers to
+// property structs returned by the factory for that module type.
+func (c *Context) ModuleTypePropertyStructs() map[string][]interface{} {
+	ret := make(map[string][]interface{})
+	for moduleType, factory := range c.moduleFactories {
+		_, ret[moduleType] = factory()
+	}
+
+	return ret
+}
+
+func (c *Context) ModuleName(logicModule Module) string {
+	module := c.moduleInfo[logicModule]
+	return module.properties.Name
+}
+
+func (c *Context) ModuleDir(logicModule Module) string {
+	module := c.moduleInfo[logicModule]
+	return filepath.Dir(module.relBlueprintsFile)
+}
+
+func (c *Context) BlueprintFile(logicModule Module) string {
+	module := c.moduleInfo[logicModule]
+	return module.relBlueprintsFile
+}
+
+func (c *Context) ModuleErrorf(logicModule Module, format string,
+	args ...interface{}) error {
+
+	module := c.moduleInfo[logicModule]
+	return &Error{
+		Err: fmt.Errorf(format, args...),
+		Pos: module.pos,
+	}
+}
+
+func (c *Context) VisitAllModules(visit func(Module)) {
+	c.visitAllModules(visit)
+}
+
+func (c *Context) VisitAllModulesIf(pred func(Module) bool,
+	visit func(Module)) {
+
+	c.visitAllModulesIf(pred, visit)
+}
+
+func (c *Context) VisitDepsDepthFirst(module Module,
+	visit func(Module)) {
+
+	c.visitDepsDepthFirst(c.moduleInfo[module], visit)
+}
+
+func (c *Context) VisitDepsDepthFirstIf(module Module,
+	pred func(Module) bool, visit func(Module)) {
+
+	c.visitDepsDepthFirstIf(c.moduleInfo[module], pred, visit)
 }
 
 // WriteBuildFile writes the Ninja manifeset text for the generated build
