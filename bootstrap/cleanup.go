@@ -29,11 +29,11 @@ const logFileName = ".ninja_log"
 
 // removeAbandonedFiles removes any files that appear in the Ninja log that are
 // not currently build targets.
-func removeAbandonedFiles(ctx *blueprint.Context, config interface{},
+func removeAbandonedFiles(ctx *blueprint.Context, config *Config,
 	srcDir, manifestFile string) error {
 
 	buildDir := "."
-	if generatingBootstrapper(config) {
+	if config.generatingBootstrapper {
 		buildDir = bootstrapDir
 	}
 

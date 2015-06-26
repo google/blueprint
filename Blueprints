@@ -19,6 +19,13 @@ bootstrap_go_package(
         "singleton_ctx.go",
         "unpack.go",
     ],
+    testSrcs = [
+        "context_test.go",
+        "ninja_strings_test.go",
+        "ninja_writer_test.go",
+        "splice_modules_test.go",
+        "unpack_test.go",
+    ],
 )
 
 bootstrap_go_package(
@@ -29,6 +36,10 @@ bootstrap_go_package(
         "parser/parser.go",
         "parser/printer.go",
         "parser/sort.go",
+    ],
+    testSrcs = [
+        "parser/parser_test.go",
+        "parser/printer_test.go",
     ],
 )
 
@@ -44,6 +55,9 @@ bootstrap_go_package(
     srcs = [
         "pathtools/lists.go",
         "pathtools/glob.go",
+    ],
+    testSrcs = [
+        "pathtools/glob_test.go",
     ],
 )
 
@@ -89,4 +103,9 @@ bootstrap_go_binary(
     name = "bpmodify",
     deps = ["blueprint-parser"],
     srcs = ["bpmodify/bpmodify.go"],
+)
+
+bootstrap_go_binary(
+    name = "gotestmain",
+    srcs = ["gotestmain/gotestmain.go"],
 )

@@ -34,13 +34,8 @@ var (
 	checkFile    string
 	manifestFile string
 	cpuprofile   string
+	runGoTests   bool
 )
-
-// topLevelBlueprintsFile is set by Main as a way to pass this information on to
-// the bootstrap build manifest generators.  This information was not passed via
-// the config object so as to allow the caller of Main to use whatever Config
-// object it wants.
-var topLevelBlueprintsFile string
 
 func init() {
 	flag.StringVar(&outFile, "o", "build.ninja.in", "the Ninja file to output")
@@ -48,6 +43,7 @@ func init() {
 	flag.StringVar(&checkFile, "c", "", "the existing file to check against")
 	flag.StringVar(&manifestFile, "m", "", "the bootstrap manifest file")
 	flag.StringVar(&cpuprofile, "cpuprofile", "", "write cpu profile to file")
+	flag.BoolVar(&runGoTests, "t", false, "build and run go tests during bootstrap")
 }
 
 func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...string) {
@@ -67,17 +63,26 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		defer pprof.StopCPUProfile()
 	}
 
-	ctx.RegisterModuleType("bootstrap_go_package", newGoPackageModule)
-	ctx.RegisterModuleType("bootstrap_go_binary", newGoBinaryModule)
-	ctx.RegisterSingletonType("bootstrap", newSingleton)
-
 	if flag.NArg() != 1 {
 		fatalf("no Blueprints file specified")
 	}
 
-	topLevelBlueprintsFile = flag.Arg(0)
+	generatingBootstrapper := false
+	if c, ok := config.(ConfigInterface); ok {
+		generatingBootstrapper = c.GeneratingBootstrapper()
+	}
 
-	deps, errs := ctx.ParseBlueprintsFiles(topLevelBlueprintsFile)
+	bootstrapConfig := &Config{
+		generatingBootstrapper: generatingBootstrapper,
+		topLevelBlueprintsFile: flag.Arg(0),
+		runGoTests:             runGoTests,
+	}
+
+	ctx.RegisterModuleType("bootstrap_go_package", newGoPackageModuleFactory(bootstrapConfig))
+	ctx.RegisterModuleType("bootstrap_go_binary", newGoBinaryModuleFactory(bootstrapConfig))
+	ctx.RegisterSingletonType("bootstrap", newSingletonFactory(bootstrapConfig))
+
+	deps, errs := ctx.ParseBlueprintsFiles(bootstrapConfig.topLevelBlueprintsFile)
 	if len(errs) > 0 {
 		fatalErrors(errs)
 	}
@@ -142,8 +147,8 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		}
 	}
 
-	srcDir := filepath.Dir(topLevelBlueprintsFile)
-	err = removeAbandonedFiles(ctx, config, srcDir, manifestFile)
+	srcDir := filepath.Dir(bootstrapConfig.topLevelBlueprintsFile)
+	err = removeAbandonedFiles(ctx, bootstrapConfig, srcDir, manifestFile)
 	if err != nil {
 		fatalf("error removing abandoned files: %s", err)
 	}

@@ -22,6 +22,8 @@
 
 set -e
 
+EXTRA_ARGS=""
+
 # BOOTSTRAP should be set to the path of the bootstrap script.  It can be
 # either an absolute path or one relative to the build directory (which of
 # these is used should probably match what's used for SRCDIR).
@@ -49,16 +51,20 @@ set -e
 [ -z "$GOARCH" ] && GOARCH=`go env GOHOSTARCH`
 [ -z "$GOCHAR" ] && GOCHAR=`go env GOCHAR`
 
+# If RUN_TESTS is set, behave like -t was passed in as an option.
+[ ! -z "$RUN_TESTS" ] && EXTRA_ARGS="$EXTRA_ARGS -t"
+
 usage() {
     echo "Usage of ${BOOTSTRAP}:"
     echo "  -h: print a help message and exit"
     echo "  -r: regenerate ${BOOTSTRAP_MANIFEST}"
+    echo "  -t: include tests when regenerating manifest"
 }
 
 # Parse the command line flags.
 IN="$BOOTSTRAP_MANIFEST"
 REGEN_BOOTSTRAP_MANIFEST=false
-while getopts ":hi:r" opt; do
+while getopts ":hi:rt" opt; do
     case $opt in
         h)
             usage
@@ -66,6 +72,7 @@ while getopts ":hi:r" opt; do
             ;;
         i) IN="$OPTARG";;
         r) REGEN_BOOTSTRAP_MANIFEST=true;;
+        t) EXTRA_ARGS="$EXTRA_ARGS -t";;
         \?)
             echo "Invalid option: -$OPTARG" >&2
             usage
@@ -83,7 +90,7 @@ if [ $REGEN_BOOTSTRAP_MANIFEST = true ]; then
     # that has been built in the past.
     if [ -x .bootstrap/bin/minibp ]; then
         echo "Regenerating $BOOTSTRAP_MANIFEST"
-        ./.bootstrap/bin/minibp -o $BOOTSTRAP_MANIFEST $SRCDIR/$TOPNAME
+        ./.bootstrap/bin/minibp $EXTRA_ARGS -o $BOOTSTRAP_MANIFEST $SRCDIR/$TOPNAME
     else
         echo "Executable minibp not found at .bootstrap/bin/minibp" >&2
         exit 1

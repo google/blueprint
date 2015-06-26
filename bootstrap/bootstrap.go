@@ -29,8 +29,9 @@ const bootstrapDir = ".bootstrap"
 var (
 	pctx = blueprint.NewPackageContext("github.com/google/blueprint/bootstrap")
 
-	gcCmd   = pctx.StaticVariable("gcCmd", "$goToolDir/${goChar}g")
-	linkCmd = pctx.StaticVariable("linkCmd", "$goToolDir/${goChar}l")
+	gcCmd         = pctx.StaticVariable("gcCmd", "$goToolDir/${goChar}g")
+	linkCmd       = pctx.StaticVariable("linkCmd", "$goToolDir/${goChar}l")
+	goTestMainCmd = pctx.StaticVariable("goTestMainCmd", filepath.Join(bootstrapDir, "bin", "gotestmain"))
 
 	// Ninja only reinvokes itself once when it regenerates a .ninja file. For
 	// the re-bootstrap process we need that to happen more than once, so we
@@ -68,6 +69,20 @@ var (
 			Description: "${goChar}l $out",
 		},
 		"libDirFlags")
+
+	goTestMain = pctx.StaticRule("gotestmain",
+		blueprint.RuleParams{
+			Command:     "$goTestMainCmd -o $out -pkg $pkg $in",
+			Description: "gotestmain $out",
+		},
+		"pkg")
+
+	test = pctx.StaticRule("test",
+		blueprint.RuleParams{
+			Command:     "(cd $pkgSrcDir && $$OLDPWD/$in -test.short) && touch $out",
+			Description: "test $pkg",
+		},
+		"pkg", "pkgSrcDir")
 
 	cp = pctx.StaticRule("cp",
 		blueprint.RuleParams{
@@ -113,6 +128,15 @@ func isGoPackageProducer(module blueprint.Module) bool {
 	return ok
 }
 
+type goTestProducer interface {
+	GoTestTarget() string
+}
+
+func isGoTestProducer(module blueprint.Module) bool {
+	_, ok := module.(goTestProducer)
+	return ok
+}
+
 func isBootstrapModule(module blueprint.Module) bool {
 	_, isPackage := module.(*goPackage)
 	_, isBinary := module.(*goBinary)
@@ -122,14 +146,6 @@ func isBootstrapModule(module blueprint.Module) bool {
 func isBootstrapBinaryModule(module blueprint.Module) bool {
 	_, isBinary := module.(*goBinary)
 	return isBinary
-}
-
-func generatingBootstrapper(config interface{}) bool {
-	bootstrapConfig, ok := config.(Config)
-	if ok {
-		return bootstrapConfig.GeneratingBootstrapper()
-	}
-	return false
 }
 
 // ninjaHasMultipass returns true if Ninja will perform multiple passes
@@ -146,8 +162,9 @@ func ninjaHasMultipass(config interface{}) bool {
 // A goPackage is a module for building Go packages.
 type goPackage struct {
 	properties struct {
-		PkgPath string
-		Srcs    []string
+		PkgPath  string
+		Srcs     []string
+		TestSrcs []string
 	}
 
 	// The root dir in which the package .a file is located.  The full .a file
@@ -156,13 +173,23 @@ type goPackage struct {
 
 	// The path of the .a file that is to be built.
 	archiveFile string
+
+	// The path of the test .a file that is to be built.
+	testArchiveFile string
+
+	// The bootstrap Config
+	config *Config
 }
 
 var _ goPackageProducer = (*goPackage)(nil)
 
-func newGoPackageModule() (blueprint.Module, []interface{}) {
-	module := &goPackage{}
-	return module, []interface{}{&module.properties}
+func newGoPackageModuleFactory(config *Config) func() (blueprint.Module, []interface{}) {
+	return func() (blueprint.Module, []interface{}) {
+		module := &goPackage{
+			config: config,
+		}
+		return module, []interface{}{&module.properties}
+	}
 }
 
 func (g *goPackage) GoPkgRoot() string {
@@ -171,6 +198,10 @@ func (g *goPackage) GoPkgRoot() string {
 
 func (g *goPackage) GoPackageTarget() string {
 	return g.archiveFile
+}
+
+func (g *goPackage) GoTestTarget() string {
+	return g.testArchiveFile
 }
 
 func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
@@ -182,18 +213,33 @@ func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
 	}
 
 	g.pkgRoot = packageRoot(ctx)
-	g.archiveFile = filepath.Clean(filepath.Join(g.pkgRoot,
-		filepath.FromSlash(g.properties.PkgPath)+".a"))
+	g.archiveFile = filepath.Join(g.pkgRoot,
+		filepath.FromSlash(g.properties.PkgPath)+".a")
+	if len(g.properties.TestSrcs) > 0 && g.config.runGoTests {
+		g.testArchiveFile = filepath.Join(testRoot(ctx),
+			filepath.FromSlash(g.properties.PkgPath)+".a")
+	}
 
 	// We only actually want to build the builder modules if we're running as
 	// minibp (i.e. we're generating a bootstrap Ninja file).  This is to break
 	// the circular dependence that occurs when the builder requires a new Ninja
 	// file to be built, but building a new ninja file requires the builder to
 	// be built.
-	if generatingBootstrapper(ctx.Config()) {
+	if g.config.generatingBootstrapper {
+		var deps []string
+
+		if g.config.runGoTests {
+			deps = buildGoTest(ctx, testRoot(ctx), g.testArchiveFile,
+				g.properties.PkgPath, g.properties.Srcs,
+				g.properties.TestSrcs)
+		}
+
 		buildGoPackage(ctx, g.pkgRoot, g.properties.PkgPath, g.archiveFile,
-			g.properties.Srcs)
+			g.properties.Srcs, deps)
 	} else {
+		if len(g.properties.TestSrcs) > 0 && g.config.runGoTests {
+			phonyGoTarget(ctx, g.testArchiveFile, g.properties.TestSrcs, nil)
+		}
 		phonyGoTarget(ctx, g.archiveFile, g.properties.Srcs, nil)
 	}
 }
@@ -202,13 +248,28 @@ func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
 type goBinary struct {
 	properties struct {
 		Srcs           []string
+		TestSrcs       []string
 		PrimaryBuilder bool
+	}
+
+	// The path of the test .a file that is to be built.
+	testArchiveFile string
+
+	// The bootstrap Config
+	config *Config
+}
+
+func newGoBinaryModuleFactory(config *Config) func() (blueprint.Module, []interface{}) {
+	return func() (blueprint.Module, []interface{}) {
+		module := &goBinary{
+			config: config,
+		}
+		return module, []interface{}{&module.properties}
 	}
 }
 
-func newGoBinaryModule() (blueprint.Module, []interface{}) {
-	module := &goBinary{}
-	return module, []interface{}{&module.properties}
+func (g *goBinary) GoTestTarget() string {
+	return g.testArchiveFile
 }
 
 func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
@@ -220,13 +281,24 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 		binaryFile  = filepath.Join(BinDir, name)
 	)
 
+	if len(g.properties.TestSrcs) > 0 && g.config.runGoTests {
+		g.testArchiveFile = filepath.Join(testRoot(ctx), name+".a")
+	}
+
 	// We only actually want to build the builder modules if we're running as
 	// minibp (i.e. we're generating a bootstrap Ninja file).  This is to break
 	// the circular dependence that occurs when the builder requires a new Ninja
 	// file to be built, but building a new ninja file requires the builder to
 	// be built.
-	if generatingBootstrapper(ctx.Config()) {
-		buildGoPackage(ctx, objDir, name, archiveFile, g.properties.Srcs)
+	if g.config.generatingBootstrapper {
+		var deps []string
+
+		if g.config.runGoTests {
+			deps = buildGoTest(ctx, testRoot(ctx), g.testArchiveFile,
+				name, g.properties.Srcs, g.properties.TestSrcs)
+		}
+
+		buildGoPackage(ctx, objDir, name, archiveFile, g.properties.Srcs, deps)
 
 		var libDirFlags []string
 		ctx.VisitDepsDepthFirstIf(isGoPackageProducer,
@@ -255,13 +327,17 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 			Inputs:  []string{aoutFile},
 		})
 	} else {
+		if len(g.properties.TestSrcs) > 0 && g.config.runGoTests {
+			phonyGoTarget(ctx, g.testArchiveFile, g.properties.TestSrcs, nil)
+		}
+
 		intermediates := []string{aoutFile, archiveFile}
 		phonyGoTarget(ctx, binaryFile, g.properties.Srcs, intermediates)
 	}
 }
 
 func buildGoPackage(ctx blueprint.ModuleContext, pkgRoot string,
-	pkgPath string, archiveFile string, srcs []string) {
+	pkgPath string, archiveFile string, srcs []string, orderDeps []string) {
 
 	srcDir := moduleSrcDir(ctx)
 	srcFiles := pathtools.PrefixPaths(srcs, srcDir)
@@ -289,9 +365,81 @@ func buildGoPackage(ctx blueprint.ModuleContext, pkgRoot string,
 		Rule:      gc,
 		Outputs:   []string{archiveFile},
 		Inputs:    srcFiles,
+		OrderOnly: orderDeps,
 		Implicits: deps,
 		Args:      gcArgs,
 	})
+}
+
+func buildGoTest(ctx blueprint.ModuleContext, testRoot string,
+	testPkgArchive string, pkgPath string, srcs []string,
+	testSrcs []string) []string {
+
+	if len(testSrcs) == 0 {
+		return nil
+	}
+
+	srcDir := moduleSrcDir(ctx)
+	testFiles := pathtools.PrefixPaths(testSrcs, srcDir)
+
+	mainFile := filepath.Join(testRoot, "test.go")
+	testArchive := filepath.Join(testRoot, "test.a")
+	testFile := filepath.Join(testRoot, "test")
+	testPassed := filepath.Join(testRoot, "test.passed")
+
+	buildGoPackage(ctx, testRoot, pkgPath, testPkgArchive,
+		append(srcs, testSrcs...), nil)
+
+	ctx.Build(pctx, blueprint.BuildParams{
+		Rule:      goTestMain,
+		Outputs:   []string{mainFile},
+		Inputs:    testFiles,
+		Implicits: []string{"$goTestMainCmd"},
+		Args: map[string]string{
+			"pkg": pkgPath,
+		},
+	})
+
+	libDirFlags := []string{"-L " + testRoot}
+	ctx.VisitDepsDepthFirstIf(isGoPackageProducer,
+		func(module blueprint.Module) {
+			dep := module.(goPackageProducer)
+			libDir := dep.GoPkgRoot()
+			libDirFlags = append(libDirFlags, "-L "+libDir)
+		})
+
+	ctx.Build(pctx, blueprint.BuildParams{
+		Rule:      gc,
+		Outputs:   []string{testArchive},
+		Inputs:    []string{mainFile},
+		Implicits: []string{testPkgArchive},
+		Args: map[string]string{
+			"pkgPath":  "main",
+			"incFlags": "-I " + testRoot,
+		},
+	})
+
+	ctx.Build(pctx, blueprint.BuildParams{
+		Rule:      link,
+		Outputs:   []string{testFile},
+		Inputs:    []string{testArchive},
+		Implicits: []string{"$linkCmd"},
+		Args: map[string]string{
+			"libDirFlags": strings.Join(libDirFlags, " "),
+		},
+	})
+
+	ctx.Build(pctx, blueprint.BuildParams{
+		Rule:    test,
+		Outputs: []string{testPassed},
+		Inputs:  []string{testFile},
+		Args: map[string]string{
+			"pkg":       pkgPath,
+			"pkgSrcDir": filepath.Dir(testFiles[0]),
+		},
+	})
+
+	return []string{testPassed}
 }
 
 func phonyGoTarget(ctx blueprint.ModuleContext, target string, srcs []string,
@@ -339,10 +487,17 @@ func phonyGoTarget(ctx blueprint.ModuleContext, target string, srcs []string,
 
 }
 
-type singleton struct{}
+type singleton struct {
+	// The bootstrap Config
+	config *Config
+}
 
-func newSingleton() blueprint.Singleton {
-	return &singleton{}
+func newSingletonFactory(config *Config) func() blueprint.Singleton {
+	return func() blueprint.Singleton {
+		return &singleton{
+			config: config,
+		}
+	}
 }
 
 func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
@@ -385,16 +540,20 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 	primaryBuilderFile := filepath.Join(BinDir, primaryBuilderName)
 
+	if s.config.runGoTests {
+		primaryBuilderExtraFlags += " -t"
+	}
+
 	// Get the filename of the top-level Blueprints file to pass to minibp.
 	// This comes stored in a global variable that's set by Main.
 	topLevelBlueprints := filepath.Join("$srcDir",
-		filepath.Base(topLevelBlueprintsFile))
+		filepath.Base(s.config.topLevelBlueprintsFile))
 
 	mainNinjaFile := filepath.Join(bootstrapDir, "main.ninja.in")
 	mainNinjaDepFile := mainNinjaFile + ".d"
 	bootstrapNinjaFile := filepath.Join(bootstrapDir, "bootstrap.ninja.in")
 
-	if generatingBootstrapper(ctx.Config()) {
+	if s.config.generatingBootstrapper {
 		// We're generating a bootstrapper Ninja file, so we need to set things
 		// up to rebuild the build.ninja file using the primary builder.
 
@@ -456,24 +615,40 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// and it will trigger a reboostrap by the non-boostrap build manifest.
 		minibp := ctx.Rule(pctx, "minibp",
 			blueprint.RuleParams{
-				Command: fmt.Sprintf("%s -c $checkFile -m $bootstrapManifest "+
+				Command: fmt.Sprintf("%s $runTests -c $checkFile -m $bootstrapManifest "+
 					"-d $out.d -o $out $in", minibpFile),
 				Description: "minibp $out",
 				Generator:   true,
 				Depfile:     "$out.d",
 			},
-			"checkFile")
+			"checkFile", "runTests")
+
+		args := map[string]string{
+			"checkFile": "$bootstrapManifest",
+		}
+
+		if s.config.runGoTests {
+			args["runTests"] = "-t"
+		}
 
 		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:      minibp,
 			Outputs:   []string{bootstrapNinjaFile},
 			Inputs:    []string{topLevelBlueprints},
 			Implicits: []string{minibpFile},
-			Args: map[string]string{
-				"checkFile": "$bootstrapManifest",
-			},
+			Args:      args,
 		})
 	} else {
+		var allGoTests []string
+		ctx.VisitAllModulesIf(isGoTestProducer,
+			func(module blueprint.Module) {
+				testModule := module.(goTestProducer)
+				target := testModule.GoTestTarget()
+				if target != "" {
+					allGoTests = append(allGoTests, target)
+				}
+			})
+
 		// We're generating a non-bootstrapper Ninja file, so we need to set it
 		// up to depend on the bootstrapper Ninja file.  The build.ninja target
 		// also has an implicit dependency on the primary builder and all other
@@ -487,6 +662,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// phony rule to generate it that uses the depfile.
 		buildNinjaDeps := []string{"$bootstrapCmd", mainNinjaFile}
 		buildNinjaDeps = append(buildNinjaDeps, allGoBinaries...)
+		buildNinjaDeps = append(buildNinjaDeps, allGoTests...)
 		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:      rebootstrap,
 			Outputs:   []string{"build.ninja"},
@@ -535,6 +711,13 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 // modules search for this package via -I arguments.
 func packageRoot(ctx blueprint.ModuleContext) string {
 	return filepath.Join(bootstrapDir, ctx.ModuleName(), "pkg")
+}
+
+// testRoot returns the module-specific package root directory path used for
+// building tests. The .a files generated here will include everything from
+// packageRoot, plus the test-only code.
+func testRoot(ctx blueprint.ModuleContext) string {
+	return filepath.Join(bootstrapDir, ctx.ModuleName(), "test")
 }
 
 // moduleSrcDir returns the path of the directory that all source file paths are

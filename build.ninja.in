@@ -52,7 +52,7 @@ rule g.bootstrap.link
 # Module:  blueprint
 # Variant:
 # Type:    bootstrap_go_package
-# Factory: github.com/google/blueprint/bootstrap.newGoPackageModule
+# Factory: github.com/google/blueprint/bootstrap.func·002
 # Defined: Blueprints:1:1
 
 build .bootstrap/blueprint/pkg/github.com/google/blueprint.a: g.bootstrap.gc $
@@ -75,8 +75,8 @@ default .bootstrap/blueprint/pkg/github.com/google/blueprint.a
 # Module:  blueprint-bootstrap
 # Variant:
 # Type:    bootstrap_go_package
-# Factory: github.com/google/blueprint/bootstrap.newGoPackageModule
-# Defined: Blueprints:56:1
+# Factory: github.com/google/blueprint/bootstrap.func·002
+# Defined: Blueprints:70:1
 
 build $
         .bootstrap/blueprint-bootstrap/pkg/github.com/google/blueprint/bootstrap.a $
@@ -99,8 +99,8 @@ default $
 # Module:  blueprint-deptools
 # Variant:
 # Type:    bootstrap_go_package
-# Factory: github.com/google/blueprint/bootstrap.newGoPackageModule
-# Defined: Blueprints:35:1
+# Factory: github.com/google/blueprint/bootstrap.func·002
+# Defined: Blueprints:46:1
 
 build .bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a $
         : g.bootstrap.gc ${g.bootstrap.srcDir}/deptools/depfile.go | $
@@ -113,8 +113,8 @@ default $
 # Module:  blueprint-parser
 # Variant:
 # Type:    bootstrap_go_package
-# Factory: github.com/google/blueprint/bootstrap.newGoPackageModule
-# Defined: Blueprints:24:1
+# Factory: github.com/google/blueprint/bootstrap.func·002
+# Defined: Blueprints:31:1
 
 build .bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a: $
         g.bootstrap.gc ${g.bootstrap.srcDir}/parser/modify.go $
@@ -128,8 +128,8 @@ default .bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a
 # Module:  blueprint-pathtools
 # Variant:
 # Type:    bootstrap_go_package
-# Factory: github.com/google/blueprint/bootstrap.newGoPackageModule
-# Defined: Blueprints:41:1
+# Factory: github.com/google/blueprint/bootstrap.func·002
+# Defined: Blueprints:52:1
 
 build $
         .bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a $
@@ -143,8 +143,8 @@ default $
 # Module:  blueprint-proptools
 # Variant:
 # Type:    bootstrap_go_package
-# Factory: github.com/google/blueprint/bootstrap.newGoPackageModule
-# Defined: Blueprints:50:1
+# Factory: github.com/google/blueprint/bootstrap.func·002
+# Defined: Blueprints:64:1
 
 build $
         .bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a $
@@ -158,8 +158,8 @@ default $
 # Module:  bpfmt
 # Variant:
 # Type:    bootstrap_go_binary
-# Factory: github.com/google/blueprint/bootstrap.newGoBinaryModule
-# Defined: Blueprints:82:1
+# Factory: github.com/google/blueprint/bootstrap.func·003
+# Defined: Blueprints:96:1
 
 build .bootstrap/bpfmt/obj/bpfmt.a: g.bootstrap.gc $
         ${g.bootstrap.srcDir}/bpfmt/bpfmt.go | ${g.bootstrap.gcCmd} $
@@ -180,8 +180,8 @@ default .bootstrap/bin/bpfmt
 # Module:  bpmodify
 # Variant:
 # Type:    bootstrap_go_binary
-# Factory: github.com/google/blueprint/bootstrap.newGoBinaryModule
-# Defined: Blueprints:88:1
+# Factory: github.com/google/blueprint/bootstrap.func·003
+# Defined: Blueprints:102:1
 
 build .bootstrap/bpmodify/obj/bpmodify.a: g.bootstrap.gc $
         ${g.bootstrap.srcDir}/bpmodify/bpmodify.go | ${g.bootstrap.gcCmd} $
@@ -199,11 +199,30 @@ build .bootstrap/bin/bpmodify: g.bootstrap.cp .bootstrap/bpmodify/obj/a.out
 default .bootstrap/bin/bpmodify
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Module:  gotestmain
+# Variant:
+# Type:    bootstrap_go_binary
+# Factory: github.com/google/blueprint/bootstrap.func·003
+# Defined: Blueprints:108:1
+
+build .bootstrap/gotestmain/obj/gotestmain.a: g.bootstrap.gc $
+        ${g.bootstrap.srcDir}/gotestmain/gotestmain.go | ${g.bootstrap.gcCmd}
+    pkgPath = gotestmain
+default .bootstrap/gotestmain/obj/gotestmain.a
+
+build .bootstrap/gotestmain/obj/a.out: g.bootstrap.link $
+        .bootstrap/gotestmain/obj/gotestmain.a | ${g.bootstrap.linkCmd}
+default .bootstrap/gotestmain/obj/a.out
+build .bootstrap/bin/gotestmain: g.bootstrap.cp $
+        .bootstrap/gotestmain/obj/a.out
+default .bootstrap/bin/gotestmain
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  minibp
 # Variant:
 # Type:    bootstrap_go_binary
-# Factory: github.com/google/blueprint/bootstrap.newGoBinaryModule
-# Defined: Blueprints:73:1
+# Factory: github.com/google/blueprint/bootstrap.func·003
+# Defined: Blueprints:87:1
 
 build .bootstrap/minibp/obj/minibp.a: g.bootstrap.gc $
         ${g.bootstrap.srcDir}/bootstrap/minibp/main.go | ${g.bootstrap.gcCmd} $
@@ -227,7 +246,7 @@ default .bootstrap/bin/minibp
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Singleton: bootstrap
-# Factory:   github.com/google/blueprint/bootstrap.newSingleton
+# Factory:   github.com/google/blueprint/bootstrap.func·008
 
 rule s.bootstrap.bigbp
     command = .bootstrap/bin/minibp -p -d .bootstrap/main.ninja.in.d -m ${g.bootstrap.bootstrapManifest} -o ${out} ${in}
@@ -235,14 +254,15 @@ rule s.bootstrap.bigbp
     description = minibp ${out}
 
 rule s.bootstrap.minibp
-    command = .bootstrap/bin/minibp -c ${checkFile} -m ${g.bootstrap.bootstrapManifest} -d ${out}.d -o ${out} ${in}
+    command = .bootstrap/bin/minibp ${runTests} -c ${checkFile} -m ${g.bootstrap.bootstrapManifest} -d ${out}.d -o ${out} ${in}
     depfile = ${out}.d
     description = minibp ${out}
     generator = true
 
 build .bootstrap/main.ninja.in: s.bootstrap.bigbp $
         ${g.bootstrap.srcDir}/Blueprints | .bootstrap/bin/bpfmt $
-        .bootstrap/bin/bpmodify .bootstrap/bin/minibp
+        .bootstrap/bin/bpmodify .bootstrap/bin/gotestmain $
+        .bootstrap/bin/minibp
 default .bootstrap/main.ninja.in
 build .bootstrap/notAFile: phony
 default .bootstrap/notAFile
