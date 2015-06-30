@@ -26,6 +26,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"text/scanner"
 	"text/template"
 
@@ -435,7 +436,7 @@ func (c *Context) SetIgnoreUnknownModuleTypes(ignoreUnknownModuleTypes bool) {
 // filename specifies the path to the Blueprints file.  These paths are used for
 // error reporting and for determining the module's directory.
 func (c *Context) parse(rootDir, filename string, r io.Reader,
-	scope *parser.Scope) (modules []*moduleInfo, subBlueprints []stringAndScope, deps []string,
+	scope *parser.Scope) (file *parser.File, subBlueprints []stringAndScope, deps []string,
 	errs []error) {
 
 	relBlueprintsFile, err := filepath.Rel(rootDir, filename)
@@ -446,7 +447,7 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 	scope = parser.NewScope(scope)
 	scope.Remove("subdirs")
 	scope.Remove("build")
-	file, errs := parser.ParseAndEval(filename, r, scope)
+	file, errs = parser.ParseAndEval(filename, r, scope)
 	if len(errs) > 0 {
 		for i, err := range errs {
 			if parseErr, ok := err.(*parser.ParseError); ok {
@@ -462,29 +463,7 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 		// result.
 		return nil, nil, nil, errs
 	}
-
-	for _, def := range file.Defs {
-		var newErrs []error
-		var newModule *moduleInfo
-		switch def := def.(type) {
-		case *parser.Module:
-			newModule, newErrs = c.processModuleDef(def, relBlueprintsFile)
-
-		case *parser.Assignment:
-			// Already handled via Scope object
-		default:
-			panic("unknown definition type")
-		}
-
-		if len(newErrs) > 0 {
-			errs = append(errs, newErrs...)
-			if len(errs) > maxErrors {
-				break
-			}
-		} else if newModule != nil {
-			modules = append(modules, newModule)
-		}
-	}
+	file.Name = relBlueprintsFile
 
 	subdirs, subdirsPos, err := getStringListFromScope(scope, "subdirs")
 	if err != nil {
@@ -509,7 +488,7 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 		subBlueprintsAndScope[i] = stringAndScope{b, scope}
 	}
 
-	return modules, subBlueprintsAndScope, deps, errs
+	return file, subBlueprintsAndScope, deps, errs
 }
 
 type stringAndScope struct {
@@ -531,6 +510,88 @@ func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string,
 
 	c.dependenciesReady = false
 
+	moduleCh := make(chan *moduleInfo)
+	errsCh := make(chan []error)
+	doneCh := make(chan struct{})
+	var numErrs uint32
+	var numGoroutines int32
+
+	// handler must be reentrant
+	handler := func(file *parser.File) {
+		if atomic.LoadUint32(&numErrs) > maxErrors {
+			return
+		}
+
+		atomic.AddInt32(&numGoroutines, 1)
+		go func() {
+			for _, def := range file.Defs {
+				var module *moduleInfo
+				var errs []error
+				switch def := def.(type) {
+				case *parser.Module:
+					module, errs = c.processModuleDef(def, file.Name)
+				case *parser.Assignment:
+					// Already handled via Scope object
+				default:
+					panic("unknown definition type")
+				}
+
+				if len(errs) > 0 {
+					atomic.AddUint32(&numErrs, uint32(len(errs)))
+					errsCh <- errs
+				} else if module != nil {
+					moduleCh <- module
+				}
+			}
+			doneCh <- struct{}{}
+		}()
+	}
+
+	atomic.AddInt32(&numGoroutines, 1)
+	go func() {
+		var errs []error
+		deps, errs = c.WalkBlueprintsFiles(rootFile, handler)
+		if len(errs) > 0 {
+			errsCh <- errs
+		}
+		doneCh <- struct{}{}
+	}()
+
+loop:
+	for {
+		select {
+		case newErrs := <-errsCh:
+			errs = append(errs, newErrs...)
+		case module := <-moduleCh:
+			newErrs := c.addModule(module)
+			if len(newErrs) > 0 {
+				errs = append(errs, newErrs...)
+			}
+		case <-doneCh:
+			n := atomic.AddInt32(&numGoroutines, -1)
+			if n == 0 {
+				break loop
+			}
+		}
+	}
+
+	return deps, errs
+}
+
+type FileHandler func(*parser.File)
+
+// Walk a set of Blueprints files starting with the file at rootFile, calling handler on each.
+// When it encounters a Blueprints file with a set of subdirs listed it recursively parses any
+// Blueprints files found in those subdirectories.  handler will be called from a goroutine, so
+// it must be reentrant.
+//
+// If no errors are encountered while parsing the files, the list of paths on
+// which the future output will depend is returned.  This list will include both
+// Blueprints file paths as well as directory paths for cases where wildcard
+// subdirs are found.
+func (c *Context) WalkBlueprintsFiles(rootFile string, handler FileHandler) (deps []string,
+	errs []error) {
+
 	rootDir := filepath.Dir(rootFile)
 
 	blueprintsSet := make(map[string]bool)
@@ -538,7 +599,7 @@ func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string,
 	// Channels to receive data back from parseBlueprintsFile goroutines
 	blueprintsCh := make(chan stringAndScope)
 	errsCh := make(chan []error)
-	modulesCh := make(chan []*moduleInfo)
+	fileCh := make(chan *parser.File)
 	depsCh := make(chan string)
 
 	// Channel to notify main loop that a parseBlueprintsFile goroutine has finished
@@ -551,7 +612,7 @@ func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string,
 		count++
 		go func() {
 			c.parseBlueprintsFile(filename, scope, rootDir,
-				errsCh, modulesCh, blueprintsCh, depsCh)
+				errsCh, fileCh, blueprintsCh, depsCh)
 			doneCh <- struct{}{}
 		}()
 	}
@@ -571,9 +632,8 @@ loop:
 			errs = append(errs, newErrs...)
 		case dep := <-depsCh:
 			deps = append(deps, dep)
-		case modules := <-modulesCh:
-			newErrs := c.addModules(modules)
-			errs = append(errs, newErrs...)
+		case file := <-fileCh:
+			handler(file)
 		case blueprint := <-blueprintsCh:
 			if tooManyErrors {
 				continue
@@ -600,18 +660,26 @@ loop:
 // blueprintsCh, and any dependencies on Blueprints files or directories through
 // depsCh.
 func (c *Context) parseBlueprintsFile(filename string, scope *parser.Scope, rootDir string,
-	errsCh chan<- []error, modulesCh chan<- []*moduleInfo, blueprintsCh chan<- stringAndScope,
+	errsCh chan<- []error, fileCh chan<- *parser.File, blueprintsCh chan<- stringAndScope,
 	depsCh chan<- string) {
 
-	file, err := os.Open(filename)
+	f, err := os.Open(filename)
 	if err != nil {
 		errsCh <- []error{err}
 		return
 	}
+	defer func() {
+		err = f.Close()
+		if err != nil {
+			errsCh <- []error{err}
+		}
+	}()
 
-	modules, subBlueprints, deps, errs := c.parse(rootDir, filename, file, scope)
+	file, subBlueprints, deps, errs := c.parse(rootDir, filename, f, scope)
 	if len(errs) > 0 {
 		errsCh <- errs
+	} else {
+		fileCh <- file
 	}
 
 	for _, b := range subBlueprints {
@@ -621,13 +689,6 @@ func (c *Context) parseBlueprintsFile(filename string, scope *parser.Scope, root
 	for _, d := range deps {
 		depsCh <- d
 	}
-
-	err = file.Close()
-	if err != nil {
-		errsCh <- []error{err}
-	}
-
-	modulesCh <- modules
 }
 
 func (c *Context) findSubdirBlueprints(dir string, subdirs, build []string, subBlueprintsName string,
@@ -951,44 +1012,41 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 	return module, nil
 }
 
-func (c *Context) addModules(modules []*moduleInfo) (errs []error) {
-	for _, module := range modules {
-		name := module.properties.Name
-		c.moduleInfo[module.logicModule] = module
+func (c *Context) addModule(module *moduleInfo) []error {
+	name := module.properties.Name
+	c.moduleInfo[module.logicModule] = module
 
-		if group, present := c.moduleGroups[name]; present {
-			errs = append(errs, []error{
-				&Error{
-					Err: fmt.Errorf("module %q already defined", name),
-					Pos: module.pos,
-				},
-				&Error{
-					Err: fmt.Errorf("<-- previous definition here"),
-					Pos: group.modules[0].pos,
-				},
-			}...)
-			continue
-		} else {
-			ninjaName := toNinjaName(module.properties.Name)
-
-			// The sanitizing in toNinjaName can result in collisions, uniquify the name if it
-			// already exists
-			for i := 0; c.moduleNinjaNames[ninjaName] != nil; i++ {
-				ninjaName = toNinjaName(module.properties.Name) + strconv.Itoa(i)
-			}
-
-			group := &moduleGroup{
-				name:      module.properties.Name,
-				ninjaName: ninjaName,
-				modules:   []*moduleInfo{module},
-			}
-			module.group = group
-			c.moduleGroups[name] = group
-			c.moduleNinjaNames[ninjaName] = group
+	if group, present := c.moduleGroups[name]; present {
+		return []error{
+			&Error{
+				Err: fmt.Errorf("module %q already defined", name),
+				Pos: module.pos,
+			},
+			&Error{
+				Err: fmt.Errorf("<-- previous definition here"),
+				Pos: group.modules[0].pos,
+			},
 		}
+	} else {
+		ninjaName := toNinjaName(module.properties.Name)
+
+		// The sanitizing in toNinjaName can result in collisions, uniquify the name if it
+		// already exists
+		for i := 0; c.moduleNinjaNames[ninjaName] != nil; i++ {
+			ninjaName = toNinjaName(module.properties.Name) + strconv.Itoa(i)
+		}
+
+		group := &moduleGroup{
+			name:      module.properties.Name,
+			ninjaName: ninjaName,
+			modules:   []*moduleInfo{module},
+		}
+		module.group = group
+		c.moduleGroups[name] = group
+		c.moduleNinjaNames[ninjaName] = group
 	}
 
-	return errs
+	return nil
 }
 
 // ResolveDependencies checks that the dependencies specified by all of the
