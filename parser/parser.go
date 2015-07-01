@@ -700,3 +700,53 @@ type Comment struct {
 	Comment []string
 	Pos     scanner.Position
 }
+
+func (c Comment) String() string {
+	l := 0
+	for _, comment := range c.Comment {
+		l += len(comment) + 1
+	}
+	buf := make([]byte, 0, l)
+	for _, comment := range c.Comment {
+		buf = append(buf, comment...)
+		buf = append(buf, '\n')
+	}
+
+	return string(buf)
+}
+
+// Return the text of the comment with // or /* and */ stripped
+func (c Comment) Text() string {
+	l := 0
+	for _, comment := range c.Comment {
+		l += len(comment) + 1
+	}
+	buf := make([]byte, 0, l)
+
+	blockComment := false
+	if strings.HasPrefix(c.Comment[0], "/*") {
+		blockComment = true
+	}
+
+	for i, comment := range c.Comment {
+		if blockComment {
+			if i == 0 {
+				comment = strings.TrimPrefix(comment, "/*")
+			}
+			if i == len(c.Comment)-1 {
+				comment = strings.TrimSuffix(comment, "*/")
+			}
+		} else {
+			comment = strings.TrimPrefix(comment, "//")
+		}
+		buf = append(buf, comment...)
+		buf = append(buf, '\n')
+	}
+
+	return string(buf)
+}
+
+// Return the line number that the comment ends on
+func (c Comment) EndLine() int {
+	return c.Pos.Line + len(c.Comment) - 1
+}
