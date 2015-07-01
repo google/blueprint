@@ -38,6 +38,7 @@ func (e *ParseError) Error() string {
 }
 
 type File struct {
+	Name     string
 	Defs     []Definition
 	Comments []Comment
 }
@@ -59,6 +60,7 @@ func parse(p *parser) (file *File, errs []error) {
 	comments := p.comments
 
 	return &File{
+		Name:     p.scanner.Filename,
 		Defs:     defs,
 		Comments: comments,
 	}, errs
