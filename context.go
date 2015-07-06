@@ -743,7 +743,7 @@ func (c *Context) findSubdirBlueprints(dir string, subdirs, build []string, subB
 				// need to add the directory to the list of dependencies
 				// so that if someone adds a Blueprints file in the
 				// future we'll pick it up.
-				deps = append(deps, filepath.Dir(foundSubdir))
+				deps = append(deps, foundSubdir)
 			} else {
 				deps = append(deps, subBlueprints)
 				blueprints = append(blueprints, subBlueprints)
