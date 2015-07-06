@@ -507,6 +507,13 @@ type Expression struct {
 	Pos      scanner.Position
 }
 
+func (e *Expression) Copy() *Expression {
+	ret := *e
+	ret.Args[0] = e.Args[0].Copy()
+	ret.Args[1] = e.Args[1].Copy()
+	return &ret
+}
+
 func (e *Expression) String() string {
 	return fmt.Sprintf("(%s %c %s)@%d:%s", e.Args[0].String(), e.Operator, e.Args[1].String(),
 		e.Pos.Offset, e.Pos)
@@ -563,6 +570,15 @@ type Module struct {
 	RbracePos  scanner.Position
 }
 
+func (m *Module) Copy() *Module {
+	ret := *m
+	ret.Properties = make([]*Property, len(m.Properties))
+	for i := range m.Properties {
+		ret.Properties[i] = m.Properties[i].Copy()
+	}
+	return &ret
+}
+
 func (m *Module) String() string {
 	propertyStrings := make([]string, len(m.Properties))
 	for i, property := range m.Properties {
@@ -580,6 +596,12 @@ type Property struct {
 	Name  Ident
 	Value Value
 	Pos   scanner.Position
+}
+
+func (p *Property) Copy() *Property {
+	ret := *p
+	ret.Value = p.Value.Copy()
+	return &ret
 }
 
 func (p *Property) String() string {
@@ -605,6 +627,26 @@ type Value struct {
 	Variable    string
 	Pos         scanner.Position
 	EndPos      scanner.Position
+}
+
+func (p Value) Copy() Value {
+	ret := p
+	if p.MapValue != nil {
+		ret.MapValue = make([]*Property, len(p.MapValue))
+		for i := range p.MapValue {
+			ret.MapValue[i] = p.MapValue[i].Copy()
+		}
+	}
+	if p.ListValue != nil {
+		ret.ListValue = make([]Value, len(p.ListValue))
+		for i := range p.ListValue {
+			ret.ListValue[i] = p.ListValue[i].Copy()
+		}
+	}
+	if p.Expression != nil {
+		ret.Expression = p.Expression.Copy()
+	}
+	return ret
 }
 
 func (p Value) String() string {
