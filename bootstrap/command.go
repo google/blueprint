@@ -50,7 +50,7 @@ func init() {
 	flag.BoolVar(&runGoTests, "t", false, "build and run go tests during bootstrap")
 }
 
-func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...string) {
+func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...string) []string {
 	if !flag.Parsed() {
 		flag.Parse()
 	}
@@ -67,7 +67,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		defer pprof.StopCPUProfile()
 	}
 
-	if flag.NArg() != 1 {
+	if flag.NArg() < 1 {
 		fatalf("no Blueprints file specified")
 	}
 
@@ -111,7 +111,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		if err != nil {
 			fatalErrors([]error{err})
 		}
-		return
+		return []string{}
 	}
 
 	extraDeps, errs := ctx.PrepareBuildActions(config)
@@ -119,6 +119,12 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		fatalErrors(errs)
 	}
 	deps = append(deps, extraDeps...)
+
+	if c, ok := config.(ConfigInterface2); ok {
+		if !c.CreateNinjaFile() {
+			return deps
+		}
+	}
 
 	buf := bytes.NewBuffer(nil)
 	err := ctx.WriteBuildFile(buf)
@@ -162,6 +168,8 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	if err != nil {
 		fatalf("error removing abandoned files: %s", err)
 	}
+
+	return []string{}
 }
 
 func fatalf(format string, args ...interface{}) {
