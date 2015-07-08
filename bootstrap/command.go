@@ -42,7 +42,7 @@ var (
 )
 
 func init() {
-	flag.StringVar(&outFile, "o", "build.ninja.in", "the Ninja file to output")
+	flag.StringVar(&outFile, "o", "", "the Ninja file to output")
 	flag.StringVar(&BuildDir, "b", ".", "the build output directory")
 	flag.StringVar(&depFile, "d", "", "the dependency file to output")
 	flag.StringVar(&timestampFile, "timestamp", "", "file to write before the output file")
@@ -70,7 +70,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		defer pprof.StopCPUProfile()
 	}
 
-	if flag.NArg() != 1 {
+	if flag.NArg() < 1 {
 		fatalf("no Blueprints file specified")
 	}
 
@@ -124,30 +124,32 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	}
 	deps = append(deps, extraDeps...)
 
-	buf := bytes.NewBuffer(nil)
-	err := ctx.WriteBuildFile(buf)
-	if err != nil {
-		fatalf("error generating Ninja file contents: %s", err)
-	}
-
-	const outFilePermissions = 0666
-	if timestampFile != "" {
-		err := ioutil.WriteFile(timestampFile, []byte{}, outFilePermissions)
+	if outFile != "" {
+		buf := bytes.NewBuffer(nil)
+		err := ctx.WriteBuildFile(buf)
 		if err != nil {
-			fatalf("error writing %s: %s", timestampFile, err)
+			fatalf("error generating Ninja file contents: %s", err)
 		}
 
-		if timestampDepFile != "" {
-			err := deptools.WriteDepFile(timestampDepFile, timestampFile, deps)
+		const outFilePermissions = 0666
+		if timestampFile != "" {
+			err := ioutil.WriteFile(timestampFile, []byte{}, outFilePermissions)
 			if err != nil {
-				fatalf("error writing depfile: %s", err)
+				fatalf("error writing %s: %s", timestampFile, err)
+			}
+
+			if timestampDepFile != "" {
+				err := deptools.WriteDepFile(timestampDepFile, timestampFile, deps)
+				if err != nil {
+					fatalf("error writing depfile: %s", err)
+				}
 			}
 		}
-	}
 
-	err = ioutil.WriteFile(outFile, buf.Bytes(), outFilePermissions)
-	if err != nil {
-		fatalf("error writing %s: %s", outFile, err)
+		err = ioutil.WriteFile(outFile, buf.Bytes(), outFilePermissions)
+		if err != nil {
+			fatalf("error writing %s: %s", outFile, err)
+		}
 	}
 
 	if depFile != "" {
@@ -162,7 +164,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	}
 
 	srcDir := filepath.Dir(bootstrapConfig.topLevelBlueprintsFile)
-	err = removeAbandonedFiles(ctx, bootstrapConfig, srcDir, manifestFile)
+	err := removeAbandonedFiles(ctx, bootstrapConfig, srcDir, manifestFile)
 	if err != nil {
 		fatalf("error removing abandoned files: %s", err)
 	}
