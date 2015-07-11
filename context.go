@@ -465,12 +465,12 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 	}
 	file.Name = relBlueprintsFile
 
-	subdirs, subdirsPos, err := getStringListFromScope(scope, "subdirs")
+	subdirs, subdirsPos, err := getLocalStringListFromScope(scope, "subdirs")
 	if err != nil {
 		errs = append(errs, err)
 	}
 
-	build, buildPos, err := getStringListFromScope(scope, "build")
+	build, buildPos, err := getLocalStringListFromScope(scope, "build")
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -795,8 +795,10 @@ func (c *Context) findSubdirBlueprints(dir string, subdirs, build []string, subB
 	return blueprints, deps, errs
 }
 
-func getStringListFromScope(scope *parser.Scope, v string) ([]string, scanner.Position, error) {
-	if assignment, err := scope.Get(v); err == nil {
+func getLocalStringListFromScope(scope *parser.Scope, v string) ([]string, scanner.Position, error) {
+	if assignment, local := scope.Get(v); assignment == nil || !local {
+		return nil, scanner.Position{}, nil
+	} else {
 		switch assignment.Value.Type {
 		case parser.List:
 			ret := make([]string, 0, len(assignment.Value.ListValue))
@@ -820,12 +822,12 @@ func getStringListFromScope(scope *parser.Scope, v string) ([]string, scanner.Po
 			panic(fmt.Errorf("unknown value type: %d", assignment.Value.Type))
 		}
 	}
-
-	return nil, scanner.Position{}, nil
 }
 
 func getStringFromScope(scope *parser.Scope, v string) (string, scanner.Position, error) {
-	if assignment, err := scope.Get(v); err == nil {
+	if assignment, _ := scope.Get(v); assignment == nil {
+		return "", scanner.Position{}, nil
+	} else {
 		switch assignment.Value.Type {
 		case parser.String:
 			return assignment.Value.StringValue, assignment.Pos, nil
@@ -838,8 +840,6 @@ func getStringFromScope(scope *parser.Scope, v string) (string, scanner.Position
 			panic(fmt.Errorf("unknown value type: %d", assignment.Value.Type))
 		}
 	}
-
-	return "", scanner.Position{}, nil
 }
 
 func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
