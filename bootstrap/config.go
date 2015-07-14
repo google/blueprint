@@ -19,6 +19,7 @@ var (
 	// modules.  They are always set to the variable name enclosed in "@@" so
 	// that their values can be easily replaced in the generated Ninja file.
 	srcDir            = pctx.StaticVariable("srcDir", "@@SrcDir@@")
+	buildDir          = pctx.StaticVariable("buildDir", "@@BuildDir@@")
 	goRoot            = pctx.StaticVariable("goRoot", "@@GoRoot@@")
 	goOS              = pctx.StaticVariable("goOS", "@@GoOS@@")
 	goArch            = pctx.StaticVariable("goArch", "@@GoArch@@")

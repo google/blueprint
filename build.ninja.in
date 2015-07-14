@@ -9,13 +9,15 @@
 #
 ninja_required_version = 1.6.0
 
-g.bootstrap.BinDir = .bootstrap/bin
+g.bootstrap.buildDir = @@BuildDir@@
+
+g.bootstrap.BinDir = ${g.bootstrap.buildDir}/.bootstrap/bin
 
 g.bootstrap.bootstrapCmd = @@Bootstrap@@
 
 g.bootstrap.bootstrapManifest = @@BootstrapManifest@@
 
-g.bootstrap.chooseStageCmd = .bootstrap/bin/choosestage
+g.bootstrap.chooseStageCmd = ${g.bootstrap.buildDir}/.bootstrap/bin/choosestage
 
 g.bootstrap.goRoot = @@GoRoot@@
 
@@ -33,10 +35,10 @@ g.bootstrap.linkCmd = ${g.bootstrap.goToolDir}/${g.bootstrap.goChar}l
 
 g.bootstrap.srcDir = @@SrcDir@@
 
-builddir = .minibootstrap
+builddir = ${g.bootstrap.buildDir}/.minibootstrap
 
 rule g.bootstrap.bootstrap
-    command = ${g.bootstrap.bootstrapCmd} -i ${in}
+    command = ${g.bootstrap.bootstrapCmd} -i ${in} -b ${g.bootstrap.buildDir}
     description = bootstrap ${in}
     generator = true
 
@@ -63,21 +65,24 @@ rule g.bootstrap.link
 # Factory: github.com/google/blueprint/bootstrap.func·002
 # Defined: Blueprints:1:1
 
-build .bootstrap/blueprint/pkg/github.com/google/blueprint.a: g.bootstrap.gc $
-        ${g.bootstrap.srcDir}/context.go ${g.bootstrap.srcDir}/live_tracker.go $
-        ${g.bootstrap.srcDir}/mangle.go ${g.bootstrap.srcDir}/module_ctx.go $
+build $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint/pkg/github.com/google/blueprint.a $
+        : g.bootstrap.gc ${g.bootstrap.srcDir}/context.go $
+        ${g.bootstrap.srcDir}/live_tracker.go ${g.bootstrap.srcDir}/mangle.go $
+        ${g.bootstrap.srcDir}/module_ctx.go $
         ${g.bootstrap.srcDir}/ninja_defs.go $
         ${g.bootstrap.srcDir}/ninja_strings.go $
         ${g.bootstrap.srcDir}/ninja_writer.go $
         ${g.bootstrap.srcDir}/package_ctx.go ${g.bootstrap.srcDir}/scope.go $
         ${g.bootstrap.srcDir}/singleton_ctx.go ${g.bootstrap.srcDir}/unpack.go $
         | ${g.bootstrap.gcCmd} $
-        .bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a $
-        .bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a $
-        .bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a
-    incFlags = -I .bootstrap/blueprint-parser/pkg -I .bootstrap/blueprint-pathtools/pkg -I .bootstrap/blueprint-proptools/pkg
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a
+    incFlags = -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-parser/pkg -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-pathtools/pkg -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-proptools/pkg
     pkgPath = github.com/google/blueprint
-default .bootstrap/blueprint/pkg/github.com/google/blueprint.a
+default $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint/pkg/github.com/google/blueprint.a
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  blueprint-bootstrap
@@ -87,23 +92,23 @@ default .bootstrap/blueprint/pkg/github.com/google/blueprint.a
 # Defined: Blueprints:70:1
 
 build $
-        .bootstrap/blueprint-bootstrap/pkg/github.com/google/blueprint/bootstrap.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-bootstrap/pkg/github.com/google/blueprint/bootstrap.a $
         : g.bootstrap.gc ${g.bootstrap.srcDir}/bootstrap/bootstrap.go $
         ${g.bootstrap.srcDir}/bootstrap/cleanup.go $
         ${g.bootstrap.srcDir}/bootstrap/command.go $
         ${g.bootstrap.srcDir}/bootstrap/config.go $
         ${g.bootstrap.srcDir}/bootstrap/doc.go $
         ${g.bootstrap.srcDir}/bootstrap/writedocs.go | ${g.bootstrap.gcCmd} $
-        .bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a $
-        .bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a $
-        .bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a $
-        .bootstrap/blueprint/pkg/github.com/google/blueprint.a $
-        .bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a $
-        .bootstrap/blueprint-bootstrap-bpdoc/pkg/github.com/google/blueprint/bootstrap/bpdoc.a
-    incFlags = -I .bootstrap/blueprint-parser/pkg -I .bootstrap/blueprint-pathtools/pkg -I .bootstrap/blueprint-proptools/pkg -I .bootstrap/blueprint/pkg -I .bootstrap/blueprint-deptools/pkg -I .bootstrap/blueprint-bootstrap-bpdoc/pkg
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint/pkg/github.com/google/blueprint.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-bootstrap-bpdoc/pkg/github.com/google/blueprint/bootstrap/bpdoc.a
+    incFlags = -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-parser/pkg -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-pathtools/pkg -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-proptools/pkg -I ${g.bootstrap.buildDir}/.bootstrap/blueprint/pkg -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-deptools/pkg -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-bootstrap-bpdoc/pkg
     pkgPath = github.com/google/blueprint/bootstrap
 default $
-        .bootstrap/blueprint-bootstrap/pkg/github.com/google/blueprint/bootstrap.a
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-bootstrap/pkg/github.com/google/blueprint/bootstrap.a
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  blueprint-bootstrap-bpdoc
@@ -113,17 +118,17 @@ default $
 # Defined: Blueprints:89:1
 
 build $
-        .bootstrap/blueprint-bootstrap-bpdoc/pkg/github.com/google/blueprint/bootstrap/bpdoc.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-bootstrap-bpdoc/pkg/github.com/google/blueprint/bootstrap/bpdoc.a $
         : g.bootstrap.gc ${g.bootstrap.srcDir}/bootstrap/bpdoc/bpdoc.go | $
         ${g.bootstrap.gcCmd} $
-        .bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a $
-        .bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a $
-        .bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a $
-        .bootstrap/blueprint/pkg/github.com/google/blueprint.a
-    incFlags = -I .bootstrap/blueprint-parser/pkg -I .bootstrap/blueprint-pathtools/pkg -I .bootstrap/blueprint-proptools/pkg -I .bootstrap/blueprint/pkg
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint/pkg/github.com/google/blueprint.a
+    incFlags = -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-parser/pkg -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-pathtools/pkg -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-proptools/pkg -I ${g.bootstrap.buildDir}/.bootstrap/blueprint/pkg
     pkgPath = github.com/google/blueprint/bootstrap/bpdoc
 default $
-        .bootstrap/blueprint-bootstrap-bpdoc/pkg/github.com/google/blueprint/bootstrap/bpdoc.a
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-bootstrap-bpdoc/pkg/github.com/google/blueprint/bootstrap/bpdoc.a
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  blueprint-deptools
@@ -132,12 +137,13 @@ default $
 # Factory: github.com/google/blueprint/bootstrap.func·002
 # Defined: Blueprints:46:1
 
-build .bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a $
+build $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a $
         : g.bootstrap.gc ${g.bootstrap.srcDir}/deptools/depfile.go | $
         ${g.bootstrap.gcCmd}
     pkgPath = github.com/google/blueprint/deptools
 default $
-        .bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  blueprint-parser
@@ -146,13 +152,15 @@ default $
 # Factory: github.com/google/blueprint/bootstrap.func·002
 # Defined: Blueprints:31:1
 
-build .bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a: $
-        g.bootstrap.gc ${g.bootstrap.srcDir}/parser/modify.go $
+build $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a $
+        : g.bootstrap.gc ${g.bootstrap.srcDir}/parser/modify.go $
         ${g.bootstrap.srcDir}/parser/parser.go $
         ${g.bootstrap.srcDir}/parser/printer.go $
         ${g.bootstrap.srcDir}/parser/sort.go | ${g.bootstrap.gcCmd}
     pkgPath = github.com/google/blueprint/parser
-default .bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a
+default $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  blueprint-pathtools
@@ -162,12 +170,12 @@ default .bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a
 # Defined: Blueprints:52:1
 
 build $
-        .bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a $
         : g.bootstrap.gc ${g.bootstrap.srcDir}/pathtools/lists.go $
         ${g.bootstrap.srcDir}/pathtools/glob.go | ${g.bootstrap.gcCmd}
     pkgPath = github.com/google/blueprint/pathtools
 default $
-        .bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  blueprint-proptools
@@ -177,12 +185,12 @@ default $
 # Defined: Blueprints:64:1
 
 build $
-        .bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a $
         : g.bootstrap.gc ${g.bootstrap.srcDir}/proptools/proptools.go | $
         ${g.bootstrap.gcCmd}
     pkgPath = github.com/google/blueprint/proptools
 default $
-        .bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  choosestage
@@ -191,17 +199,19 @@ default $
 # Factory: github.com/google/blueprint/bootstrap.func·003
 # Defined: Blueprints:127:1
 
-build .bootstrap/choosestage/obj/choosestage.a: g.bootstrap.gc $
-        ${g.bootstrap.srcDir}/choosestage/choosestage.go | $
+build ${g.bootstrap.buildDir}/.bootstrap/choosestage/obj/choosestage.a: $
+        g.bootstrap.gc ${g.bootstrap.srcDir}/choosestage/choosestage.go | $
         ${g.bootstrap.gcCmd}
     pkgPath = choosestage
-default .bootstrap/choosestage/obj/choosestage.a
+default ${g.bootstrap.buildDir}/.bootstrap/choosestage/obj/choosestage.a
 
-build .bootstrap/choosestage/obj/a.out: g.bootstrap.link $
-        .bootstrap/choosestage/obj/choosestage.a | ${g.bootstrap.linkCmd}
-default .bootstrap/choosestage/obj/a.out
+build ${g.bootstrap.buildDir}/.bootstrap/choosestage/obj/a.out: $
+        g.bootstrap.link $
+        ${g.bootstrap.buildDir}/.bootstrap/choosestage/obj/choosestage.a | $
+        ${g.bootstrap.linkCmd}
+default ${g.bootstrap.buildDir}/.bootstrap/choosestage/obj/a.out
 build ${g.bootstrap.BinDir}/choosestage: g.bootstrap.cp $
-        .bootstrap/choosestage/obj/a.out
+        ${g.bootstrap.buildDir}/.bootstrap/choosestage/obj/a.out
 default ${g.bootstrap.BinDir}/choosestage
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -211,16 +221,19 @@ default ${g.bootstrap.BinDir}/choosestage
 # Factory: github.com/google/blueprint/bootstrap.func·003
 # Defined: Blueprints:122:1
 
-build .bootstrap/gotestmain/obj/gotestmain.a: g.bootstrap.gc $
-        ${g.bootstrap.srcDir}/gotestmain/gotestmain.go | ${g.bootstrap.gcCmd}
+build ${g.bootstrap.buildDir}/.bootstrap/gotestmain/obj/gotestmain.a: $
+        g.bootstrap.gc ${g.bootstrap.srcDir}/gotestmain/gotestmain.go | $
+        ${g.bootstrap.gcCmd}
     pkgPath = gotestmain
-default .bootstrap/gotestmain/obj/gotestmain.a
+default ${g.bootstrap.buildDir}/.bootstrap/gotestmain/obj/gotestmain.a
 
-build .bootstrap/gotestmain/obj/a.out: g.bootstrap.link $
-        .bootstrap/gotestmain/obj/gotestmain.a | ${g.bootstrap.linkCmd}
-default .bootstrap/gotestmain/obj/a.out
+build ${g.bootstrap.buildDir}/.bootstrap/gotestmain/obj/a.out: $
+        g.bootstrap.link $
+        ${g.bootstrap.buildDir}/.bootstrap/gotestmain/obj/gotestmain.a | $
+        ${g.bootstrap.linkCmd}
+default ${g.bootstrap.buildDir}/.bootstrap/gotestmain/obj/a.out
 build ${g.bootstrap.BinDir}/gotestmain: g.bootstrap.cp $
-        .bootstrap/gotestmain/obj/a.out
+        ${g.bootstrap.buildDir}/.bootstrap/gotestmain/obj/a.out
 default ${g.bootstrap.BinDir}/gotestmain
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -230,25 +243,27 @@ default ${g.bootstrap.BinDir}/gotestmain
 # Factory: github.com/google/blueprint/bootstrap.func·003
 # Defined: Blueprints:101:1
 
-build .bootstrap/minibp/obj/minibp.a: g.bootstrap.gc $
+build ${g.bootstrap.buildDir}/.bootstrap/minibp/obj/minibp.a: g.bootstrap.gc $
         ${g.bootstrap.srcDir}/bootstrap/minibp/main.go | ${g.bootstrap.gcCmd} $
-        .bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a $
-        .bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a $
-        .bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a $
-        .bootstrap/blueprint/pkg/github.com/google/blueprint.a $
-        .bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a $
-        .bootstrap/blueprint-bootstrap-bpdoc/pkg/github.com/google/blueprint/bootstrap/bpdoc.a $
-        .bootstrap/blueprint-bootstrap/pkg/github.com/google/blueprint/bootstrap.a
-    incFlags = -I .bootstrap/blueprint-parser/pkg -I .bootstrap/blueprint-pathtools/pkg -I .bootstrap/blueprint-proptools/pkg -I .bootstrap/blueprint/pkg -I .bootstrap/blueprint-deptools/pkg -I .bootstrap/blueprint-bootstrap-bpdoc/pkg -I .bootstrap/blueprint-bootstrap/pkg
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint/pkg/github.com/google/blueprint.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-bootstrap-bpdoc/pkg/github.com/google/blueprint/bootstrap/bpdoc.a $
+        ${g.bootstrap.buildDir}/.bootstrap/blueprint-bootstrap/pkg/github.com/google/blueprint/bootstrap.a
+    incFlags = -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-parser/pkg -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-pathtools/pkg -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-proptools/pkg -I ${g.bootstrap.buildDir}/.bootstrap/blueprint/pkg -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-deptools/pkg -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-bootstrap-bpdoc/pkg -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-bootstrap/pkg
     pkgPath = minibp
-default .bootstrap/minibp/obj/minibp.a
+default ${g.bootstrap.buildDir}/.bootstrap/minibp/obj/minibp.a
 
-build .bootstrap/minibp/obj/a.out: g.bootstrap.link $
-        .bootstrap/minibp/obj/minibp.a | ${g.bootstrap.linkCmd}
-    libDirFlags = -L .bootstrap/blueprint-parser/pkg -L .bootstrap/blueprint-pathtools/pkg -L .bootstrap/blueprint-proptools/pkg -L .bootstrap/blueprint/pkg -L .bootstrap/blueprint-deptools/pkg -L .bootstrap/blueprint-bootstrap-bpdoc/pkg -L .bootstrap/blueprint-bootstrap/pkg
-default .bootstrap/minibp/obj/a.out
+build ${g.bootstrap.buildDir}/.bootstrap/minibp/obj/a.out: g.bootstrap.link $
+        ${g.bootstrap.buildDir}/.bootstrap/minibp/obj/minibp.a | $
+        ${g.bootstrap.linkCmd}
+    libDirFlags = -L ${g.bootstrap.buildDir}/.bootstrap/blueprint-parser/pkg -L ${g.bootstrap.buildDir}/.bootstrap/blueprint-pathtools/pkg -L ${g.bootstrap.buildDir}/.bootstrap/blueprint-proptools/pkg -L ${g.bootstrap.buildDir}/.bootstrap/blueprint/pkg -L ${g.bootstrap.buildDir}/.bootstrap/blueprint-deptools/pkg -L ${g.bootstrap.buildDir}/.bootstrap/blueprint-bootstrap-bpdoc/pkg -L ${g.bootstrap.buildDir}/.bootstrap/blueprint-bootstrap/pkg
+default ${g.bootstrap.buildDir}/.bootstrap/minibp/obj/a.out
 
-build ${g.bootstrap.BinDir}/minibp: g.bootstrap.cp .bootstrap/minibp/obj/a.out
+build ${g.bootstrap.BinDir}/minibp: g.bootstrap.cp $
+        ${g.bootstrap.buildDir}/.bootstrap/minibp/obj/a.out
 default ${g.bootstrap.BinDir}/minibp
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -256,39 +271,44 @@ default ${g.bootstrap.BinDir}/minibp
 # Factory:   github.com/google/blueprint/bootstrap.func·008
 
 rule s.bootstrap.primarybp
-    command = ${g.bootstrap.BinDir}/minibp --build-primary ${runTests} -m ${g.bootstrap.bootstrapManifest} --timestamp ${timestamp} --timestampdep ${timestampdep} -d ${outfile}.d -o ${outfile} ${in}
+    command = ${g.bootstrap.BinDir}/minibp --build-primary ${runTests} -m ${g.bootstrap.bootstrapManifest} --timestamp ${timestamp} --timestampdep ${timestampdep} -b ${g.bootstrap.buildDir} -d ${outfile}.d -o ${outfile} ${in}
     depfile = ${outfile}.d
     description = minibp ${outfile}
 
 rule s.bootstrap.minibp
-    command = ${g.bootstrap.BinDir}/minibp ${runTests} -m ${g.bootstrap.bootstrapManifest} -d ${out}.d -o ${out} ${in}
+    command = ${g.bootstrap.BinDir}/minibp ${runTests} -m ${g.bootstrap.bootstrapManifest} -b ${g.bootstrap.buildDir} -d ${out}.d -o ${out} ${in}
     depfile = ${out}.d
     description = minibp ${out}
     generator = true
 
-build .bootstrap/primary.ninja.in .bootstrap/primary.ninja.in.timestamp: $
+build ${g.bootstrap.buildDir}/.bootstrap/primary.ninja.in $
+        ${g.bootstrap.buildDir}/.bootstrap/primary.ninja.in.timestamp: $
         s.bootstrap.primarybp ${g.bootstrap.srcDir}/Blueprints | $
         ${g.bootstrap.BinDir}/choosestage ${g.bootstrap.BinDir}/gotestmain $
         ${g.bootstrap.BinDir}/minibp ${g.bootstrap.srcDir}/Blueprints
-    outfile = .bootstrap/primary.ninja.in
-    timestamp = .bootstrap/primary.ninja.in.timestamp
-    timestampdep = .bootstrap/primary.ninja.in.timestamp.d
-default .bootstrap/primary.ninja.in .bootstrap/primary.ninja.in.timestamp
+    outfile = ${g.bootstrap.buildDir}/.bootstrap/primary.ninja.in
+    timestamp = ${g.bootstrap.buildDir}/.bootstrap/primary.ninja.in.timestamp
+    timestampdep = ${g.bootstrap.buildDir}/.bootstrap/primary.ninja.in.timestamp.d
+default ${g.bootstrap.buildDir}/.bootstrap/primary.ninja.in $
+        ${g.bootstrap.buildDir}/.bootstrap/primary.ninja.in.timestamp
 
-build .bootstrap/bootstrap.ninja.in: s.bootstrap.minibp $
-        ${g.bootstrap.srcDir}/Blueprints | ${g.bootstrap.bootstrapManifest} $
-        ${g.bootstrap.BinDir}/minibp
-default .bootstrap/bootstrap.ninja.in
-build .bootstrap/notAFile: phony
-default .bootstrap/notAFile
-build .bootstrap/build.ninja.in: g.bootstrap.chooseStage $
-        .bootstrap/bootstrap.ninja.in .bootstrap/primary.ninja.in | $
+build ${g.bootstrap.buildDir}/.bootstrap/bootstrap.ninja.in: $
+        s.bootstrap.minibp ${g.bootstrap.srcDir}/Blueprints | $
+        ${g.bootstrap.bootstrapManifest} ${g.bootstrap.BinDir}/minibp
+default ${g.bootstrap.buildDir}/.bootstrap/bootstrap.ninja.in
+build ${g.bootstrap.buildDir}/.bootstrap/notAFile: phony
+default ${g.bootstrap.buildDir}/.bootstrap/notAFile
+build ${g.bootstrap.buildDir}/.bootstrap/build.ninja.in: $
+        g.bootstrap.chooseStage $
+        ${g.bootstrap.buildDir}/.bootstrap/bootstrap.ninja.in $
+        ${g.bootstrap.buildDir}/.bootstrap/primary.ninja.in | $
         ${g.bootstrap.chooseStageCmd} ${g.bootstrap.bootstrapManifest} $
-        .bootstrap/notAFile
-    current = .bootstrap/bootstrap.ninja.in
-default .bootstrap/build.ninja.in
+        ${g.bootstrap.buildDir}/.bootstrap/notAFile
+    current = ${g.bootstrap.buildDir}/.bootstrap/bootstrap.ninja.in
+default ${g.bootstrap.buildDir}/.bootstrap/build.ninja.in
 
-build build.ninja: g.bootstrap.bootstrap .bootstrap/build.ninja.in | $
+build ${g.bootstrap.buildDir}/build.ninja: g.bootstrap.bootstrap $
+        ${g.bootstrap.buildDir}/.bootstrap/build.ninja.in | $
         ${g.bootstrap.bootstrapCmd}
-default build.ninja
+default ${g.bootstrap.buildDir}/build.ninja
 

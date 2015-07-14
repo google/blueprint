@@ -37,10 +37,13 @@ var (
 	docFile          string
 	cpuprofile       string
 	runGoTests       bool
+
+	BuildDir string
 )
 
 func init() {
 	flag.StringVar(&outFile, "o", "build.ninja.in", "the Ninja file to output")
+	flag.StringVar(&BuildDir, "b", ".", "the build output directory")
 	flag.StringVar(&depFile, "d", "", "the dependency file to output")
 	flag.StringVar(&timestampFile, "timestamp", "", "file to write before the output file")
 	flag.StringVar(&timestampDepFile, "timestampdep", "", "the dependency file for the timestamp file")

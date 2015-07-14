@@ -23,8 +23,8 @@ import (
 	"github.com/google/blueprint/pathtools"
 )
 
-const bootstrapDir = ".bootstrap"
-const miniBootstrapDir = ".minibootstrap"
+const bootstrapDir = "$buildDir/.bootstrap"
+const miniBootstrapDir = "$buildDir/.minibootstrap"
 
 var (
 	pctx = blueprint.NewPackageContext("github.com/google/blueprint/bootstrap")
@@ -72,7 +72,7 @@ var (
 
 	bootstrap = pctx.StaticRule("bootstrap",
 		blueprint.RuleParams{
-			Command:     "$bootstrapCmd -i $in",
+			Command:     "$bootstrapCmd -i $in -b $buildDir",
 			Description: "bootstrap $in",
 			Generator:   true,
 		})
@@ -621,7 +621,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			blueprint.RuleParams{
 				Command: fmt.Sprintf("%s --build-primary $runTests -m $bootstrapManifest "+
 					"--timestamp $timestamp --timestampdep $timestampdep "+
-					"-d $outfile.d -o $outfile $in", minibpFile),
+					"-b $buildDir -d $outfile.d -o $outfile $in", minibpFile),
 				Description: "minibp $outfile",
 				Depfile:     "$outfile.d",
 			},
@@ -650,7 +650,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		minibp := ctx.Rule(pctx, "minibp",
 			blueprint.RuleParams{
 				Command: fmt.Sprintf("%s $runTests -m $bootstrapManifest "+
-					"-d $out.d -o $out $in", minibpFile),
+					"-b $buildDir -d $out.d -o $out $in", minibpFile),
 				Description: "minibp $out",
 				Generator:   true,
 				Depfile:     "$out.d",
@@ -712,7 +712,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			blueprint.RuleParams{
 				Command: fmt.Sprintf("%s %s -m $bootstrapManifest "+
 					"--timestamp $timestamp --timestampdep $timestampdep "+
-					"-d $outfile.d -o $outfile $in", primaryBuilderFile,
+					"-b $buildDir -d $outfile.d -o $outfile $in", primaryBuilderFile,
 					primaryBuilderExtraFlags),
 				Description: fmt.Sprintf("%s $outfile", primaryBuilderName),
 				Depfile:     "$outfile.d",
@@ -738,7 +738,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// a rebuild of the primary builder.
 		bigbpDocs := ctx.Rule(pctx, "bigbpDocs",
 			blueprint.RuleParams{
-				Command: fmt.Sprintf("%s %s --docs $out %s", primaryBuilderFile,
+				Command: fmt.Sprintf("%s %s -b $buildDir --docs $out %s", primaryBuilderFile,
 					primaryBuilderExtraFlags, topLevelBlueprints),
 				Description: fmt.Sprintf("%s docs $out", primaryBuilderName),
 			})
@@ -791,6 +791,8 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		})
 
 	case StageMain:
+		ctx.SetBuildDir(pctx, "${buildDir}")
+
 		// We're generating a non-bootstrapper Ninja file, so we need to set it
 		// up to re-bootstrap if necessary. We do this by making build.ninja.in
 		// depend on the various Ninja files, the source build.ninja.in, and
@@ -842,7 +844,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		if primaryBuilderName == "minibp" {
 			// This is a standalone Blueprint build, so we copy the minibp
 			// binary to the "bin" directory to make it easier to find.
-			finalMinibp := filepath.Join("bin", primaryBuilderName)
+			finalMinibp := filepath.Join("$buildDir", "bin", primaryBuilderName)
 			ctx.Build(pctx, blueprint.BuildParams{
 				Rule:    cp,
 				Inputs:  []string{primaryBuilderFile},
@@ -853,7 +855,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 	ctx.Build(pctx, blueprint.BuildParams{
 		Rule:      bootstrap,
-		Outputs:   []string{"build.ninja"},
+		Outputs:   []string{"$buildDir/build.ninja"},
 		Inputs:    []string{filepath.Join(bootstrapDir, "build.ninja.in")},
 		Implicits: []string{"$bootstrapCmd"},
 	})

@@ -135,7 +135,7 @@ func main() {
 			// If we're currently running this stage, and the build.ninja.in
 			// file differs from the current stage file, then it has been rebuilt.
 			// Restart the stage.
-			if currentFile == fileName {
+			if filepath.Clean(currentFile) == filepath.Clean(fileName) {
 				if _, err := os.Stat(outputFile); !os.IsNotExist(err) {
 					if ok, err := compareFiles(fileName, outputFile); err != nil {
 						fmt.Fprintf(os.Stderr, "Failure when comparing files: %s\n", err)
