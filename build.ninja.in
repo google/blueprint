@@ -9,6 +9,8 @@
 #
 ninja_required_version = 1.6.0
 
+g.bootstrap.BinDir = .bootstrap/bin
+
 g.bootstrap.bootstrapCmd = @@Bootstrap@@
 
 g.bootstrap.bootstrapManifest = @@BootstrapManifest@@
@@ -198,9 +200,9 @@ default .bootstrap/choosestage/obj/choosestage.a
 build .bootstrap/choosestage/obj/a.out: g.bootstrap.link $
         .bootstrap/choosestage/obj/choosestage.a | ${g.bootstrap.linkCmd}
 default .bootstrap/choosestage/obj/a.out
-build .bootstrap/bin/choosestage: g.bootstrap.cp $
+build ${g.bootstrap.BinDir}/choosestage: g.bootstrap.cp $
         .bootstrap/choosestage/obj/a.out
-default .bootstrap/bin/choosestage
+default ${g.bootstrap.BinDir}/choosestage
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  gotestmain
@@ -217,9 +219,9 @@ default .bootstrap/gotestmain/obj/gotestmain.a
 build .bootstrap/gotestmain/obj/a.out: g.bootstrap.link $
         .bootstrap/gotestmain/obj/gotestmain.a | ${g.bootstrap.linkCmd}
 default .bootstrap/gotestmain/obj/a.out
-build .bootstrap/bin/gotestmain: g.bootstrap.cp $
+build ${g.bootstrap.BinDir}/gotestmain: g.bootstrap.cp $
         .bootstrap/gotestmain/obj/a.out
-default .bootstrap/bin/gotestmain
+default ${g.bootstrap.BinDir}/gotestmain
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  minibp
@@ -246,28 +248,28 @@ build .bootstrap/minibp/obj/a.out: g.bootstrap.link $
     libDirFlags = -L .bootstrap/blueprint-parser/pkg -L .bootstrap/blueprint-pathtools/pkg -L .bootstrap/blueprint-proptools/pkg -L .bootstrap/blueprint/pkg -L .bootstrap/blueprint-deptools/pkg -L .bootstrap/blueprint-bootstrap-bpdoc/pkg -L .bootstrap/blueprint-bootstrap/pkg
 default .bootstrap/minibp/obj/a.out
 
-build .bootstrap/bin/minibp: g.bootstrap.cp .bootstrap/minibp/obj/a.out
-default .bootstrap/bin/minibp
+build ${g.bootstrap.BinDir}/minibp: g.bootstrap.cp .bootstrap/minibp/obj/a.out
+default ${g.bootstrap.BinDir}/minibp
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Singleton: bootstrap
 # Factory:   github.com/google/blueprint/bootstrap.func·008
 
 rule s.bootstrap.primarybp
-    command = .bootstrap/bin/minibp --build-primary ${runTests} -m ${g.bootstrap.bootstrapManifest} --timestamp ${timestamp} --timestampdep ${timestampdep} -d ${outfile}.d -o ${outfile} ${in}
+    command = ${g.bootstrap.BinDir}/minibp --build-primary ${runTests} -m ${g.bootstrap.bootstrapManifest} --timestamp ${timestamp} --timestampdep ${timestampdep} -d ${outfile}.d -o ${outfile} ${in}
     depfile = ${outfile}.d
     description = minibp ${outfile}
 
 rule s.bootstrap.minibp
-    command = .bootstrap/bin/minibp ${runTests} -m ${g.bootstrap.bootstrapManifest} -d ${out}.d -o ${out} ${in}
+    command = ${g.bootstrap.BinDir}/minibp ${runTests} -m ${g.bootstrap.bootstrapManifest} -d ${out}.d -o ${out} ${in}
     depfile = ${out}.d
     description = minibp ${out}
     generator = true
 
 build .bootstrap/primary.ninja.in .bootstrap/primary.ninja.in.timestamp: $
         s.bootstrap.primarybp ${g.bootstrap.srcDir}/Blueprints | $
-        .bootstrap/bin/choosestage .bootstrap/bin/gotestmain $
-        .bootstrap/bin/minibp ${g.bootstrap.srcDir}/Blueprints
+        ${g.bootstrap.BinDir}/choosestage ${g.bootstrap.BinDir}/gotestmain $
+        ${g.bootstrap.BinDir}/minibp ${g.bootstrap.srcDir}/Blueprints
     outfile = .bootstrap/primary.ninja.in
     timestamp = .bootstrap/primary.ninja.in.timestamp
     timestampdep = .bootstrap/primary.ninja.in.timestamp.d
@@ -275,7 +277,7 @@ default .bootstrap/primary.ninja.in .bootstrap/primary.ninja.in.timestamp
 
 build .bootstrap/bootstrap.ninja.in: s.bootstrap.minibp $
         ${g.bootstrap.srcDir}/Blueprints | ${g.bootstrap.bootstrapManifest} $
-        .bootstrap/bin/minibp
+        ${g.bootstrap.BinDir}/minibp
 default .bootstrap/bootstrap.ninja.in
 build .bootstrap/notAFile: phony
 default .bootstrap/notAFile

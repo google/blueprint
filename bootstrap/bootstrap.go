@@ -100,8 +100,8 @@ var (
 		},
 		"depfile")
 
-	BinDir     = filepath.Join(bootstrapDir, "bin")
-	minibpFile = filepath.Join(BinDir, "minibp")
+	binDir     = pctx.StaticVariable("BinDir", filepath.Join(bootstrapDir, "bin"))
+	minibpFile = filepath.Join("$BinDir", "minibp")
 
 	docsDir = filepath.Join(bootstrapDir, "docs")
 )
@@ -296,7 +296,7 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 		objDir      = moduleObjDir(ctx)
 		archiveFile = filepath.Join(objDir, name+".a")
 		aoutFile    = filepath.Join(objDir, "a.out")
-		binaryFile  = filepath.Join(BinDir, name)
+		binaryFile  = filepath.Join("$BinDir", name)
 	)
 
 	if len(g.properties.TestSrcs) > 0 && g.config.runGoTests {
@@ -531,7 +531,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		func(module blueprint.Module) {
 			binaryModule := module.(*goBinary)
 			binaryModuleName := ctx.ModuleName(binaryModule)
-			binaryModulePath := filepath.Join(BinDir, binaryModuleName)
+			binaryModulePath := filepath.Join("$BinDir", binaryModuleName)
 
 			if binaryModule.BuildStage() == StageBootstrap {
 				rebootstrapDeps = append(rebootstrapDeps, binaryModulePath)
@@ -564,7 +564,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		return
 	}
 
-	primaryBuilderFile := filepath.Join(BinDir, primaryBuilderName)
+	primaryBuilderFile := filepath.Join("$BinDir", primaryBuilderName)
 
 	if s.config.runGoTests {
 		primaryBuilderExtraFlags += " -t"
