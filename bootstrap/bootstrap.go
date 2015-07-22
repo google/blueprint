@@ -16,9 +16,7 @@ package bootstrap
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/google/blueprint"
@@ -33,28 +31,6 @@ var (
 	gcCmd         = pctx.StaticVariable("gcCmd", "$goToolDir/${goChar}g")
 	linkCmd       = pctx.StaticVariable("linkCmd", "$goToolDir/${goChar}l")
 	goTestMainCmd = pctx.StaticVariable("goTestMainCmd", filepath.Join(bootstrapDir, "bin", "gotestmain"))
-
-	// Ninja only reinvokes itself once when it regenerates a .ninja file. For
-	// the re-bootstrap process we need that to happen more than once, so we
-	// invoke an additional Ninja process from the rebootstrap rule.
-	// Unfortunately this seems to cause "warning: bad deps log signature or
-	// version; starting over" messages from Ninja. This warning can be
-	// avoided by having the bootstrap and non-bootstrap build manifests have
-	// a different builddir (so they use different log files).
-	//
-	// This workaround can be avoided entirely by making a simple change to
-	// Ninja that would allow it to rebuild the manifest multiple times rather
-	// than just once.  If the Ninja being used is capable of this, then the
-	// workaround we're doing can be disabled by setting the
-	// BLUEPRINT_NINJA_HAS_MULTIPASS environment variable to a true value.
-	runChildNinja = pctx.VariableFunc("runChildNinja",
-		func(config interface{}) (string, error) {
-			if ninjaHasMultipass(config) {
-				return "", nil
-			} else {
-				return " && ninja", nil
-			}
-		})
 
 	gc = pctx.StaticRule("gc",
 		blueprint.RuleParams{
@@ -96,13 +72,6 @@ var (
 		blueprint.RuleParams{
 			Command:     "$bootstrapCmd -i $in",
 			Description: "bootstrap $in",
-			Generator:   true,
-		})
-
-	rebootstrap = pctx.StaticRule("rebootstrap",
-		blueprint.RuleParams{
-			Command:     "$bootstrapCmd -i $in$runChildNinja",
-			Description: "re-bootstrap $in",
 			Generator:   true,
 		})
 
@@ -149,17 +118,6 @@ func isBootstrapModule(module blueprint.Module) bool {
 func isBootstrapBinaryModule(module blueprint.Module) bool {
 	_, isBinary := module.(*goBinary)
 	return isBinary
-}
-
-// ninjaHasMultipass returns true if Ninja will perform multiple passes
-// that can regenerate the build manifest.
-func ninjaHasMultipass(config interface{}) bool {
-	envString := os.Getenv("BLUEPRINT_NINJA_HAS_MULTIPASS")
-	envValue, err := strconv.ParseBool(envString)
-	if err != nil {
-		return false
-	}
-	return envValue
 }
 
 // A goPackage is a module for building Go packages.
@@ -563,11 +521,8 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// We're generating a bootstrapper Ninja file, so we need to set things
 		// up to rebuild the build.ninja file using the primary builder.
 
-		// Because the non-bootstrap build.ninja file manually re-invokes Ninja,
-		// its builddir must be different than that of the bootstrap build.ninja
-		// file.  Otherwise we occasionally get "warning: bad deps log signature
-		// or version; starting over" messages from Ninja, presumably because
-		// two Ninja processes try to write to the same log concurrently.
+		// BuildDir must be different between bootstrap and the main build,
+		// otherwise the cleanup process will remove files from the other build.
 		ctx.SetBuildDir(pctx, bootstrapDir)
 
 		// Generate build system docs for the primary builder.  Generating docs reads the source
@@ -687,7 +642,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		buildNinjaDeps = append(buildNinjaDeps, rebootstrapDeps...)
 
 		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:      rebootstrap,
+			Rule:      bootstrap,
 			Outputs:   []string{"build.ninja"},
 			Inputs:    []string{"$bootstrapManifest"},
 			Implicits: buildNinjaDeps,

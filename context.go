@@ -1631,7 +1631,7 @@ func spliceModulesAtIndex(modules []*moduleInfo, i int, newModules []*moduleInfo
 func (c *Context) initSpecialVariables() {
 	c.buildDir = nil
 	c.requiredNinjaMajor = 1
-	c.requiredNinjaMinor = 1
+	c.requiredNinjaMinor = 6
 	c.requiredNinjaMicro = 0
 }
 
