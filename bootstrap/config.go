@@ -36,12 +36,16 @@ type ConfigInterface interface {
 	// creating a build.ninja.in file to be used in a build bootstrapping
 	// sequence.
 	GeneratingBootstrapper() bool
+	// GeneratingPrimaryBuilder should return true if this build invocation is
+	// creating a build.ninja.in file to be used to build the primary builder
+	GeneratingPrimaryBuilder() bool
 }
 
 type Stage int
 
 const (
 	StageBootstrap Stage = iota
+	StagePrimary
 	StageMain
 )
 

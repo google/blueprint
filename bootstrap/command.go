@@ -76,6 +76,9 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		if c.GeneratingBootstrapper() {
 			stage = StageBootstrap
 		}
+		if c.GeneratingPrimaryBuilder() {
+			stage = StagePrimary
+		}
 	}
 
 	bootstrapConfig := &Config{
@@ -85,7 +88,9 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	}
 
 	ctx.RegisterModuleType("bootstrap_go_package", newGoPackageModuleFactory(bootstrapConfig))
-	ctx.RegisterModuleType("bootstrap_go_binary", newGoBinaryModuleFactory(bootstrapConfig))
+	ctx.RegisterModuleType("bootstrap_core_go_binary", newGoBinaryModuleFactory(bootstrapConfig, StageBootstrap))
+	ctx.RegisterModuleType("bootstrap_go_binary", newGoBinaryModuleFactory(bootstrapConfig, StagePrimary))
+	ctx.RegisterTopDownMutator("bootstrap_stage", propagateStageBootstrap)
 	ctx.RegisterSingletonType("bootstrap", newSingletonFactory(bootstrapConfig))
 
 	deps, errs := ctx.ParseBlueprintsFiles(bootstrapConfig.topLevelBlueprintsFile)

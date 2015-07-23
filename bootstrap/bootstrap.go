@@ -24,6 +24,7 @@ import (
 )
 
 const bootstrapDir = ".bootstrap"
+const miniBootstrapDir = ".minibootstrap"
 
 var (
 	pctx = blueprint.NewPackageContext("github.com/google/blueprint/bootstrap")
@@ -105,6 +106,23 @@ var (
 	docsDir = filepath.Join(bootstrapDir, "docs")
 )
 
+type bootstrapGoCore interface {
+	BuildStage() Stage
+	SetBuildStage(Stage)
+}
+
+func propagateStageBootstrap(mctx blueprint.TopDownMutatorContext) {
+	if mod, ok := mctx.Module().(bootstrapGoCore); !ok || mod.BuildStage() != StageBootstrap {
+		return
+	}
+
+	mctx.VisitDirectDeps(func (mod blueprint.Module) {
+			if m, ok := mod.(bootstrapGoCore); ok {
+				m.SetBuildStage(StageBootstrap)
+			}
+		})
+}
+
 type goPackageProducer interface {
 	GoPkgRoot() string
 	GoPackageTarget() string
@@ -117,6 +135,7 @@ func isGoPackageProducer(module blueprint.Module) bool {
 
 type goTestProducer interface {
 	GoTestTarget() string
+	BuildStage() Stage
 }
 
 func isGoTestProducer(module blueprint.Module) bool {
@@ -155,6 +174,9 @@ type goPackage struct {
 
 	// The bootstrap Config
 	config *Config
+
+	// The stage in which this module should be built
+	buildStage Stage
 }
 
 var _ goPackageProducer = (*goPackage)(nil)
@@ -180,6 +202,14 @@ func (g *goPackage) GoTestTarget() string {
 	return g.testArchiveFile
 }
 
+func (g *goPackage) BuildStage() Stage {
+	return g.buildStage
+}
+
+func (g *goPackage) SetBuildStage(buildStage Stage) {
+	g.buildStage = buildStage
+}
+
 func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
 	name := ctx.ModuleName()
 
@@ -201,8 +231,7 @@ func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
 	// the circular dependence that occurs when the builder requires a new Ninja
 	// file to be built, but building a new ninja file requires the builder to
 	// be built.
-	switch g.config.stage {
-	case StageBootstrap:
+	if g.config.stage == g.BuildStage() {
 		var deps []string
 
 		if g.config.runGoTests {
@@ -213,7 +242,7 @@ func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
 
 		buildGoPackage(ctx, g.pkgRoot, g.properties.PkgPath, g.archiveFile,
 			g.properties.Srcs, deps)
-	case StageMain:
+	} else if g.config.stage != StageBootstrap {
 		if len(g.properties.TestSrcs) > 0 && g.config.runGoTests {
 			phonyGoTarget(ctx, g.testArchiveFile, g.properties.TestSrcs, nil)
 		}
@@ -234,12 +263,16 @@ type goBinary struct {
 
 	// The bootstrap Config
 	config *Config
+
+	// The stage in which this module should be built
+	buildStage Stage
 }
 
-func newGoBinaryModuleFactory(config *Config) func() (blueprint.Module, []interface{}) {
+func newGoBinaryModuleFactory(config *Config, buildStage Stage) func() (blueprint.Module, []interface{}) {
 	return func() (blueprint.Module, []interface{}) {
 		module := &goBinary{
-			config: config,
+			config:     config,
+			buildStage: buildStage,
 		}
 		return module, []interface{}{&module.properties}
 	}
@@ -247,6 +280,14 @@ func newGoBinaryModuleFactory(config *Config) func() (blueprint.Module, []interf
 
 func (g *goBinary) GoTestTarget() string {
 	return g.testArchiveFile
+}
+
+func (g *goBinary) BuildStage() Stage {
+	return g.buildStage
+}
+
+func (g *goBinary) SetBuildStage(buildStage Stage) {
+	g.buildStage = buildStage
 }
 
 func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
@@ -267,8 +308,7 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 	// the circular dependence that occurs when the builder requires a new Ninja
 	// file to be built, but building a new ninja file requires the builder to
 	// be built.
-	switch g.config.stage {
-	case StageBootstrap:
+	if g.config.stage == g.BuildStage() {
 		var deps []string
 
 		if g.config.runGoTests {
@@ -304,7 +344,7 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 			Outputs: []string{binaryFile},
 			Inputs:  []string{aoutFile},
 		})
-	case StageMain:
+	} else if g.config.stage != StageBootstrap {
 		if len(g.properties.TestSrcs) > 0 && g.config.runGoTests {
 			phonyGoTarget(ctx, g.testArchiveFile, g.properties.TestSrcs, nil)
 		}
@@ -483,13 +523,21 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	// creating the binary that we'll use to generate the non-bootstrap
 	// build.ninja file.
 	var primaryBuilders []*goBinary
+	// rebootstrapDeps contains modules that will be built in StageBootstrap
 	var rebootstrapDeps []string
+	// primaryRebootstrapDeps contains modules that will be built in StagePrimary
+	var primaryRebootstrapDeps []string
 	ctx.VisitAllModulesIf(isBootstrapBinaryModule,
 		func(module blueprint.Module) {
 			binaryModule := module.(*goBinary)
 			binaryModuleName := ctx.ModuleName(binaryModule)
 			binaryModulePath := filepath.Join(BinDir, binaryModuleName)
-			rebootstrapDeps = append(rebootstrapDeps, binaryModulePath)
+
+			if binaryModule.BuildStage() == StageBootstrap {
+				rebootstrapDeps = append(rebootstrapDeps, binaryModulePath)
+			} else {
+				primaryRebootstrapDeps = append(primaryRebootstrapDeps, binaryModulePath)
+			}
 			if binaryModule.properties.PrimaryBuilder {
 				primaryBuilders = append(primaryBuilders, binaryModule)
 			}
@@ -527,14 +575,18 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		filepath.Base(s.config.topLevelBlueprintsFile))
 
 	rebootstrapDeps = append(rebootstrapDeps, topLevelBlueprints)
+	primaryRebootstrapDeps = append(primaryRebootstrapDeps, topLevelBlueprints)
 
 	mainNinjaFile := filepath.Join(bootstrapDir, "main.ninja.in")
 	mainNinjaTimestampFile := mainNinjaFile + ".timestamp"
 	mainNinjaTimestampDepFile := mainNinjaTimestampFile + ".d"
+	primaryBuilderNinjaFile := filepath.Join(bootstrapDir, "primary.ninja.in")
+	primaryBuilderNinjaTimestampFile := primaryBuilderNinjaFile + ".timestamp"
+	primaryBuilderNinjaTimestampDepFile := primaryBuilderNinjaTimestampFile + ".d"
 	bootstrapNinjaFile := filepath.Join(bootstrapDir, "bootstrap.ninja.in")
 	docsFile := filepath.Join(docsDir, primaryBuilderName+".html")
 
-	rebootstrapDeps = append(rebootstrapDeps, docsFile)
+	primaryRebootstrapDeps = append(primaryRebootstrapDeps, docsFile)
 
 	// If the tests change, be sure to re-run them. These need to be
 	// dependencies for the ninja file so that it's updated after these
@@ -545,7 +597,11 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			testModule := module.(goTestProducer)
 			target := testModule.GoTestTarget()
 			if target != "" {
-				rebootstrapDeps = append(rebootstrapDeps, target)
+				if testModule.BuildStage() == StageBootstrap {
+					rebootstrapDeps = append(rebootstrapDeps, target)
+				} else {
+					primaryRebootstrapDeps = append(primaryRebootstrapDeps, target)
+				}
 			}
 		})
 
@@ -554,9 +610,40 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// We're generating a bootstrapper Ninja file, so we need to set things
 		// up to rebuild the build.ninja file using the primary builder.
 
-		// BuildDir must be different between bootstrap and the main build,
-		// otherwise the cleanup process will remove files from the other build.
-		ctx.SetBuildDir(pctx, bootstrapDir)
+		// BuildDir must be different between the three stages, otherwise the
+		// cleanup process will remove files from the other builds.
+		ctx.SetBuildDir(pctx, miniBootstrapDir)
+
+		// Generate the Ninja file to build the primary builder. Save the
+		// timestamps and deps, so that we can come back to this stage if
+		// it needs to be regenerated.
+		primarybp := ctx.Rule(pctx, "primarybp",
+			blueprint.RuleParams{
+				Command: fmt.Sprintf("%s --build-primary $runTests -m $bootstrapManifest "+
+					"--timestamp $timestamp --timestampdep $timestampdep "+
+					"-d $outfile.d -o $outfile $in", minibpFile),
+				Description: "minibp $outfile",
+				Depfile:     "$outfile.d",
+			},
+			"runTests", "timestamp", "timestampdep", "outfile")
+
+		args := map[string]string{
+			"outfile":      primaryBuilderNinjaFile,
+			"timestamp":    primaryBuilderNinjaTimestampFile,
+			"timestampdep": primaryBuilderNinjaTimestampDepFile,
+		}
+
+		if s.config.runGoTests {
+			args["runTests"] = "-t"
+		}
+
+		ctx.Build(pctx, blueprint.BuildParams{
+			Rule:      primarybp,
+			Outputs:   []string{primaryBuilderNinjaFile, primaryBuilderNinjaTimestampFile},
+			Inputs:    []string{topLevelBlueprints},
+			Implicits: rebootstrapDeps,
+			Args:      args,
+		})
 
 		// Rebuild the bootstrap Ninja file using the minibp that we just built.
 		// If this produces a difference, choosestage will retrigger this stage.
@@ -570,7 +657,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			},
 			"runTests")
 
-		args := map[string]string{}
+		args = map[string]string{}
 
 		if s.config.runGoTests {
 			args["runTests"] = "-t"
@@ -587,6 +674,34 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			Implicits: []string{"$bootstrapManifest", minibpFile},
 			Args:      args,
 		})
+
+		// When the current build.ninja file is a bootstrapper, we always want
+		// to have it replace itself with a non-bootstrapper build.ninja.  To
+		// accomplish that we depend on a file that should never exist and
+		// "build" it using Ninja's built-in phony rule.
+		notAFile := filepath.Join(bootstrapDir, "notAFile")
+		ctx.Build(pctx, blueprint.BuildParams{
+			Rule:    blueprint.Phony,
+			Outputs: []string{notAFile},
+		})
+
+		ctx.Build(pctx, blueprint.BuildParams{
+			Rule:      chooseStage,
+			Outputs:   []string{filepath.Join(bootstrapDir, "build.ninja.in")},
+			Inputs:    []string{bootstrapNinjaFile, primaryBuilderNinjaFile},
+			Implicits: []string{"$chooseStageCmd", "$bootstrapManifest", notAFile},
+			Args: map[string]string{
+				"current": bootstrapNinjaFile,
+			},
+		})
+
+	case StagePrimary:
+		// We're generating a bootstrapper Ninja file, so we need to set things
+		// up to rebuild the build.ninja file using the primary builder.
+
+		// BuildDir must be different between the three stages, otherwise the
+		// cleanup process will remove files from the other builds.
+		ctx.SetBuildDir(pctx, bootstrapDir)
 
 		// We generate the depfile here that includes the dependencies for all
 		// the Blueprints files that contribute to generating the big build
@@ -608,7 +723,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			Rule:      bigbp,
 			Outputs:   []string{mainNinjaFile, mainNinjaTimestampFile},
 			Inputs:    []string{topLevelBlueprints},
-			Implicits: rebootstrapDeps,
+			Implicits: primaryRebootstrapDeps,
 			Args: map[string]string{
 				"timestamp":    mainNinjaTimestampFile,
 				"timestampdep": mainNinjaTimestampDepFile,
@@ -634,6 +749,20 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			Implicits: []string{primaryBuilderFile},
 		})
 
+		// Detect whether we need to rebuild the primary stage by going back to
+		// the bootstrapper. If this is newer than the primaryBuilderNinjaFile,
+		// then chooseStage will trigger a rebuild of primaryBuilderNinjaFile by
+		// returning to the bootstrap stage.
+		ctx.Build(pctx, blueprint.BuildParams{
+			Rule:      touch,
+			Outputs:   []string{primaryBuilderNinjaTimestampFile},
+			Implicits: rebootstrapDeps,
+			Args: map[string]string{
+				"depfile":   primaryBuilderNinjaTimestampDepFile,
+				"generator": "true",
+			},
+		})
+
 		// When the current build.ninja file is a bootstrapper, we always want
 		// to have it replace itself with a non-bootstrapper build.ninja.  To
 		// accomplish that we depend on a file that should never exist and
@@ -647,11 +776,18 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:      chooseStage,
 			Outputs:   []string{filepath.Join(bootstrapDir, "build.ninja.in")},
-			Inputs:    []string{bootstrapNinjaFile, mainNinjaFile},
-			Implicits: []string{"$chooseStageCmd", "$bootstrapManifest", notAFile},
+			Inputs:    []string{bootstrapNinjaFile, primaryBuilderNinjaFile, mainNinjaFile},
+			Implicits: []string{"$chooseStageCmd", "$bootstrapManifest", notAFile, primaryBuilderNinjaTimestampFile},
 			Args: map[string]string{
-				"current": bootstrapNinjaFile,
+				"current": primaryBuilderNinjaFile,
 			},
+		})
+
+		// Create this phony rule so that upgrades don't delete these during
+		// cleanup
+		ctx.Build(pctx, blueprint.BuildParams{
+			Rule:    blueprint.Phony,
+			Outputs: []string{bootstrapNinjaFile},
 		})
 
 	case StageMain:
@@ -667,8 +803,18 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// that Ninja file.
 		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:      touch,
-			Outputs:   []string{mainNinjaTimestampFile},
+			Outputs:   []string{primaryBuilderNinjaTimestampFile},
 			Implicits: rebootstrapDeps,
+			Args: map[string]string{
+				"depfile":   primaryBuilderNinjaTimestampDepFile,
+				"generator": "true",
+			},
+		})
+
+		ctx.Build(pctx, blueprint.BuildParams{
+			Rule:      touch,
+			Outputs:   []string{mainNinjaTimestampFile},
+			Implicits: primaryRebootstrapDeps,
 			Args: map[string]string{
 				"depfile":   mainNinjaTimestampDepFile,
 				"generator": "true",
@@ -678,8 +824,8 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:      chooseStage,
 			Outputs:   []string{filepath.Join(bootstrapDir, "build.ninja.in")},
-			Inputs:    []string{bootstrapNinjaFile, mainNinjaFile},
-			Implicits: []string{"$chooseStageCmd", "$bootstrapManifest", mainNinjaTimestampFile},
+			Inputs:    []string{bootstrapNinjaFile, primaryBuilderNinjaFile, mainNinjaFile},
+			Implicits: []string{"$chooseStageCmd", "$bootstrapManifest", primaryBuilderNinjaTimestampFile, mainNinjaTimestampFile},
 			Args: map[string]string{
 				"current":   mainNinjaFile,
 				"generator": "true",

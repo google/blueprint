@@ -42,6 +42,11 @@ sleep 2
 touch ../Blueprints
 testcase all
 
+# This test affects only the primary bootstrap stage
+sleep 2
+touch ../bpmodify/bpmodify.go
+testcase primary
+
 # This test affects nothing, nothing should be done
 sleep 2
 testcase none
