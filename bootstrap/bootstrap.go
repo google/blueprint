@@ -70,7 +70,7 @@ var (
 
 	bootstrap = pctx.StaticRule("bootstrap",
 		blueprint.RuleParams{
-			Command:     "$bootstrapCmd -i $in",
+			Command:     "echo \"Choosing $$(basename $in) for next stage\" && $bootstrapCmd -i $in",
 			Description: "bootstrap $in",
 			Generator:   true,
 		})

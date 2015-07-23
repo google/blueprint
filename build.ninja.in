@@ -32,7 +32,7 @@ g.bootstrap.srcDir = @@SrcDir@@
 builddir = .bootstrap
 
 rule g.bootstrap.bootstrap
-    command = ${g.bootstrap.bootstrapCmd} -i ${in}
+    command = echo "Choosing $$(basename ${in}) for next stage" && ${g.bootstrap.bootstrapCmd} -i ${in}
     description = bootstrap ${in}
     generator = true
 

@@ -11,3 +11,4 @@ script:
     - ../bootstrap.bash
     - ninja
     - diff -us ../build.ninja.in ../build.ninja.in.orig
+    - ../tests/test.sh
