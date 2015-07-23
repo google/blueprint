@@ -38,11 +38,15 @@ type ConfigInterface interface {
 	GeneratingBootstrapper() bool
 }
 
+type Stage int
+
+const (
+	StageBootstrap Stage = iota
+	StageMain
+)
+
 type Config struct {
-	// generatingBootstrapper should be true if this build invocation is
-	// creating a build.ninja.in file to be used in a build bootstrapping
-	// sequence.
-	generatingBootstrapper bool
+	stage Stage
 
 	topLevelBlueprintsFile string
 

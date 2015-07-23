@@ -29,19 +29,21 @@ import (
 )
 
 var (
-	outFile      string
-	depFile      string
-	checkFile    string
-	manifestFile string
-	docFile      string
-	cpuprofile   string
-	runGoTests   bool
+	outFile          string
+	depFile          string
+	timestampFile    string
+	timestampDepFile string
+	manifestFile     string
+	docFile          string
+	cpuprofile       string
+	runGoTests       bool
 )
 
 func init() {
 	flag.StringVar(&outFile, "o", "build.ninja.in", "the Ninja file to output")
 	flag.StringVar(&depFile, "d", "", "the dependency file to output")
-	flag.StringVar(&checkFile, "c", "", "the existing file to check against")
+	flag.StringVar(&timestampFile, "timestamp", "", "file to write before the output file")
+	flag.StringVar(&timestampDepFile, "timestampdep", "", "the dependency file for the timestamp file")
 	flag.StringVar(&manifestFile, "m", "", "the bootstrap manifest file")
 	flag.StringVar(&docFile, "docs", "", "build documentation file to output")
 	flag.StringVar(&cpuprofile, "cpuprofile", "", "write cpu profile to file")
@@ -69,13 +71,15 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		fatalf("no Blueprints file specified")
 	}
 
-	generatingBootstrapper := false
+	stage := StageMain
 	if c, ok := config.(ConfigInterface); ok {
-		generatingBootstrapper = c.GeneratingBootstrapper()
+		if c.GeneratingBootstrapper() {
+			stage = StageBootstrap
+		}
 	}
 
 	bootstrapConfig := &Config{
-		generatingBootstrapper: generatingBootstrapper,
+		stage: stage,
 		topLevelBlueprintsFile: flag.Arg(0),
 		runGoTests:             runGoTests,
 	}
@@ -118,45 +122,31 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	}
 
 	const outFilePermissions = 0666
+	if timestampFile != "" {
+		err := ioutil.WriteFile(timestampFile, []byte{}, outFilePermissions)
+		if err != nil {
+			fatalf("error writing %s: %s", timestampFile, err)
+		}
+
+		if timestampDepFile != "" {
+			err := deptools.WriteDepFile(timestampDepFile, timestampFile, deps)
+			if err != nil {
+				fatalf("error writing depfile: %s", err)
+			}
+		}
+	}
+
 	err = ioutil.WriteFile(outFile, buf.Bytes(), outFilePermissions)
 	if err != nil {
 		fatalf("error writing %s: %s", outFile, err)
 	}
 
-	if checkFile != "" {
-		checkData, err := ioutil.ReadFile(checkFile)
-		if err != nil {
-			fatalf("error reading %s: %s", checkFile, err)
-		}
-
-		matches := buf.Len() == len(checkData)
-		if matches {
-			for i, value := range buf.Bytes() {
-				if value != checkData[i] {
-					matches = false
-					break
-				}
-			}
-		}
-
-		if matches {
-			// The new file content matches the check-file content, so we set
-			// the new file's mtime and atime to match that of the check-file.
-			checkFileInfo, err := os.Stat(checkFile)
-			if err != nil {
-				fatalf("error stat'ing %s: %s", checkFile, err)
-			}
-
-			time := checkFileInfo.ModTime()
-			err = os.Chtimes(outFile, time, time)
-			if err != nil {
-				fatalf("error setting timestamps for %s: %s", outFile, err)
-			}
-		}
-	}
-
 	if depFile != "" {
 		err := deptools.WriteDepFile(depFile, outFile, deps)
+		if err != nil {
+			fatalf("error writing depfile: %s", err)
+		}
+		err = deptools.WriteDepFile(depFile+".timestamp", outFile+".timestamp", deps)
 		if err != nil {
 			fatalf("error writing depfile: %s", err)
 		}

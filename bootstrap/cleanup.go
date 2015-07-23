@@ -33,7 +33,7 @@ func removeAbandonedFiles(ctx *blueprint.Context, config *Config,
 	srcDir, manifestFile string) error {
 
 	buildDir := "."
-	if config.generatingBootstrapper {
+	if config.stage == StageBootstrap {
 		buildDir = bootstrapDir
 	}
 

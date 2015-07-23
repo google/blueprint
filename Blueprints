@@ -123,3 +123,8 @@ bootstrap_go_binary(
     name = "gotestmain",
     srcs = ["gotestmain/gotestmain.go"],
 )
+
+bootstrap_go_binary(
+    name = "choosestage",
+    srcs = ["choosestage/choosestage.go"],
+)
