@@ -3,6 +3,9 @@ language: go
 install:
     - sudo apt-get install ninja-build
 
+before_script:
+    - source .travis.fix-fork.sh
+
 script:
     - go test ./...
     - cp build.ninja.in build.ninja.in.orig
