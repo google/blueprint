@@ -1,7 +1,15 @@
 language: go
 
+cache:
+    directories:
+        - $HOME/ninjabin
+
 install:
-    - sudo apt-get install ninja-build
+    - ./.travis.install-ninja.sh
+    - export PATH=$PATH:~/ninjabin
+
+before_script:
+    - source .travis.fix-fork.sh
 
 script:
     - go test ./...
