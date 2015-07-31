@@ -98,7 +98,7 @@ bootstrap_go_package(
     ],
 )
 
-bootstrap_go_binary(
+bootstrap_core_go_binary(
     name = "minibp",
     deps = [
         "blueprint",
@@ -119,7 +119,12 @@ bootstrap_go_binary(
     srcs = ["bpmodify/bpmodify.go"],
 )
 
-bootstrap_go_binary(
+bootstrap_core_go_binary(
     name = "gotestmain",
     srcs = ["gotestmain/gotestmain.go"],
+)
+
+bootstrap_core_go_binary(
+    name = "choosestage",
+    srcs = ["choosestage/choosestage.go"],
 )

@@ -1631,7 +1631,7 @@ func spliceModulesAtIndex(modules []*moduleInfo, i int, newModules []*moduleInfo
 func (c *Context) initSpecialVariables() {
 	c.buildDir = nil
 	c.requiredNinjaMajor = 1
-	c.requiredNinjaMinor = 1
+	c.requiredNinjaMinor = 6
 	c.requiredNinjaMicro = 0
 }
 
@@ -2429,6 +2429,10 @@ func (c *Context) writeAllModuleActions(nw *ninjaWriter) error {
 	buf := bytes.NewBuffer(nil)
 
 	for _, module := range modules {
+		if len(module.actionDefs.variables)+len(module.actionDefs.rules)+len(module.actionDefs.buildDefs) == 0 {
+			continue
+		}
+
 		buf.Reset()
 
 		// In order to make the bootstrap build manifest independent of the
@@ -2496,6 +2500,10 @@ func (c *Context) writeAllSingletonActions(nw *ninjaWriter) error {
 
 	for _, name := range singletonNames {
 		info := c.singletonInfo[name]
+
+		if len(info.actionDefs.variables)+len(info.actionDefs.rules)+len(info.actionDefs.buildDefs) == 0 {
+			continue
+		}
 
 		// Get the name of the factory function for the module.
 		factory := info.factory

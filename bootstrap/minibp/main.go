@@ -21,15 +21,24 @@ import (
 )
 
 var runAsPrimaryBuilder bool
+var buildPrimaryBuilder bool
 
 func init() {
 	flag.BoolVar(&runAsPrimaryBuilder, "p", false, "run as a primary builder")
+	flag.BoolVar(&buildPrimaryBuilder, "build-primary", false, "build the primary builder")
 }
 
-type Config bool
+type Config struct {
+	generatingBootstrapper   bool
+	generatingPrimaryBuilder bool
+}
 
 func (c Config) GeneratingBootstrapper() bool {
-	return bool(c)
+	return c.generatingBootstrapper
+}
+
+func (c Config) GeneratingPrimaryBuilder() bool {
+	return c.generatingPrimaryBuilder
 }
 
 func main() {
@@ -40,7 +49,10 @@ func main() {
 		ctx.SetIgnoreUnknownModuleTypes(true)
 	}
 
-	config := Config(!runAsPrimaryBuilder)
+	config := Config{
+		generatingBootstrapper:   !runAsPrimaryBuilder && !buildPrimaryBuilder,
+		generatingPrimaryBuilder: !runAsPrimaryBuilder && buildPrimaryBuilder,
+	}
 
 	bootstrap.Main(ctx, config)
 }

@@ -7,11 +7,13 @@
 #
 #     bootstrap [from Go package github.com/google/blueprint/bootstrap]
 #
-ninja_required_version = 1.1.0
+ninja_required_version = 1.6.0
 
 g.bootstrap.bootstrapCmd = @@Bootstrap@@
 
 g.bootstrap.bootstrapManifest = @@BootstrapManifest@@
+
+g.bootstrap.chooseStageCmd = .bootstrap/bin/choosestage
 
 g.bootstrap.goRoot = @@GoRoot@@
 
@@ -29,12 +31,16 @@ g.bootstrap.linkCmd = ${g.bootstrap.goToolDir}/${g.bootstrap.goChar}l
 
 g.bootstrap.srcDir = @@SrcDir@@
 
-builddir = .bootstrap
+builddir = .minibootstrap
 
 rule g.bootstrap.bootstrap
     command = ${g.bootstrap.bootstrapCmd} -i ${in}
     description = bootstrap ${in}
     generator = true
+
+rule g.bootstrap.chooseStage
+    command = ${g.bootstrap.chooseStageCmd} --current ${current} --bootstrap ${g.bootstrap.bootstrapManifest} -o ${out} ${in}
+    description = choosing next stage
 
 rule g.bootstrap.cp
     command = cp ${in} ${out}
@@ -177,53 +183,29 @@ default $
         .bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# Module:  bpfmt
+# Module:  choosestage
 # Variant:
-# Type:    bootstrap_go_binary
+# Type:    bootstrap_core_go_binary
 # Factory: github.com/google/blueprint/bootstrap.func·003
-# Defined: Blueprints:110:1
+# Defined: Blueprints:127:1
 
-build .bootstrap/bpfmt/obj/bpfmt.a: g.bootstrap.gc $
-        ${g.bootstrap.srcDir}/bpfmt/bpfmt.go | ${g.bootstrap.gcCmd} $
-        .bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a
-    incFlags = -I .bootstrap/blueprint-parser/pkg
-    pkgPath = bpfmt
-default .bootstrap/bpfmt/obj/bpfmt.a
+build .bootstrap/choosestage/obj/choosestage.a: g.bootstrap.gc $
+        ${g.bootstrap.srcDir}/choosestage/choosestage.go | $
+        ${g.bootstrap.gcCmd}
+    pkgPath = choosestage
+default .bootstrap/choosestage/obj/choosestage.a
 
-build .bootstrap/bpfmt/obj/a.out: g.bootstrap.link $
-        .bootstrap/bpfmt/obj/bpfmt.a | ${g.bootstrap.linkCmd}
-    libDirFlags = -L .bootstrap/blueprint-parser/pkg
-default .bootstrap/bpfmt/obj/a.out
-
-build .bootstrap/bin/bpfmt: g.bootstrap.cp .bootstrap/bpfmt/obj/a.out
-default .bootstrap/bin/bpfmt
-
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# Module:  bpmodify
-# Variant:
-# Type:    bootstrap_go_binary
-# Factory: github.com/google/blueprint/bootstrap.func·003
-# Defined: Blueprints:116:1
-
-build .bootstrap/bpmodify/obj/bpmodify.a: g.bootstrap.gc $
-        ${g.bootstrap.srcDir}/bpmodify/bpmodify.go | ${g.bootstrap.gcCmd} $
-        .bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a
-    incFlags = -I .bootstrap/blueprint-parser/pkg
-    pkgPath = bpmodify
-default .bootstrap/bpmodify/obj/bpmodify.a
-
-build .bootstrap/bpmodify/obj/a.out: g.bootstrap.link $
-        .bootstrap/bpmodify/obj/bpmodify.a | ${g.bootstrap.linkCmd}
-    libDirFlags = -L .bootstrap/blueprint-parser/pkg
-default .bootstrap/bpmodify/obj/a.out
-
-build .bootstrap/bin/bpmodify: g.bootstrap.cp .bootstrap/bpmodify/obj/a.out
-default .bootstrap/bin/bpmodify
+build .bootstrap/choosestage/obj/a.out: g.bootstrap.link $
+        .bootstrap/choosestage/obj/choosestage.a | ${g.bootstrap.linkCmd}
+default .bootstrap/choosestage/obj/a.out
+build .bootstrap/bin/choosestage: g.bootstrap.cp $
+        .bootstrap/choosestage/obj/a.out
+default .bootstrap/bin/choosestage
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  gotestmain
 # Variant:
-# Type:    bootstrap_go_binary
+# Type:    bootstrap_core_go_binary
 # Factory: github.com/google/blueprint/bootstrap.func·003
 # Defined: Blueprints:122:1
 
@@ -242,7 +224,7 @@ default .bootstrap/bin/gotestmain
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  minibp
 # Variant:
-# Type:    bootstrap_go_binary
+# Type:    bootstrap_core_go_binary
 # Factory: github.com/google/blueprint/bootstrap.func·003
 # Defined: Blueprints:101:1
 
@@ -271,37 +253,40 @@ default .bootstrap/bin/minibp
 # Singleton: bootstrap
 # Factory:   github.com/google/blueprint/bootstrap.func·008
 
-rule s.bootstrap.bigbpDocs
-    command = .bootstrap/bin/minibp -p --docs ${out} ${g.bootstrap.srcDir}/Blueprints
-    description = minibp docs ${out}
-
-rule s.bootstrap.bigbp
-    command = .bootstrap/bin/minibp -p -d .bootstrap/main.ninja.in.d -m ${g.bootstrap.bootstrapManifest} -o ${out} ${in}
-    depfile = .bootstrap/main.ninja.in.d
-    description = minibp ${out}
+rule s.bootstrap.primarybp
+    command = .bootstrap/bin/minibp --build-primary ${runTests} -m ${g.bootstrap.bootstrapManifest} --timestamp ${timestamp} --timestampdep ${timestampdep} -d ${outfile}.d -o ${outfile} ${in}
+    depfile = ${outfile}.d
+    description = minibp ${outfile}
 
 rule s.bootstrap.minibp
-    command = .bootstrap/bin/minibp ${runTests} -c ${checkFile} -m ${g.bootstrap.bootstrapManifest} -d ${out}.d -o ${out} ${in}
+    command = .bootstrap/bin/minibp ${runTests} -m ${g.bootstrap.bootstrapManifest} -d ${out}.d -o ${out} ${in}
     depfile = ${out}.d
     description = minibp ${out}
     generator = true
 
-build .bootstrap/docs/minibp.html: s.bootstrap.bigbpDocs | $
+build .bootstrap/primary.ninja.in .bootstrap/primary.ninja.in.timestamp: $
+        s.bootstrap.primarybp ${g.bootstrap.srcDir}/Blueprints | $
+        .bootstrap/bin/choosestage .bootstrap/bin/gotestmain $
+        .bootstrap/bin/minibp ${g.bootstrap.srcDir}/Blueprints
+    outfile = .bootstrap/primary.ninja.in
+    timestamp = .bootstrap/primary.ninja.in.timestamp
+    timestampdep = .bootstrap/primary.ninja.in.timestamp.d
+default .bootstrap/primary.ninja.in .bootstrap/primary.ninja.in.timestamp
+
+build .bootstrap/bootstrap.ninja.in: s.bootstrap.minibp $
+        ${g.bootstrap.srcDir}/Blueprints | ${g.bootstrap.bootstrapManifest} $
         .bootstrap/bin/minibp
-default .bootstrap/docs/minibp.html
-build .bootstrap/main.ninja.in: s.bootstrap.bigbp $
-        ${g.bootstrap.srcDir}/Blueprints | .bootstrap/bin/bpfmt $
-        .bootstrap/bin/bpmodify .bootstrap/bin/gotestmain $
-        .bootstrap/bin/minibp .bootstrap/docs/minibp.html
-default .bootstrap/main.ninja.in
+default .bootstrap/bootstrap.ninja.in
 build .bootstrap/notAFile: phony
 default .bootstrap/notAFile
-build build.ninja: g.bootstrap.bootstrap .bootstrap/main.ninja.in | $
-        ${g.bootstrap.bootstrapCmd} .bootstrap/notAFile $
-        .bootstrap/bootstrap.ninja.in
+build .bootstrap/build.ninja.in: g.bootstrap.chooseStage $
+        .bootstrap/bootstrap.ninja.in .bootstrap/primary.ninja.in | $
+        ${g.bootstrap.chooseStageCmd} ${g.bootstrap.bootstrapManifest} $
+        .bootstrap/notAFile
+    current = .bootstrap/bootstrap.ninja.in
+default .bootstrap/build.ninja.in
+
+build build.ninja: g.bootstrap.bootstrap .bootstrap/build.ninja.in | $
+        ${g.bootstrap.bootstrapCmd}
 default build.ninja
-build .bootstrap/bootstrap.ninja.in: s.bootstrap.minibp $
-        ${g.bootstrap.srcDir}/Blueprints | .bootstrap/bin/minibp
-    checkFile = ${g.bootstrap.bootstrapManifest}
-default .bootstrap/bootstrap.ninja.in
 
