@@ -59,6 +59,21 @@ EXTRA_ARGS=""
 # If RUN_TESTS is set, behave like -t was passed in as an option.
 [ ! -z "$RUN_TESTS" ] && EXTRA_ARGS="$EXTRA_ARGS -t"
 
+GOTOOLDIR="$GOROOT/pkg/tool/${GOOS}_$GOARCH"
+GOCOMPILE="$GOTOOLDIR/${GOCHAR}g"
+GOLINK="$GOTOOLDIR/${GOCHAR}l"
+
+if [ ! -f $GOCOMPILE ]; then
+  GOCOMPILE="$GOTOOLDIR/compile"
+fi
+if [ ! -f $GOLINK ]; then
+  GOLINK="$GOTOOLDIR/link"
+fi
+if [[ ! -f $GOCOMPILE || ! -f $GOLINK ]]; then
+  echo "Cannot find go tools under $GOROOT"
+  exit 1
+fi
+
 usage() {
     echo "Usage of ${BOOTSTRAP}:"
     echo "  -h: print a help message and exit"
@@ -108,9 +123,8 @@ mkdir -p $BUILDDIR
 sed -e "s|@@SrcDir@@|$SRCDIR|g"                        \
     -e "s|@@BuildDir@@|$BUILDDIR|g"                    \
     -e "s|@@GoRoot@@|$GOROOT|g"                        \
-    -e "s|@@GoOS@@|$GOOS|g"                            \
-    -e "s|@@GoArch@@|$GOARCH|g"                        \
-    -e "s|@@GoChar@@|$GOCHAR|g"                        \
+    -e "s|@@GoCompile@@|$GOCOMPILE|g"                  \
+    -e "s|@@GoLink@@|$GOLINK|g"                        \
     -e "s|@@Bootstrap@@|$BOOTSTRAP|g"                  \
     -e "s|@@BootstrapManifest@@|$BOOTSTRAP_MANIFEST|g" \
     $IN > $BUILDDIR/build.ninja

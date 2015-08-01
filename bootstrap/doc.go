@@ -119,9 +119,8 @@
 //   @@SrcDir@@            - The path to the root source directory (either
 //                           absolute or relative to the build dir)
 //   @@GoRoot@@            - The path to the root directory of the Go toolchain
-//   @@GoOS@@              - The OS string for the Go toolchain
-//   @@GoArch@@            - The CPU architecture for the Go toolchain
-//   @@GoChar@@            - The CPU arch character for the Go toolchain
+//   @@GoCompile@@         - The path to the Go compiler (6g or compile)
+//   @@GoLink@@            - The path to the Go linker (6l or link)
 //   @@Bootstrap@@         - The path to the bootstrap script
 //   @@BootstrapManifest@@ - The path to the source bootstrap Ninja file
 //
