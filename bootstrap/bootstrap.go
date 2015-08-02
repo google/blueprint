@@ -116,11 +116,11 @@ func propagateStageBootstrap(mctx blueprint.TopDownMutatorContext) {
 		return
 	}
 
-	mctx.VisitDirectDeps(func (mod blueprint.Module) {
-			if m, ok := mod.(bootstrapGoCore); ok {
-				m.SetBuildStage(StageBootstrap)
-			}
-		})
+	mctx.VisitDirectDeps(func(mod blueprint.Module) {
+		if m, ok := mod.(bootstrapGoCore); ok {
+			m.SetBuildStage(StageBootstrap)
+		}
+	})
 }
 
 type goPackageProducer interface {
@@ -184,7 +184,8 @@ var _ goPackageProducer = (*goPackage)(nil)
 func newGoPackageModuleFactory(config *Config) func() (blueprint.Module, []interface{}) {
 	return func() (blueprint.Module, []interface{}) {
 		module := &goPackage{
-			config: config,
+			buildStage: StagePrimary,
+			config:     config,
 		}
 		return module, []interface{}{&module.properties}
 	}
