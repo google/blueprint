@@ -47,11 +47,12 @@ func removeAbandonedFiles(ctx *blueprint.Context, config *Config,
 
 	replacer := strings.NewReplacer(
 		"@@SrcDir@@", srcDir,
+		"@@BuildDir@@", BuildDir,
 		"@@BootstrapManifest@@", manifestFile)
 	targets := make(map[string]bool)
 	for target := range targetRules {
 		replacedTarget := replacer.Replace(target)
-		targets[replacedTarget] = true
+		targets[filepath.Clean(replacedTarget)] = true
 	}
 
 	filePaths, err := parseNinjaLog(buildDir)

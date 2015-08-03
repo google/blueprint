@@ -11,6 +11,7 @@
 #
 #   BOOTSTRAP
 #   SRCDIR
+#   BUILDDIR
 #   BOOTSTRAP_MANIFEST
 #   GOROOT
 #   GOOS
@@ -35,6 +36,10 @@ EXTRA_ARGS=""
 # be moved relative to or along with the source directory without re-running
 # the bootstrap script.
 [ -z "$SRCDIR" ] && SRCDIR=`dirname "${BOOTSTRAP}"`
+
+# BUILDDIR should be set to the path to store build results. By default, this
+# is the current directory, but it may be set to an absolute or relative path.
+[ -z "$BUILDDIR" ] && BUILDDIR=.
 
 # TOPNAME should be set to the name of the top-level Blueprints file
 [ -z "$TOPNAME" ] && TOPNAME="Blueprints"
@@ -64,8 +69,9 @@ usage() {
 # Parse the command line flags.
 IN="$BOOTSTRAP_MANIFEST"
 REGEN_BOOTSTRAP_MANIFEST=false
-while getopts ":hi:rt" opt; do
+while getopts ":b:hi:rt" opt; do
     case $opt in
+        b) BUILDDIR="$OPTARG";;
         h)
             usage
             exit 1
@@ -88,20 +94,23 @@ done
 if [ $REGEN_BOOTSTRAP_MANIFEST = true ]; then
     # This assumes that the script is being run from a build output directory
     # that has been built in the past.
-    if [ -x .bootstrap/bin/minibp ]; then
+    if [ -x $BUILDDIR/.bootstrap/bin/minibp ]; then
         echo "Regenerating $BOOTSTRAP_MANIFEST"
-        ./.bootstrap/bin/minibp $EXTRA_ARGS -o $BOOTSTRAP_MANIFEST $SRCDIR/$TOPNAME
+        $BUILDDIR/.bootstrap/bin/minibp $EXTRA_ARGS -o $BOOTSTRAP_MANIFEST $SRCDIR/$TOPNAME
     else
-        echo "Executable minibp not found at .bootstrap/bin/minibp" >&2
+        echo "Executable minibp not found at $BUILDDIR/.bootstrap/bin/minibp" >&2
         exit 1
     fi
 fi
 
+mkdir -p $BUILDDIR
+
 sed -e "s|@@SrcDir@@|$SRCDIR|g"                        \
+    -e "s|@@BuildDir@@|$BUILDDIR|g"                    \
     -e "s|@@GoRoot@@|$GOROOT|g"                        \
     -e "s|@@GoOS@@|$GOOS|g"                            \
     -e "s|@@GoArch@@|$GOARCH|g"                        \
     -e "s|@@GoChar@@|$GOCHAR|g"                        \
     -e "s|@@Bootstrap@@|$BOOTSTRAP|g"                  \
     -e "s|@@BootstrapManifest@@|$BOOTSTRAP_MANIFEST|g" \
-    $IN > build.ninja
+    $IN > $BUILDDIR/build.ninja
