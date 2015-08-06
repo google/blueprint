@@ -29,23 +29,21 @@ const miniBootstrapDir = "$buildDir/.minibootstrap"
 var (
 	pctx = blueprint.NewPackageContext("github.com/google/blueprint/bootstrap")
 
-	gcCmd          = pctx.StaticVariable("gcCmd", "$goToolDir/${goChar}g")
-	linkCmd        = pctx.StaticVariable("linkCmd", "$goToolDir/${goChar}l")
 	goTestMainCmd  = pctx.StaticVariable("goTestMainCmd", filepath.Join(bootstrapDir, "bin", "gotestmain"))
 	chooseStageCmd = pctx.StaticVariable("chooseStageCmd", filepath.Join(bootstrapDir, "bin", "choosestage"))
 
-	gc = pctx.StaticRule("gc",
+	compile = pctx.StaticRule("compile",
 		blueprint.RuleParams{
-			Command: "GOROOT='$goRoot' $gcCmd -o $out -p $pkgPath -complete " +
+			Command: "GOROOT='$goRoot' $compileCmd -o $out -p $pkgPath -complete " +
 				"$incFlags -pack $in",
-			Description: "${goChar}g $out",
+			Description: "compile $out",
 		},
 		"pkgPath", "incFlags")
 
 	link = pctx.StaticRule("link",
 		blueprint.RuleParams{
 			Command:     "GOROOT='$goRoot' $linkCmd -o $out $libDirFlags $in",
-			Description: "${goChar}l $out",
+			Description: "link $out",
 		},
 		"libDirFlags")
 
@@ -362,7 +360,7 @@ func buildGoPackage(ctx blueprint.ModuleContext, pkgRoot string,
 	srcFiles := pathtools.PrefixPaths(srcs, srcDir)
 
 	var incFlags []string
-	deps := []string{"$gcCmd"}
+	deps := []string{"$compileCmd"}
 	ctx.VisitDepsDepthFirstIf(isGoPackageProducer,
 		func(module blueprint.Module) {
 			dep := module.(goPackageProducer)
@@ -372,21 +370,21 @@ func buildGoPackage(ctx blueprint.ModuleContext, pkgRoot string,
 			deps = append(deps, target)
 		})
 
-	gcArgs := map[string]string{
+	compileArgs := map[string]string{
 		"pkgPath": pkgPath,
 	}
 
 	if len(incFlags) > 0 {
-		gcArgs["incFlags"] = strings.Join(incFlags, " ")
+		compileArgs["incFlags"] = strings.Join(incFlags, " ")
 	}
 
 	ctx.Build(pctx, blueprint.BuildParams{
-		Rule:      gc,
+		Rule:      compile,
 		Outputs:   []string{archiveFile},
 		Inputs:    srcFiles,
 		OrderOnly: orderDeps,
 		Implicits: deps,
-		Args:      gcArgs,
+		Args:      compileArgs,
 	})
 }
 
@@ -428,10 +426,10 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot string,
 		})
 
 	ctx.Build(pctx, blueprint.BuildParams{
-		Rule:      gc,
+		Rule:      compile,
 		Outputs:   []string{testArchive},
 		Inputs:    []string{mainFile},
-		Implicits: []string{testPkgArchive},
+		Implicits: []string{"$compileCmd", testPkgArchive},
 		Args: map[string]string{
 			"pkgPath":  "main",
 			"incFlags": "-I " + testRoot,

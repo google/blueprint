@@ -21,15 +21,11 @@ var (
 	srcDir            = pctx.StaticVariable("srcDir", "@@SrcDir@@")
 	buildDir          = pctx.StaticVariable("buildDir", "@@BuildDir@@")
 	goRoot            = pctx.StaticVariable("goRoot", "@@GoRoot@@")
-	goOS              = pctx.StaticVariable("goOS", "@@GoOS@@")
-	goArch            = pctx.StaticVariable("goArch", "@@GoArch@@")
-	goChar            = pctx.StaticVariable("goChar", "@@GoChar@@")
+	compileCmd        = pctx.StaticVariable("compileCmd", "@@GoCompile@@")
+	linkCmd           = pctx.StaticVariable("linkCmd", "@@GoLink@@")
 	bootstrapCmd      = pctx.StaticVariable("bootstrapCmd", "@@Bootstrap@@")
 	bootstrapManifest = pctx.StaticVariable("bootstrapManifest",
 		"@@BootstrapManifest@@")
-
-	goToolDir = pctx.StaticVariable("goToolDir",
-		"$goRoot/pkg/tool/${goOS}_$goArch")
 )
 
 type ConfigInterface interface {
