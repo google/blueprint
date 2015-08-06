@@ -1,0 +1,130 @@
+bootstrap_go_package(
+    name = "blueprint",
+    deps = [
+        "blueprint-parser",
+        "blueprint-pathtools",
+        "blueprint-proptools",
+    ],
+    pkgPath = "github.com/google/blueprint",
+    srcs = [
+        "context.go",
+        "live_tracker.go",
+        "mangle.go",
+        "module_ctx.go",
+        "ninja_defs.go",
+        "ninja_strings.go",
+        "ninja_writer.go",
+        "package_ctx.go",
+        "scope.go",
+        "singleton_ctx.go",
+        "unpack.go",
+    ],
+    testSrcs = [
+        "context_test.go",
+        "ninja_strings_test.go",
+        "ninja_writer_test.go",
+        "splice_modules_test.go",
+        "unpack_test.go",
+    ],
+)
+
+bootstrap_go_package(
+    name = "blueprint-parser",
+    pkgPath = "github.com/google/blueprint/parser",
+    srcs = [
+        "parser/modify.go",
+        "parser/parser.go",
+        "parser/printer.go",
+        "parser/sort.go",
+    ],
+    testSrcs = [
+        "parser/parser_test.go",
+        "parser/printer_test.go",
+    ],
+)
+
+bootstrap_go_package(
+    name = "blueprint-deptools",
+    pkgPath = "github.com/google/blueprint/deptools",
+    srcs = ["deptools/depfile.go"],
+)
+
+bootstrap_go_package(
+    name = "blueprint-pathtools",
+    pkgPath = "github.com/google/blueprint/pathtools",
+    srcs = [
+        "pathtools/lists.go",
+        "pathtools/glob.go",
+    ],
+    testSrcs = [
+        "pathtools/glob_test.go",
+    ],
+)
+
+bootstrap_go_package(
+    name = "blueprint-proptools",
+    pkgPath = "github.com/google/blueprint/proptools",
+    srcs = ["proptools/proptools.go"],
+)
+
+bootstrap_go_package(
+    name = "blueprint-bootstrap",
+    deps = [
+        "blueprint",
+        "blueprint-deptools",
+        "blueprint-pathtools",
+        "blueprint-bootstrap-bpdoc",
+    ],
+    pkgPath = "github.com/google/blueprint/bootstrap",
+    srcs = [
+        "bootstrap/bootstrap.go",
+        "bootstrap/cleanup.go",
+        "bootstrap/command.go",
+        "bootstrap/config.go",
+        "bootstrap/doc.go",
+        "bootstrap/writedocs.go",
+    ],
+)
+
+bootstrap_go_package(
+    name = "blueprint-bootstrap-bpdoc",
+    deps = [
+        "blueprint",
+        "blueprint-proptools",
+    ],
+    pkgPath = "github.com/google/blueprint/bootstrap/bpdoc",
+    srcs = [
+        "bootstrap/bpdoc/bpdoc.go",
+    ],
+)
+
+bootstrap_core_go_binary(
+    name = "minibp",
+    deps = [
+        "blueprint",
+        "blueprint-bootstrap",
+    ],
+    srcs = ["bootstrap/minibp/main.go"],
+)
+
+bootstrap_go_binary(
+    name = "bpfmt",
+    deps = ["blueprint-parser"],
+    srcs = ["bpfmt/bpfmt.go"],
+)
+
+bootstrap_go_binary(
+    name = "bpmodify",
+    deps = ["blueprint-parser"],
+    srcs = ["bpmodify/bpmodify.go"],
+)
+
+bootstrap_core_go_binary(
+    name = "gotestmain",
+    srcs = ["gotestmain/gotestmain.go"],
+)
+
+bootstrap_core_go_binary(
+    name = "choosestage",
+    srcs = ["choosestage/choosestage.go"],
+)
