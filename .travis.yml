@@ -1,0 +1,21 @@
+language: go
+
+cache:
+    directories:
+        - $HOME/ninjabin
+
+install:
+    - ./.travis.install-ninja.sh
+    - export PATH=$PATH:~/ninjabin
+
+before_script:
+    - source .travis.fix-fork.sh
+
+script:
+    - go test ./...
+    - mkdir stage
+    - cd stage 
+    - ../bootstrap.bash
+    - ninja
+    - diff -us ../build.ninja.in .bootstrap/bootstrap.ninja.in
+    - ../tests/test.sh
