@@ -38,7 +38,7 @@ func NewDocCollector(pkgFiles map[string][]string) *DocCollector {
 // Return the PropertyStructDocs associated with a property struct type.  The type should be in the
 // format <package path>.<type name>
 func (dc *DocCollector) Docs(pkg, name string, defaults reflect.Value) (*PropertyStructDocs, error) {
-	docs := dc.getDocs(name)
+	docs := dc.getDocs(pkg, name)
 
 	if docs == nil {
 		pkgDocs, err := dc.packageDocs(pkg)
@@ -52,7 +52,7 @@ func (dc *DocCollector) Docs(pkg, name string, defaults reflect.Value) (*Propert
 				if err != nil {
 					return nil, err
 				}
-				docs = dc.putDocs(name, docs)
+				docs = dc.putDocs(pkg, name, docs)
 			}
 		}
 	}
@@ -67,16 +67,20 @@ func (dc *DocCollector) Docs(pkg, name string, defaults reflect.Value) (*Propert
 	return docs, nil
 }
 
-func (dc *DocCollector) getDocs(name string) *PropertyStructDocs {
+func (dc *DocCollector) getDocs(pkg, name string) *PropertyStructDocs {
 	dc.mutex.Lock()
 	defer dc.mutex.Unlock()
+
+	name = pkg + "." + name
 
 	return dc.docs[name]
 }
 
-func (dc *DocCollector) putDocs(name string, docs *PropertyStructDocs) *PropertyStructDocs {
+func (dc *DocCollector) putDocs(pkg, name string, docs *PropertyStructDocs) *PropertyStructDocs {
 	dc.mutex.Lock()
 	defer dc.mutex.Unlock()
+
+	name = pkg + "." + name
 
 	if dc.docs[name] != nil {
 		return dc.docs[name]
