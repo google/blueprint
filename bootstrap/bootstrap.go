@@ -837,7 +837,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// cleanup
 		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:    blueprint.Phony,
-			Outputs: []string{mainNinjaFile, docsFile},
+			Outputs: []string{mainNinjaFile, docsFile, "$bootstrapManifest"},
 		})
 
 		if primaryBuilderName == "minibp" {
