@@ -23,8 +23,8 @@ import (
 	"github.com/google/blueprint/pathtools"
 )
 
-const bootstrapDir = "$buildDir/.bootstrap"
-const miniBootstrapDir = "$buildDir/.minibootstrap"
+const bootstrapSubDir = ".bootstrap"
+const miniBootstrapSubDir = ".minibootstrap"
 
 var (
 	pctx = blueprint.NewPackageContext("github.com/google/blueprint/bootstrap")
@@ -102,6 +102,9 @@ var (
 	minibpFile = filepath.Join("$BinDir", "minibp")
 
 	docsDir = filepath.Join(bootstrapDir, "docs")
+
+	bootstrapDir = filepath.Join("$buildDir", bootstrapSubDir)
+	miniBootstrapDir = filepath.Join("$buildDir", miniBootstrapSubDir)
 )
 
 type bootstrapGoCore interface {
