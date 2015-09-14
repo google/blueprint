@@ -1077,6 +1077,11 @@ func (c *Context) ResolveDependencies(config interface{}) []error {
 		return errs
 	}
 
+	errs = c.runMutators(config)
+	if len(errs) > 0 {
+		return errs
+	}
+
 	c.dependenciesReady = true
 	return nil
 }
@@ -1151,6 +1156,22 @@ func (c *Context) resolveDependencies(config interface{}) (errs []error) {
 	return
 }
 
+// findMatchingVariant searches the moduleGroup for a module with the same variant as module,
+// and returns the matching module, or nil if one is not found.
+func (c *Context) findMatchingVariant(module *moduleInfo, group *moduleGroup) *moduleInfo {
+	if len(group.modules) == 1 {
+		return group.modules[0]
+	} else {
+		for _, m := range group.modules {
+			if m.variant.equal(module.dependencyVariant) {
+				return m
+			}
+		}
+	}
+
+	return nil
+}
+
 func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 	depsPos := module.propertyPos["deps"]
 
@@ -1176,16 +1197,9 @@ func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 		}
 	}
 
-	if len(depInfo.modules) == 1 {
-		module.directDeps = append(module.directDeps, depInfo.modules[0])
+	if m := c.findMatchingVariant(module, depInfo); m != nil {
+		module.directDeps = append(module.directDeps, m)
 		return nil
-	} else {
-		for _, m := range depInfo.modules {
-			if m.variant.equal(module.dependencyVariant) {
-				module.directDeps = append(module.directDeps, m)
-				return nil
-			}
-		}
 	}
 
 	return []error{&Error{
@@ -1193,6 +1207,36 @@ func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 			depInfo.modules[0].properties.Name, module.properties.Name,
 			c.prettyPrintVariant(module.dependencyVariant)),
 		Pos: depsPos,
+	}}
+}
+
+func (c *Context) addReverseDependency(module *moduleInfo, destName string) []error {
+	if destName == module.properties.Name {
+		return []error{&Error{
+			Err: fmt.Errorf("%q depends on itself", destName),
+			Pos: module.pos,
+		}}
+	}
+
+	destInfo, ok := c.moduleGroups[destName]
+	if !ok {
+		return []error{&Error{
+			Err: fmt.Errorf("%q has a reverse dependency on undefined module %q",
+				module.properties.Name, destName),
+			Pos: module.pos,
+		}}
+	}
+
+	if m := c.findMatchingVariant(module, destInfo); m != nil {
+		m.directDeps = append(m.directDeps, module)
+		return nil
+	}
+
+	return []error{&Error{
+		Err: fmt.Errorf("reverse dependency %q of %q missing variant %q",
+			destName, module.properties.Name,
+			c.prettyPrintVariant(module.dependencyVariant)),
+		Pos: module.pos,
 	}}
 }
 
@@ -1433,11 +1477,6 @@ func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs [
 		if len(errs) > 0 {
 			return nil, errs
 		}
-	}
-
-	errs = c.runMutators(config)
-	if len(errs) > 0 {
-		return nil, errs
 	}
 
 	liveGlobals := newLiveTracker(config)
