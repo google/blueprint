@@ -169,6 +169,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 
 func fatalf(format string, args ...interface{}) {
 	fmt.Printf(format, args...)
+	fmt.Print("\n")
 	os.Exit(1)
 }
 
