@@ -90,6 +90,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		runGoTests:             runGoTests,
 	}
 
+	ctx.RegisterBottomUpMutator("bootstrap_plugin_deps", pluginDeps)
 	ctx.RegisterModuleType("bootstrap_go_package", newGoPackageModuleFactory(bootstrapConfig))
 	ctx.RegisterModuleType("bootstrap_core_go_binary", newGoBinaryModuleFactory(bootstrapConfig, StageBootstrap))
 	ctx.RegisterModuleType("bootstrap_go_binary", newGoBinaryModuleFactory(bootstrapConfig, StagePrimary))
@@ -169,6 +170,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 
 func fatalf(format string, args ...interface{}) {
 	fmt.Printf(format, args...)
+	fmt.Print("\n")
 	os.Exit(1)
 }
 

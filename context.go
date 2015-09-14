@@ -69,7 +69,7 @@ type Context struct {
 	moduleGroups        map[string]*moduleGroup
 	moduleInfo          map[Module]*moduleInfo
 	modulesSorted       []*moduleInfo
-	singletonInfo       map[string]*singletonInfo
+	singletonInfo       []*singletonInfo
 	mutatorInfo         []*mutatorInfo
 	earlyMutatorInfo    []*earlyMutatorInfo
 	variantMutatorNames []string
@@ -195,6 +195,7 @@ type singletonInfo struct {
 	// set during RegisterSingletonType
 	factory   SingletonFactory
 	singleton Singleton
+	name      string
 
 	// set during PrepareBuildActions
 	actionDefs localBuildActions
@@ -227,7 +228,6 @@ func NewContext() *Context {
 		moduleFactories:  make(map[string]ModuleFactory),
 		moduleGroups:     make(map[string]*moduleGroup),
 		moduleInfo:       make(map[Module]*moduleInfo),
-		singletonInfo:    make(map[string]*singletonInfo),
 		moduleNinjaNames: make(map[string]*moduleGroup),
 	}
 }
@@ -312,20 +312,24 @@ type SingletonFactory func() Singleton
 
 // RegisterSingletonType registers a singleton type that will be invoked to
 // generate build actions.  Each registered singleton type is instantiated and
-// and invoked exactly once as part of the generate phase.
+// and invoked exactly once as part of the generate phase.  Each registered
+// singleton is invoked in registration order.
 //
 // The singleton type names given here must be unique for the context.  The
 // factory function should be a named function so that its package and name can
 // be included in the generated Ninja file for debugging purposes.
 func (c *Context) RegisterSingletonType(name string, factory SingletonFactory) {
-	if _, present := c.singletonInfo[name]; present {
-		panic(errors.New("singleton name is already registered"))
+	for _, s := range c.singletonInfo {
+		if s.name == name {
+			panic(errors.New("singleton name is already registered"))
+		}
 	}
 
-	c.singletonInfo[name] = &singletonInfo{
+	c.singletonInfo = append(c.singletonInfo, &singletonInfo{
 		factory:   factory,
 		singleton: factory(),
-	}
+		name:      name,
+	})
 }
 
 func singletonPkgPath(singleton Singleton) string {
@@ -1073,6 +1077,11 @@ func (c *Context) ResolveDependencies(config interface{}) []error {
 		return errs
 	}
 
+	errs = c.runMutators(config)
+	if len(errs) > 0 {
+		return errs
+	}
+
 	c.dependenciesReady = true
 	return nil
 }
@@ -1147,6 +1156,22 @@ func (c *Context) resolveDependencies(config interface{}) (errs []error) {
 	return
 }
 
+// findMatchingVariant searches the moduleGroup for a module with the same variant as module,
+// and returns the matching module, or nil if one is not found.
+func (c *Context) findMatchingVariant(module *moduleInfo, group *moduleGroup) *moduleInfo {
+	if len(group.modules) == 1 {
+		return group.modules[0]
+	} else {
+		for _, m := range group.modules {
+			if m.variant.equal(module.dependencyVariant) {
+				return m
+			}
+		}
+	}
+
+	return nil
+}
+
 func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 	depsPos := module.propertyPos["deps"]
 
@@ -1172,16 +1197,9 @@ func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 		}
 	}
 
-	if len(depInfo.modules) == 1 {
-		module.directDeps = append(module.directDeps, depInfo.modules[0])
+	if m := c.findMatchingVariant(module, depInfo); m != nil {
+		module.directDeps = append(module.directDeps, m)
 		return nil
-	} else {
-		for _, m := range depInfo.modules {
-			if m.variant.equal(module.dependencyVariant) {
-				module.directDeps = append(module.directDeps, m)
-				return nil
-			}
-		}
 	}
 
 	return []error{&Error{
@@ -1189,6 +1207,36 @@ func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 			depInfo.modules[0].properties.Name, module.properties.Name,
 			c.prettyPrintVariant(module.dependencyVariant)),
 		Pos: depsPos,
+	}}
+}
+
+func (c *Context) addReverseDependency(module *moduleInfo, destName string) []error {
+	if destName == module.properties.Name {
+		return []error{&Error{
+			Err: fmt.Errorf("%q depends on itself", destName),
+			Pos: module.pos,
+		}}
+	}
+
+	destInfo, ok := c.moduleGroups[destName]
+	if !ok {
+		return []error{&Error{
+			Err: fmt.Errorf("%q has a reverse dependency on undefined module %q",
+				module.properties.Name, destName),
+			Pos: module.pos,
+		}}
+	}
+
+	if m := c.findMatchingVariant(module, destInfo); m != nil {
+		m.directDeps = append(m.directDeps, module)
+		return nil
+	}
+
+	return []error{&Error{
+		Err: fmt.Errorf("reverse dependency %q of %q missing variant %q",
+			destName, module.properties.Name,
+			c.prettyPrintVariant(module.dependencyVariant)),
+		Pos: module.pos,
 	}}
 }
 
@@ -1429,11 +1477,6 @@ func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs [
 		if len(errs) > 0 {
 			return nil, errs
 		}
-	}
-
-	errs = c.runMutators(config)
-	if len(errs) > 0 {
-		return nil, errs
 	}
 
 	liveGlobals := newLiveTracker(config)
@@ -1706,11 +1749,11 @@ func (c *Context) generateSingletonBuildActions(config interface{},
 	var deps []string
 	var errs []error
 
-	for name, info := range c.singletonInfo {
+	for _, info := range c.singletonInfo {
 		// The parent scope of the singletonContext's local scope gets overridden to be that of the
 		// calling Go package on a per-call basis.  Since the initial parent scope doesn't matter we
 		// just set it to nil.
-		scope := newLocalScope(nil, singletonNamespacePrefix(name))
+		scope := newLocalScope(nil, singletonNamespacePrefix(info.name))
 
 		sctx := &singletonContext{
 			context: c,
@@ -2492,15 +2535,7 @@ func (c *Context) writeAllSingletonActions(nw *ninjaWriter) error {
 
 	buf := bytes.NewBuffer(nil)
 
-	singletonNames := make([]string, 0, len(c.singletonInfo))
-	for name := range c.singletonInfo {
-		singletonNames = append(singletonNames, name)
-	}
-	sort.Strings(singletonNames)
-
-	for _, name := range singletonNames {
-		info := c.singletonInfo[name]
-
+	for _, info := range c.singletonInfo {
 		if len(info.actionDefs.variables)+len(info.actionDefs.rules)+len(info.actionDefs.buildDefs) == 0 {
 			continue
 		}
@@ -2512,7 +2547,7 @@ func (c *Context) writeAllSingletonActions(nw *ninjaWriter) error {
 
 		buf.Reset()
 		infoMap := map[string]interface{}{
-			"name":      name,
+			"name":      info.name,
 			"goFactory": factoryName,
 		}
 		err = headerTemplate.Execute(buf, infoMap)
