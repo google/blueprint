@@ -32,12 +32,12 @@ const logFileName = ".ninja_log"
 func removeAbandonedFiles(ctx *blueprint.Context, config *Config,
 	srcDir, manifestFile string) error {
 
-	buildDir := "."
+	buildDir := BuildDir
 	switch config.stage {
 	case StageBootstrap:
-		buildDir = miniBootstrapDir
+		buildDir = filepath.Join(buildDir, miniBootstrapSubDir)
 	case StagePrimary:
-		buildDir = bootstrapDir
+		buildDir = filepath.Join(buildDir, bootstrapSubDir)
 	}
 
 	targetRules, err := ctx.AllTargets()

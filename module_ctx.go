@@ -359,8 +359,7 @@ func (mctx *dynamicDependerModuleContext) AddFarVariationDependencies(variations
 
 type mutatorContext struct {
 	baseModuleContext
-	name                 string
-	dependenciesModified bool
+	name string
 }
 
 type baseMutatorContext interface {
@@ -389,6 +388,7 @@ type BottomUpMutatorContext interface {
 	baseMutatorContext
 
 	AddDependency(module Module, name string)
+	AddReverseDependency(module Module, name string)
 	CreateVariations(...string) []Module
 	CreateLocalVariations(...string) []Module
 	SetDependencyVariation(string)
@@ -464,8 +464,7 @@ func (mctx *mutatorContext) Module() Module {
 	return mctx.module.logicModule
 }
 
-// Add a dependency to the given module.  The depender can be a specific variant
-// of a module, but the dependee must be a module that has no variations.
+// Add a dependency to the given module.
 // Does not affect the ordering of the current mutator pass, but will be ordered
 // correctly for all future mutator passes.
 func (mctx *mutatorContext) AddDependency(module Module, depName string) {
@@ -473,7 +472,16 @@ func (mctx *mutatorContext) AddDependency(module Module, depName string) {
 	if len(errs) > 0 {
 		mctx.errs = append(mctx.errs, errs...)
 	}
-	mctx.dependenciesModified = true
+}
+
+// Add a dependency from the destination to the given module.
+// Does not affect the ordering of the current mutator pass, but will be ordered
+// correctly for all future mutator passes.
+func (mctx *mutatorContext) AddReverseDependency(module Module, destName string) {
+	errs := mctx.context.addReverseDependency(mctx.context.moduleInfo[module], destName)
+	if len(errs) > 0 {
+		mctx.errs = append(mctx.errs, errs...)
+	}
 }
 
 func (mctx *mutatorContext) VisitDirectDeps(visit func(Module)) {
