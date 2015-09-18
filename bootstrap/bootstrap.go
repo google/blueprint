@@ -30,6 +30,7 @@ var (
 	pctx = blueprint.NewPackageContext("github.com/google/blueprint/bootstrap")
 
 	goTestMainCmd   = pctx.StaticVariable("goTestMainCmd", filepath.Join(bootstrapDir, "bin", "gotestmain"))
+	goTestRunnerCmd = pctx.StaticVariable("goTestRunnerCmd", filepath.Join(bootstrapDir, "bin", "gotestrunner"))
 	chooseStageCmd  = pctx.StaticVariable("chooseStageCmd", filepath.Join(bootstrapDir, "bin", "choosestage"))
 	pluginGenSrcCmd = pctx.StaticVariable("pluginGenSrcCmd", filepath.Join(bootstrapDir, "bin", "loadplugins"))
 
@@ -64,7 +65,7 @@ var (
 
 	test = pctx.StaticRule("test",
 		blueprint.RuleParams{
-			Command:     "(cd $pkgSrcDir && $$OLDPWD/$in -test.short) && touch $out",
+			Command:     "$goTestRunnerCmd -p $pkgSrcDir -f $out -- $in -test.short",
 			Description: "test $pkg",
 		},
 		"pkg", "pkgSrcDir")
@@ -111,7 +112,7 @@ var (
 
 	docsDir = filepath.Join(bootstrapDir, "docs")
 
-	bootstrapDir = filepath.Join("$buildDir", bootstrapSubDir)
+	bootstrapDir     = filepath.Join("$buildDir", bootstrapSubDir)
 	miniBootstrapDir = filepath.Join("$buildDir", miniBootstrapSubDir)
 )
 
@@ -553,9 +554,10 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 	})
 
 	ctx.Build(pctx, blueprint.BuildParams{
-		Rule:    test,
-		Outputs: []string{testPassed},
-		Inputs:  []string{testFile},
+		Rule:      test,
+		Outputs:   []string{testPassed},
+		Inputs:    []string{testFile},
+		Implicits: []string{"$goTestRunnerCmd"},
 		Args: map[string]string{
 			"pkg":       pkgPath,
 			"pkgSrcDir": filepath.Dir(testFiles[0]),
