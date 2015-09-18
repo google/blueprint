@@ -78,7 +78,7 @@ var (
 
 	bootstrap = pctx.StaticRule("bootstrap",
 		blueprint.RuleParams{
-			Command:     "$bootstrapCmd -i $in -b $buildDir",
+			Command:     "BUILDDIR=$buildDir $bootstrapCmd -i $in",
 			Description: "bootstrap $in",
 			Generator:   true,
 		})

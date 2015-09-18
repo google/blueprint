@@ -30,7 +30,7 @@ g.bootstrap.srcDir = @@SrcDir@@
 builddir = ${g.bootstrap.buildDir}/.minibootstrap
 
 rule g.bootstrap.bootstrap
-    command = ${g.bootstrap.bootstrapCmd} -i ${in} -b ${g.bootstrap.buildDir}
+    command = BUILDDIR=${g.bootstrap.buildDir} ${g.bootstrap.bootstrapCmd} -i ${in}
     description = bootstrap ${in}
     generator = true
 
