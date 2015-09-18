@@ -125,6 +125,11 @@ bootstrap_core_go_binary(
 )
 
 bootstrap_core_go_binary(
+    name = "gotestrunner",
+    srcs = ["gotestrunner/gotestrunner.go"],
+)
+
+bootstrap_core_go_binary(
     name = "choosestage",
     srcs = ["choosestage/choosestage.go"],
 )
