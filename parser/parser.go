@@ -104,19 +104,23 @@ func newParser(r io.Reader, scope *Scope) *parser {
 	return p
 }
 
-func (p *parser) errorf(format string, args ...interface{}) {
+func (p *parser) error(err error) {
 	pos := p.scanner.Position
 	if !pos.IsValid() {
 		pos = p.scanner.Pos()
 	}
-	err := &ParseError{
-		Err: fmt.Errorf(format, args...),
+	err = &ParseError{
+		Err: err,
 		Pos: pos,
 	}
 	p.errors = append(p.errors, err)
 	if len(p.errors) >= maxErrors {
 		panic(errTooManyErrors)
 	}
+}
+
+func (p *parser) errorf(format string, args ...interface{}) {
+	p.error(fmt.Errorf(format, args...))
 }
 
 func (p *parser) accept(toks ...rune) bool {
@@ -193,18 +197,26 @@ func (p *parser) parseAssignment(name string,
 
 	if p.scope != nil {
 		if assigner == "+=" {
-			if old, err := p.scope.Get(assignment.Name.Name); err == nil {
-				if old.Referenced {
-					p.errorf("modified variable with += after referencing")
+			if old, local := p.scope.Get(assignment.Name.Name); old == nil {
+				p.errorf("modified non-existent variable %q with +=", assignment.Name.Name)
+			} else if !local {
+				p.errorf("modified non-local variable %q with +=", assignment.Name.Name)
+			} else if old.Referenced {
+				p.errorf("modified variable %q with += after referencing",
+					assignment.Name.Name)
+			} else {
+				val, err := p.evaluateOperator(old.Value, assignment.Value, '+', assignment.Pos)
+				if err != nil {
+					p.error(err)
+				} else {
+					old.Value = val
 				}
-				old.Value, err = p.evaluateOperator(old.Value, assignment.Value, '+', assignment.Pos)
-				return
 			}
-		}
-
-		err := p.scope.Add(assignment)
-		if err != nil {
-			p.errorf("%s", err.Error())
+		} else {
+			err := p.scope.Add(assignment)
+			if err != nil {
+				p.error(err)
+			}
 		}
 	}
 
@@ -392,7 +404,7 @@ func (p *parser) parseOperator(value1 Value) Value {
 
 	value, err := p.evaluateOperator(value1, value2, operator, pos)
 	if err != nil {
-		p.errorf(err.Error())
+		p.error(err)
 		return Value{}
 	}
 
@@ -427,12 +439,14 @@ func (p *parser) parseVariable() (value Value) {
 	default:
 		variable := p.scanner.TokenText()
 		if p.eval {
-			assignment, err := p.scope.Get(variable)
-			if err != nil {
-				p.errorf(err.Error())
+			if assignment, local := p.scope.Get(variable); assignment == nil {
+				p.errorf("variable %q is not set", variable)
+			} else {
+				if local {
+					assignment.Referenced = true
+				}
+				value = assignment.Value
 			}
-			assignment.Referenced = true
-			value = assignment.Value
 		}
 		value.Variable = variable
 	}
@@ -684,17 +698,22 @@ func (p Value) String() string {
 }
 
 type Scope struct {
-	vars map[string]*Assignment
+	vars          map[string]*Assignment
+	inheritedVars map[string]*Assignment
 }
 
 func NewScope(s *Scope) *Scope {
 	newScope := &Scope{
-		vars: make(map[string]*Assignment),
+		vars:          make(map[string]*Assignment),
+		inheritedVars: make(map[string]*Assignment),
 	}
 
 	if s != nil {
 		for k, v := range s.vars {
-			newScope.vars[k] = v
+			newScope.inheritedVars[k] = v
+		}
+		for k, v := range s.inheritedVars {
+			newScope.inheritedVars[k] = v
 		}
 	}
 
@@ -706,6 +725,10 @@ func (s *Scope) Add(assignment *Assignment) error {
 		return fmt.Errorf("variable already set, previous assignment: %s", old)
 	}
 
+	if old, ok := s.inheritedVars[assignment.Name.Name]; ok {
+		return fmt.Errorf("variable already set in inherited scope, previous assignment: %s", old)
+	}
+
 	s.vars[assignment.Name.Name] = assignment
 
 	return nil
@@ -713,14 +736,19 @@ func (s *Scope) Add(assignment *Assignment) error {
 
 func (s *Scope) Remove(name string) {
 	delete(s.vars, name)
+	delete(s.inheritedVars, name)
 }
 
-func (s *Scope) Get(name string) (*Assignment, error) {
+func (s *Scope) Get(name string) (*Assignment, bool) {
 	if a, ok := s.vars[name]; ok {
-		return a, nil
+		return a, true
 	}
 
-	return nil, fmt.Errorf("variable %s not set", name)
+	if a, ok := s.inheritedVars[name]; ok {
+		return a, false
+	}
+
+	return nil, false
 }
 
 func (s *Scope) String() string {
@@ -729,12 +757,19 @@ func (s *Scope) String() string {
 	for k := range s.vars {
 		vars = append(vars, k)
 	}
+	for k := range s.inheritedVars {
+		vars = append(vars, k)
+	}
 
 	sort.Strings(vars)
 
 	ret := []string{}
 	for _, v := range vars {
-		ret = append(ret, s.vars[v].String())
+		if assignment, ok := s.vars[v]; ok {
+			ret = append(ret, assignment.String())
+		} else {
+			ret = append(ret, s.inheritedVars[v].String())
+		}
 	}
 
 	return strings.Join(ret, "\n")
