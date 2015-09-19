@@ -190,7 +190,7 @@ default $
 # Variant:
 # Type:    bootstrap_core_go_binary
 # Factory: github.com/google/blueprint/bootstrap.func·005
-# Defined: Blueprints:127:1
+# Defined: Blueprints:132:1
 
 build ${g.bootstrap.buildDir}/.bootstrap/choosestage/obj/choosestage.a: $
         g.bootstrap.compile ${g.bootstrap.srcDir}/choosestage/choosestage.go | $
@@ -228,6 +228,28 @@ default ${g.bootstrap.buildDir}/.bootstrap/gotestmain/obj/a.out
 build ${g.bootstrap.BinDir}/gotestmain: g.bootstrap.cp $
         ${g.bootstrap.buildDir}/.bootstrap/gotestmain/obj/a.out
 default ${g.bootstrap.BinDir}/gotestmain
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Module:  gotestrunner
+# Variant:
+# Type:    bootstrap_core_go_binary
+# Factory: github.com/google/blueprint/bootstrap.func·005
+# Defined: Blueprints:127:1
+
+build ${g.bootstrap.buildDir}/.bootstrap/gotestrunner/obj/gotestrunner.a: $
+        g.bootstrap.compile ${g.bootstrap.srcDir}/gotestrunner/gotestrunner.go $
+        | ${g.bootstrap.compileCmd}
+    pkgPath = gotestrunner
+default ${g.bootstrap.buildDir}/.bootstrap/gotestrunner/obj/gotestrunner.a
+
+build ${g.bootstrap.buildDir}/.bootstrap/gotestrunner/obj/a.out: $
+        g.bootstrap.link $
+        ${g.bootstrap.buildDir}/.bootstrap/gotestrunner/obj/gotestrunner.a | $
+        ${g.bootstrap.linkCmd}
+default ${g.bootstrap.buildDir}/.bootstrap/gotestrunner/obj/a.out
+build ${g.bootstrap.BinDir}/gotestrunner: g.bootstrap.cp $
+        ${g.bootstrap.buildDir}/.bootstrap/gotestrunner/obj/a.out
+default ${g.bootstrap.BinDir}/gotestrunner
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Module:  minibp
@@ -279,7 +301,8 @@ build ${g.bootstrap.buildDir}/.bootstrap/primary.ninja.in $
         ${g.bootstrap.buildDir}/.bootstrap/primary.ninja.in.timestamp: $
         s.bootstrap.primarybp ${g.bootstrap.srcDir}/Blueprints | $
         ${g.bootstrap.BinDir}/choosestage ${g.bootstrap.BinDir}/gotestmain $
-        ${g.bootstrap.BinDir}/minibp ${g.bootstrap.srcDir}/Blueprints
+        ${g.bootstrap.BinDir}/gotestrunner ${g.bootstrap.BinDir}/minibp $
+        ${g.bootstrap.srcDir}/Blueprints
     outfile = ${g.bootstrap.buildDir}/.bootstrap/primary.ninja.in
     timestamp = ${g.bootstrap.buildDir}/.bootstrap/primary.ninja.in.timestamp
     timestampdep = ${g.bootstrap.buildDir}/.bootstrap/primary.ninja.in.timestamp.d
