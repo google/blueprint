@@ -1825,6 +1825,29 @@ func (c *Context) processLocalBuildActions(out, in *localBuildActions,
 	return nil
 }
 
+func (c *Context) walkDeps(topModule *moduleInfo,
+	shouldWalk func(Module, Module) bool, visit func(Module)) {
+
+	visited := make(map[*moduleInfo]bool)
+
+	var walk func(module *moduleInfo)
+	walk = func(module *moduleInfo) {
+		visited[module] = true
+
+		for _, moduleDep := range module.directDeps {
+			if !visited[moduleDep] && shouldWalk(module.logicModule, moduleDep.logicModule) {
+				walk(moduleDep)
+			}
+		}
+
+		if module != topModule {
+			visit(module.logicModule)
+		}
+	}
+
+	walk(topModule)
+}
+
 func (c *Context) visitDepsDepthFirst(topModule *moduleInfo, visit func(Module)) {
 	visited := make(map[*moduleInfo]bool)
 

@@ -133,6 +133,7 @@ type ModuleContext interface {
 	VisitDirectDepsIf(pred func(Module) bool, visit func(Module))
 	VisitDepsDepthFirst(visit func(Module))
 	VisitDepsDepthFirstIf(pred func(Module) bool, visit func(Module))
+	WalkDeps(shouldWalk func(Module, Module) bool, visit func(Module))
 
 	ModuleSubDir() string
 
@@ -249,6 +250,10 @@ func (m *moduleContext) VisitDepsDepthFirstIf(pred func(Module) bool,
 	visit func(Module)) {
 
 	m.context.visitDepsDepthFirstIf(m.module, pred, visit)
+}
+
+func (m *moduleContext) WalkDeps(shouldWalk func(Module, Module) bool, visit func(Module)) {
+	m.context.walkDeps(m.module, shouldWalk, visit)
 }
 
 func (m *moduleContext) ModuleSubDir() string {
