@@ -133,6 +133,7 @@ type ModuleContext interface {
 	VisitDirectDepsIf(pred func(Module) bool, visit func(Module))
 	VisitDepsDepthFirst(visit func(Module))
 	VisitDepsDepthFirstIf(pred func(Module) bool, visit func(Module))
+	WalkDeps(visit func(Module, Module) bool)
 
 	ModuleSubDir() string
 
@@ -249,6 +250,10 @@ func (m *moduleContext) VisitDepsDepthFirstIf(pred func(Module) bool,
 	visit func(Module)) {
 
 	m.context.visitDepsDepthFirstIf(m.module, pred, visit)
+}
+
+func (m *moduleContext) WalkDeps(visit func(Module, Module) bool) {
+	m.context.walkDeps(m.module, visit)
 }
 
 func (m *moduleContext) ModuleSubDir() string {
@@ -382,6 +387,7 @@ type TopDownMutatorContext interface {
 	VisitDirectDepsIf(pred func(Module) bool, visit func(Module))
 	VisitDepsDepthFirst(visit func(Module))
 	VisitDepsDepthFirstIf(pred func(Module) bool, visit func(Module))
+	WalkDeps(visit func(Module, Module) bool)
 }
 
 type BottomUpMutatorContext interface {
@@ -500,4 +506,8 @@ func (mctx *mutatorContext) VisitDepsDepthFirstIf(pred func(Module) bool,
 	visit func(Module)) {
 
 	mctx.context.visitDepsDepthFirstIf(mctx.module, pred, visit)
+}
+
+func (mctx *mutatorContext) WalkDeps(visit func(Module, Module) bool) {
+	mctx.context.walkDeps(mctx.module, visit)
 }
