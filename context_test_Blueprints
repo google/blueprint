@@ -1,0 +1,32 @@
+foo_module {
+    name: "A",
+    deps: ["B", "C"],
+}
+
+bar_module {
+    name: "B",
+    deps: ["D"],
+}
+
+foo_module {
+    name: "C",
+    deps: ["E", "F"],
+}
+
+foo_module {
+    name: "D",
+}
+
+bar_module {
+    name: "E",
+    deps: ["G"],
+}
+
+foo_module {
+    name: "F",
+    deps: ["G"],
+}
+
+foo_module {
+    name: "G",
+}
