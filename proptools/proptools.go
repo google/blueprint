@@ -17,6 +17,7 @@ package proptools
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -200,4 +201,15 @@ func cloneEmptyProperties(dstValue, srcValue reflect.Value) {
 				field.Name, srcFieldValue.Kind()))
 		}
 	}
+}
+
+func HasTag(field reflect.StructField, name, value string) bool {
+	tag := field.Tag.Get(name)
+	for _, entry := range strings.Split(tag, ",") {
+		if entry == value {
+			return true
+		}
+	}
+
+	return false
 }
