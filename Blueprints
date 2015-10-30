@@ -65,6 +65,7 @@ bootstrap_go_package(
     name = "blueprint-proptools",
     pkgPath = "github.com/google/blueprint/proptools",
     srcs = [
+        "proptools/clone.go",
         "proptools/extend.go",
         "proptools/proptools.go",
     ],
