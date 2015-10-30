@@ -70,6 +70,7 @@ bootstrap_go_package(
         "proptools/proptools.go",
     ],
     testSrcs = [
+        "proptools/clone_test.go",
         "proptools/extend_test.go",
     ],
 )

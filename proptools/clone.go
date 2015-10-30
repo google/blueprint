@@ -41,6 +41,7 @@ func CopyProperties(dstValue, srcValue reflect.Value) {
 
 		srcFieldValue := srcValue.Field(i)
 		dstFieldValue := dstValue.Field(i)
+		dstFieldInterfaceValue := reflect.Value{}
 
 		switch srcFieldValue.Kind() {
 		case reflect.Bool, reflect.String, reflect.Int, reflect.Uint:
@@ -50,8 +51,7 @@ func CopyProperties(dstValue, srcValue reflect.Value) {
 		case reflect.Slice:
 			if !srcFieldValue.IsNil() {
 				if field.Type.Elem().Kind() != reflect.String {
-					panic(fmt.Errorf("can't copy field %q: slice elements are "+
-						"not strings", field.Name))
+					panic(fmt.Errorf("can't copy field %q: slice elements are not strings", field.Name))
 				}
 				if srcFieldValue != dstFieldValue {
 					newSlice := reflect.MakeSlice(field.Type, srcFieldValue.Len(),
@@ -62,32 +62,56 @@ func CopyProperties(dstValue, srcValue reflect.Value) {
 			} else {
 				dstFieldValue.Set(srcFieldValue)
 			}
-		case reflect.Ptr, reflect.Interface:
-			if !srcFieldValue.IsNil() {
-				if dstFieldValue.IsNil() ||
-					dstFieldValue.Type() != srcFieldValue.Type() {
-
-					// We can't use the existing destination allocation, so
-					// clone a new one.
-					elem := srcFieldValue.Elem()
-					if srcFieldValue.Kind() == reflect.Interface {
-						if elem.Kind() != reflect.Ptr {
-							panic(fmt.Errorf("can't clone field %q: interface "+
-								"refers to a non-pointer", field.Name))
-						}
-						elem = elem.Elem()
-					}
-					if elem.Kind() != reflect.Struct {
-						panic(fmt.Errorf("can't clone field %q: points to a "+
-							"non-struct", field.Name))
-					}
-					dstFieldValue.Set(CloneProperties(elem))
-				} else {
-					// Re-use the existing allocation.
-					CopyProperties(dstFieldValue.Elem().Elem(), srcFieldValue.Elem().Elem())
-				}
-			} else {
+		case reflect.Interface:
+			if srcFieldValue.IsNil() {
 				dstFieldValue.Set(srcFieldValue)
+				break
+			}
+
+			srcFieldValue = srcFieldValue.Elem()
+
+			if srcFieldValue.Kind() != reflect.Ptr {
+				panic(fmt.Errorf("can't clone field %q: interface refers to a non-pointer",
+					field.Name))
+			}
+			if srcFieldValue.Type().Elem().Kind() != reflect.Struct {
+				panic(fmt.Errorf("can't clone field %q: interface points to a non-struct",
+					field.Name))
+			}
+
+			if dstFieldValue.IsNil() || dstFieldValue.Elem().Type() != srcFieldValue.Type() {
+				// We can't use the existing destination allocation, so
+				// clone a new one.
+				newValue := reflect.New(srcFieldValue.Type()).Elem()
+				dstFieldValue.Set(newValue)
+				dstFieldInterfaceValue = dstFieldValue
+				dstFieldValue = newValue
+			} else {
+				dstFieldValue = dstFieldValue.Elem()
+			}
+			fallthrough
+		case reflect.Ptr:
+			if srcFieldValue.Type().Elem().Kind() != reflect.Struct {
+				panic(fmt.Errorf("can't clone field %q: points to a non-struct",
+					field.Name))
+			}
+
+			if srcFieldValue.IsNil() {
+				dstFieldValue.Set(srcFieldValue)
+				break
+			}
+
+			if !dstFieldValue.IsNil() {
+				// Re-use the existing allocation.
+				CopyProperties(dstFieldValue.Elem(), srcFieldValue.Elem())
+				break
+			} else {
+				newValue := CloneProperties(srcFieldValue.Elem())
+				if dstFieldInterfaceValue.IsValid() {
+					dstFieldInterfaceValue.Set(newValue)
+				} else {
+					dstFieldValue.Set(newValue)
+				}
 			}
 		default:
 			panic(fmt.Errorf("unexpected kind for property struct field %q: %s",
@@ -111,24 +135,36 @@ func ZeroProperties(structValue reflect.Value) {
 		switch fieldValue.Kind() {
 		case reflect.Bool, reflect.String, reflect.Struct, reflect.Slice, reflect.Int, reflect.Uint:
 			fieldValue.Set(reflect.Zero(fieldValue.Type()))
-		case reflect.Ptr, reflect.Interface:
-			if !fieldValue.IsNil() {
-				// We leave the pointer intact and zero out the struct that's
-				// pointed to.
-				elem := fieldValue.Elem()
-				if fieldValue.Kind() == reflect.Interface {
-					if elem.Kind() != reflect.Ptr {
-						panic(fmt.Errorf("can't zero field %q: interface "+
-							"refers to a non-pointer", field.Name))
-					}
-					elem = elem.Elem()
-				}
-				if elem.Kind() != reflect.Struct {
-					panic(fmt.Errorf("can't zero field %q: points to a "+
-						"non-struct", field.Name))
-				}
-				ZeroProperties(elem)
+		case reflect.Interface:
+			if fieldValue.IsNil() {
+				break
 			}
+
+			// We leave the pointer intact and zero out the struct that's
+			// pointed to.
+			fieldValue = fieldValue.Elem()
+			if fieldValue.Kind() != reflect.Ptr {
+				panic(fmt.Errorf("can't zero field %q: interface refers to a non-pointer",
+					field.Name))
+			}
+			if fieldValue.Type().Elem().Kind() != reflect.Struct {
+				panic(fmt.Errorf("can't zero field %q: interface points to a non-struct",
+					field.Name))
+			}
+			fallthrough
+		case reflect.Ptr:
+			// We leave the pointer intact and zero out the struct that's
+			// pointed to.
+			if fieldValue.Type().Elem().Kind() != reflect.Struct {
+				panic(fmt.Errorf("can't zero field %q: points to a non-struct",
+					field.Name))
+			}
+
+			if fieldValue.IsNil() {
+				break
+			}
+
+			ZeroProperties(fieldValue.Elem())
 		default:
 			panic(fmt.Errorf("unexpected kind for property struct field %q: %s",
 				field.Name, fieldValue.Kind()))
@@ -153,27 +189,48 @@ func cloneEmptyProperties(dstValue, srcValue reflect.Value) {
 
 		srcFieldValue := srcValue.Field(i)
 		dstFieldValue := dstValue.Field(i)
+		dstFieldInterfaceValue := reflect.Value{}
 
 		switch srcFieldValue.Kind() {
 		case reflect.Bool, reflect.String, reflect.Slice, reflect.Int, reflect.Uint:
 			// Nothing
 		case reflect.Struct:
 			cloneEmptyProperties(dstFieldValue, srcFieldValue)
-		case reflect.Ptr, reflect.Interface:
-			if !srcFieldValue.IsNil() {
-				elem := srcFieldValue.Elem()
-				if srcFieldValue.Kind() == reflect.Interface {
-					if elem.Kind() != reflect.Ptr {
-						panic(fmt.Errorf("can't clone field %q: interface "+
-							"refers to a non-pointer", field.Name))
-					}
-					elem = elem.Elem()
-				}
-				if elem.Elem().Kind() != reflect.Struct {
-					panic(fmt.Errorf("can't clone field %q: points to a "+
-						"non-struct", field.Name))
-				}
-				dstFieldValue.Set(CloneEmptyProperties(elem.Elem()))
+		case reflect.Interface:
+			if srcFieldValue.IsNil() {
+				break
+			}
+
+			srcFieldValue = srcFieldValue.Elem()
+			if srcFieldValue.Kind() != reflect.Ptr {
+				panic(fmt.Errorf("can't clone empty field %q: interface refers to a non-pointer",
+					field.Name))
+			}
+			if srcFieldValue.Type().Elem().Kind() != reflect.Struct {
+				panic(fmt.Errorf("can't clone empty field %q: interface points to a non-struct",
+					field.Name))
+			}
+
+			newValue := reflect.New(srcFieldValue.Type()).Elem()
+			dstFieldValue.Set(newValue)
+			dstFieldInterfaceValue = dstFieldValue
+			dstFieldValue = newValue
+			fallthrough
+		case reflect.Ptr:
+			if srcFieldValue.Type().Elem().Kind() != reflect.Struct {
+				panic(fmt.Errorf("can't clone field %q: points to a non-struct",
+					field.Name))
+			}
+
+			if srcFieldValue.IsNil() {
+				break
+			}
+
+			newValue := CloneEmptyProperties(srcFieldValue.Elem())
+			if dstFieldInterfaceValue.IsValid() {
+				dstFieldInterfaceValue.Set(newValue)
+			} else {
+				dstFieldValue.Set(newValue)
 			}
 		default:
 			panic(fmt.Errorf("unexpected kind for property struct field %q: %s",
