@@ -71,6 +71,25 @@ var clonePropertiesTestCases = []struct {
 		out: &struct{ S []string }{},
 	},
 	{
+		// Clone pointer to bool
+		in: &struct{ B1, B2 *bool }{
+			B1: BoolPtr(true),
+			B2: BoolPtr(false),
+		},
+		out: &struct{ B1, B2 *bool }{
+			B1: BoolPtr(true),
+			B2: BoolPtr(false),
+		},
+	},
+	{
+		// Clone pointer to string
+		in: &struct{ S *string }{
+			S: StringPtr("string1"),
+		},
+		out: &struct{ S *string }{
+			S: StringPtr("string1"),
+		},
+	},
 	{
 		// Clone struct
 		in: &struct{ S struct{ S string } }{
@@ -201,6 +220,20 @@ var cloneEmptyPropertiesTestCases = []struct {
 		out: &struct{ S []string }{},
 	},
 	{
+		// Clone pointer to bool
+		in: &struct{ B1, B2 *bool }{
+			B1: BoolPtr(true),
+			B2: BoolPtr(false),
+		},
+		out: &struct{ B1, B2 *bool }{},
+	},
+	{
+		// Clone pointer to string
+		in: &struct{ S *string }{
+			S: StringPtr("string1"),
+		},
+		out: &struct{ S *string }{},
+	},
 	{
 		// Clone struct
 		in: &struct{ S struct{ S string } }{

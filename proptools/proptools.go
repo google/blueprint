@@ -49,3 +49,31 @@ func HasTag(field reflect.StructField, name, value string) bool {
 
 	return false
 }
+
+// BoolPtr returns a pointer to a new bool containing the given value.
+func BoolPtr(b bool) *bool {
+	return &b
+}
+
+// StringPtr returns a pointer to a new string containing the given value.
+func StringPtr(s string) *string {
+	return &s
+}
+
+// Bool takes a pointer to a bool and returns true iff the pointer is non-nil and points to a true
+// value.
+func Bool(b *bool) bool {
+	if b != nil {
+		return *b
+	}
+	return false
+}
+
+// String takes a pointer to a string and returns the value of the string if the pointer is non-nil,
+// or an empty string.
+func String(s *string) string {
+	if s != nil {
+		return *s
+	}
+	return ""
+}

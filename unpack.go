@@ -161,15 +161,18 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			}
 			fallthrough
 		case reflect.Ptr:
-			if fieldValue.IsNil() {
-				panic(fmt.Errorf("field %s contains a nil pointer",
-					field.Name))
-			}
-			fieldValue = fieldValue.Elem()
-			elemType := fieldValue.Type()
-			if elemType.Kind() != reflect.Struct {
-				panic(fmt.Errorf("field %s contains a non-struct pointer",
-					field.Name))
+			switch ptrKind := fieldValue.Type().Elem().Kind(); ptrKind {
+			case reflect.Struct:
+				if fieldValue.IsNil() {
+					panic(fmt.Errorf("field %s contains a nil pointer",
+						field.Name))
+				}
+				fieldValue = fieldValue.Elem()
+			case reflect.Bool, reflect.String:
+				// Nothing
+			default:
+				panic(fmt.Errorf("field %s contains a pointer to %s",
+					field.Name, ptrKind))
 			}
 
 		case reflect.Int, reflect.Uint:
@@ -225,9 +228,19 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			newErrs = unpackString(fieldValue, packedProperty.property)
 		case reflect.Slice:
 			newErrs = unpackSlice(fieldValue, packedProperty.property)
-		case reflect.Ptr, reflect.Interface:
-			fieldValue = fieldValue.Elem()
-			fallthrough
+		case reflect.Ptr:
+			switch ptrKind := fieldValue.Type().Elem().Kind(); ptrKind {
+			case reflect.Bool:
+				newValue := reflect.New(fieldValue.Type().Elem())
+				newErrs = unpackBool(newValue.Elem(), packedProperty.property)
+				fieldValue.Set(newValue)
+			case reflect.String:
+				newValue := reflect.New(fieldValue.Type().Elem())
+				newErrs = unpackString(newValue.Elem(), packedProperty.property)
+				fieldValue.Set(newValue)
+			default:
+				panic(fmt.Errorf("unexpected pointer kind %s", ptrKind))
+			}
 		case reflect.Struct:
 			localFilterKey, localFilterValue := filterKey, filterValue
 			if k, v, err := HasFilter(field.Tag); err != nil {
@@ -248,6 +261,8 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			}
 			newErrs = unpackStruct(propertyName+".", fieldValue,
 				packedProperty.property, propertyMap, localFilterKey, localFilterValue)
+		default:
+			panic(fmt.Errorf("unexpected kind %s", kind))
 		}
 		errs = append(errs, newErrs...)
 		if len(errs) >= maxErrors {

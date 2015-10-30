@@ -101,6 +101,114 @@ var appendPropertiesTestCases = []struct {
 		prepend: true,
 	},
 	{
+		// Append pointer to bool
+		in1: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
+			B1: BoolPtr(true),
+			B2: BoolPtr(false),
+			B3: nil,
+			B4: BoolPtr(true),
+			B5: BoolPtr(false),
+			B6: nil,
+			B7: BoolPtr(true),
+			B8: BoolPtr(false),
+			B9: nil,
+		},
+		in2: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
+			B1: nil,
+			B2: nil,
+			B3: nil,
+			B4: BoolPtr(true),
+			B5: BoolPtr(true),
+			B6: BoolPtr(true),
+			B7: BoolPtr(false),
+			B8: BoolPtr(false),
+			B9: BoolPtr(false),
+		},
+		out: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
+			B1: BoolPtr(true),
+			B2: BoolPtr(false),
+			B3: nil,
+			B4: BoolPtr(true),
+			B5: BoolPtr(true),
+			B6: BoolPtr(true),
+			B7: BoolPtr(false),
+			B8: BoolPtr(false),
+			B9: BoolPtr(false),
+		},
+	},
+	{
+		// Prepend pointer to bool
+		in1: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
+			B1: BoolPtr(true),
+			B2: BoolPtr(false),
+			B3: nil,
+			B4: BoolPtr(true),
+			B5: BoolPtr(false),
+			B6: nil,
+			B7: BoolPtr(true),
+			B8: BoolPtr(false),
+			B9: nil,
+		},
+		in2: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
+			B1: nil,
+			B2: nil,
+			B3: nil,
+			B4: BoolPtr(true),
+			B5: BoolPtr(true),
+			B6: BoolPtr(true),
+			B7: BoolPtr(false),
+			B8: BoolPtr(false),
+			B9: BoolPtr(false),
+		},
+		out: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
+			B1: BoolPtr(true),
+			B2: BoolPtr(false),
+			B3: nil,
+			B4: BoolPtr(true),
+			B5: BoolPtr(false),
+			B6: BoolPtr(true),
+			B7: BoolPtr(true),
+			B8: BoolPtr(false),
+			B9: BoolPtr(false),
+		},
+		prepend: true,
+	},
+	{
+		// Append pointer to strings
+		in1: &struct{ S1, S2, S3, S4 *string }{
+			S1: StringPtr("string1"),
+			S2: StringPtr("string2"),
+		},
+		in2: &struct{ S1, S2, S3, S4 *string }{
+			S1: StringPtr("string3"),
+			S3: StringPtr("string4"),
+		},
+		out: &struct{ S1, S2, S3, S4 *string }{
+			S1: StringPtr("string1string3"),
+			S2: StringPtr("string2"),
+			S3: StringPtr("string4"),
+			S4: nil,
+		},
+	},
+	{
+		// Prepend pointer to strings
+		in1: &struct{ S1, S2, S3, S4 *string }{
+			S1: StringPtr("string1"),
+			S2: StringPtr("string2"),
+		},
+		in2: &struct{ S1, S2, S3, S4 *string }{
+			S1: StringPtr("string3"),
+			S3: StringPtr("string4"),
+		},
+		out: &struct{ S1, S2, S3, S4 *string }{
+			S1: StringPtr("string3string1"),
+			S2: StringPtr("string2"),
+			S3: StringPtr("string4"),
+			S4: nil,
+		},
+		prepend: true,
+	},
+	{
 		// Append slice
 		in1: &struct{ S []string }{
 			S: []string{"string1"},
@@ -439,7 +547,7 @@ var appendPropertiesTestCases = []struct {
 		out: &struct{ S *[]string }{
 			S: &[]string{"string1"},
 		},
-		err: extendPropertyErrorf("s", "pointer not to a struct"),
+		err: extendPropertyErrorf("s", "pointer is a slice"),
 	},
 	{
 		// Error in nested struct

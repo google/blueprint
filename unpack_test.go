@@ -33,6 +33,24 @@ var validUnpackTestCases = []struct {
 	{`
 		m {
 			name: "abc",
+			blank: "",
+		}
+		`,
+		struct {
+			Name  *string
+			Blank *string
+			Unset *string
+		}{
+			Name:  proptools.StringPtr("abc"),
+			Blank: proptools.StringPtr(""),
+			Unset: nil,
+		},
+		nil,
+	},
+
+	{`
+		m {
+			name: "abc",
 		}
 		`,
 		struct {
@@ -52,6 +70,24 @@ var validUnpackTestCases = []struct {
 			IsGood bool
 		}{
 			IsGood: true,
+		},
+		nil,
+	},
+
+	{`
+		m {
+			isGood: true,
+			isBad: false,
+		}
+		`,
+		struct {
+			IsGood *bool
+			IsBad  *bool
+			IsUgly *bool
+		}{
+			IsGood: proptools.BoolPtr(true),
+			IsBad:  proptools.BoolPtr(false),
+			IsUgly: nil,
 		},
 		nil,
 	},
