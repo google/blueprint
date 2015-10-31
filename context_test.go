@@ -92,7 +92,7 @@ func TestContextParse(t *testing.T) {
 		t.FailNow()
 	}
 
-	errs = ctx.resolveDependencies(nil)
+	errs = ctx.ResolveDependencies(nil)
 	if len(errs) > 0 {
 		t.Errorf("unexpected dep errors:")
 		for _, err := range errs {
@@ -100,16 +100,6 @@ func TestContextParse(t *testing.T) {
 		}
 		t.FailNow()
 	}
-
-	errs = ctx.updateDependencies()
-	if len(errs) > 0 {
-		t.Errorf("unexpected dep cycle errors:")
-		for _, err := range errs {
-			t.Errorf("  %s", err)
-		}
-		t.FailNow()
-	}
-
 }
 
 // |---B===D       - represents a non-walkable edge

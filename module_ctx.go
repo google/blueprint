@@ -34,10 +34,11 @@ import (
 //
 // The Module implementation can access the build configuration as well as any
 // modules on which on which it depends (as defined by the "deps" property
-// specified in the Blueprints file or dynamically added by implementing the
-// DynamicDependerModule interface) using the ModuleContext passed to
-// GenerateBuildActions.  This ModuleContext is also used to create Ninja build
-// actions and to report errors to the user.
+// specified in the Blueprints file, dynamically added by implementing the
+// (deprecated) DynamicDependerModule interface, or dynamically added by a
+// BottomUpMutator) using the ModuleContext passed to GenerateBuildActions.
+// This ModuleContext is also used to create Ninja build actions and to report
+// errors to the user.
 //
 // In addition to implementing the GenerateBuildActions method, a Module should
 // implement methods that provide dependant modules and singletons information
@@ -93,6 +94,8 @@ type Module interface {
 // appear in its "deps" property.  Any Module that implements this interface
 // will have its DynamicDependencies method called by the Context that created
 // it during generate phase.
+//
+// Deprecated, use a BottomUpMutator instead
 type DynamicDependerModule interface {
 	Module
 
@@ -114,14 +117,11 @@ type BaseModuleContext interface {
 	ModuleErrorf(fmt string, args ...interface{})
 	PropertyErrorf(property, fmt string, args ...interface{})
 	Failed() bool
+
+	moduleInfo() *moduleInfo
 }
 
-type DynamicDependerModuleContext interface {
-	BaseModuleContext
-
-	AddVariationDependencies([]Variation, ...string)
-	AddFarVariationDependencies([]Variation, ...string)
-}
+type DynamicDependerModuleContext BottomUpMutatorContext
 
 type ModuleContext interface {
 	BaseModuleContext
@@ -155,6 +155,10 @@ type baseModuleContext struct {
 	config  interface{}
 	module  *moduleInfo
 	errs    []error
+}
+
+func (d *baseModuleContext) moduleInfo() *moduleInfo {
+	return d.module
 }
 
 func (d *baseModuleContext) ModuleName() string {
@@ -316,49 +320,6 @@ func (m *moduleContext) VisitAllModuleVariants(visit func(Module)) {
 }
 
 //
-// DynamicDependerModuleContext
-//
-
-type dynamicDependerModuleContext struct {
-	baseModuleContext
-
-	module *moduleInfo
-}
-
-// AddVariationDependencies adds deps as dependencies of the current module, but uses the variations
-// argument to select which variant of the dependency to use.  A variant of the dependency must
-// exist that matches the all of the non-local variations of the current module, plus the variations
-// argument.
-func (mctx *dynamicDependerModuleContext) AddVariationDependencies(variations []Variation,
-	deps ...string) {
-
-	for _, dep := range deps {
-		errs := mctx.context.addVariationDependency(mctx.module, variations, dep, false)
-		if len(errs) > 0 {
-			mctx.errs = append(mctx.errs, errs...)
-		}
-	}
-}
-
-// AddFarVariationDependencies adds deps as dependencies of the current module, but uses the
-// variations argument to select which variant of the dependency to use.  A variant of the
-// dependency must exist that matches the variations argument, but may also have other variations.
-// For any unspecified variation the first variant will be used.
-//
-// Unlike AddVariationDependencies, the variations of the current module are ignored - the
-// depdendency only needs to match the supplied variations.
-func (mctx *dynamicDependerModuleContext) AddFarVariationDependencies(variations []Variation,
-	deps ...string) {
-
-	for _, dep := range deps {
-		errs := mctx.context.addVariationDependency(mctx.module, variations, dep, true)
-		if len(errs) > 0 {
-			mctx.errs = append(mctx.errs, errs...)
-		}
-	}
-}
-
-//
 // MutatorContext
 //
 
@@ -393,11 +354,13 @@ type TopDownMutatorContext interface {
 type BottomUpMutatorContext interface {
 	baseMutatorContext
 
-	AddDependency(module Module, name string)
+	AddDependency(module Module, name ...string)
 	AddReverseDependency(module Module, name string)
 	CreateVariations(...string) []Module
 	CreateLocalVariations(...string) []Module
 	SetDependencyVariation(string)
+	AddVariationDependencies([]Variation, ...string)
+	AddFarVariationDependencies([]Variation, ...string)
 }
 
 // A Mutator function is called for each Module, and can use
@@ -473,10 +436,12 @@ func (mctx *mutatorContext) Module() Module {
 // Add a dependency to the given module.
 // Does not affect the ordering of the current mutator pass, but will be ordered
 // correctly for all future mutator passes.
-func (mctx *mutatorContext) AddDependency(module Module, depName string) {
-	errs := mctx.context.addDependency(mctx.context.moduleInfo[module], depName)
-	if len(errs) > 0 {
-		mctx.errs = append(mctx.errs, errs...)
+func (mctx *mutatorContext) AddDependency(module Module, deps ...string) {
+	for _, dep := range deps {
+		errs := mctx.context.addDependency(mctx.context.moduleInfo[module], dep)
+		if len(errs) > 0 {
+			mctx.errs = append(mctx.errs, errs...)
+		}
 	}
 }
 
@@ -484,9 +449,42 @@ func (mctx *mutatorContext) AddDependency(module Module, depName string) {
 // Does not affect the ordering of the current mutator pass, but will be ordered
 // correctly for all future mutator passes.
 func (mctx *mutatorContext) AddReverseDependency(module Module, destName string) {
-	errs := mctx.context.addReverseDependency(mctx.context.moduleInfo[module], destName)
+	errs := mctx.context.addReverseDependency(mctx.module, destName)
 	if len(errs) > 0 {
 		mctx.errs = append(mctx.errs, errs...)
+	}
+}
+
+// AddVariationDependencies adds deps as dependencies of the current module, but uses the variations
+// argument to select which variant of the dependency to use.  A variant of the dependency must
+// exist that matches the all of the non-local variations of the current module, plus the variations
+// argument.
+func (mctx *mutatorContext) AddVariationDependencies(variations []Variation,
+	deps ...string) {
+
+	for _, dep := range deps {
+		errs := mctx.context.addVariationDependency(mctx.module, variations, dep, false)
+		if len(errs) > 0 {
+			mctx.errs = append(mctx.errs, errs...)
+		}
+	}
+}
+
+// AddFarVariationDependencies adds deps as dependencies of the current module, but uses the
+// variations argument to select which variant of the dependency to use.  A variant of the
+// dependency must exist that matches the variations argument, but may also have other variations.
+// For any unspecified variation the first variant will be used.
+//
+// Unlike AddVariationDependencies, the variations of the current module are ignored - the
+// depdendency only needs to match the supplied variations.
+func (mctx *mutatorContext) AddFarVariationDependencies(variations []Variation,
+	deps ...string) {
+
+	for _, dep := range deps {
+		errs := mctx.context.addVariationDependency(mctx.module, variations, dep, true)
+		if len(errs) > 0 {
+			mctx.errs = append(mctx.errs, errs...)
+		}
 	}
 }
 
