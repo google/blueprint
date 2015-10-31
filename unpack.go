@@ -173,7 +173,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			}
 
 		case reflect.Int, reflect.Uint:
-			if !hasTag(field, "blueprint", "mutated") {
+			if !proptools.HasTag(field, "blueprint", "mutated") {
 				panic(fmt.Errorf(`int field %s must be tagged blueprint:"mutated"`, field.Name))
 			}
 
@@ -192,7 +192,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 
 		packedProperty.unpacked = true
 
-		if hasTag(field, "blueprint", "mutated") {
+		if proptools.HasTag(field, "blueprint", "mutated") {
 			errs = append(errs,
 				&Error{
 					Err: fmt.Errorf("mutated field %s cannot be set in a Blueprint file", propertyName),
@@ -204,7 +204,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			continue
 		}
 
-		if filterKey != "" && !hasTag(field, filterKey, filterValue) {
+		if filterKey != "" && !proptools.HasTag(field, filterKey, filterValue) {
 			errs = append(errs,
 				&Error{
 					Err: fmt.Errorf("filtered field %s cannot be set in a Blueprint file", propertyName),
@@ -324,17 +324,6 @@ func unpackStruct(namePrefix string, structValue reflect.Value,
 	}
 
 	return unpackStructValue(namePrefix, structValue, propertyMap, filterKey, filterValue)
-}
-
-func hasTag(field reflect.StructField, name, value string) bool {
-	tag := field.Tag.Get(name)
-	for _, entry := range strings.Split(tag, ",") {
-		if entry == value {
-			return true
-		}
-	}
-
-	return false
 }
 
 func HasFilter(field reflect.StructTag) (k, v string, err error) {
