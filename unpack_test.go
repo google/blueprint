@@ -59,13 +59,18 @@ var validUnpackTestCases = []struct {
 	{`
 		m {
 			stuff: ["asdf", "jkl;", "qwert",
-				"uiop", "bnm,"]
+				"uiop", "bnm,"],
+			empty: []
 		}
 		`,
 		struct {
 			Stuff []string
+			Empty []string
+			Nil   []string
 		}{
 			Stuff: []string{"asdf", "jkl;", "qwert", "uiop", "bnm,"},
+			Empty: []string{},
+			Nil:   nil,
 		},
 		nil,
 	},

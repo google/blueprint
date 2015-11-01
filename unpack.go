@@ -293,7 +293,7 @@ func unpackSlice(sliceValue reflect.Value, property *parser.Property) []error {
 		}
 	}
 
-	var list []string
+	list := []string{}
 	for _, value := range property.Value.ListValue {
 		if value.Type != parser.String {
 			// The parser should not produce this.
