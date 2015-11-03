@@ -344,6 +344,9 @@ type EarlyMutatorContext interface {
 type TopDownMutatorContext interface {
 	baseMutatorContext
 
+	OtherModuleName(m Module) string
+	OtherModuleErrorf(m Module, fmt string, args ...interface{})
+
 	VisitDirectDeps(visit func(Module))
 	VisitDirectDepsIf(pred func(Module) bool, visit func(Module))
 	VisitDepsDepthFirst(visit func(Module))
@@ -486,6 +489,21 @@ func (mctx *mutatorContext) AddFarVariationDependencies(variations []Variation,
 			mctx.errs = append(mctx.errs, errs...)
 		}
 	}
+}
+
+func (mctx *mutatorContext) OtherModuleName(logicModule Module) string {
+	module := mctx.context.moduleInfo[logicModule]
+	return module.properties.Name
+}
+
+func (mctx *mutatorContext) OtherModuleErrorf(logicModule Module, format string,
+	args ...interface{}) {
+
+	module := mctx.context.moduleInfo[logicModule]
+	mctx.errs = append(mctx.errs, &Error{
+		Err: fmt.Errorf(format, args...),
+		Pos: module.pos,
+	})
 }
 
 func (mctx *mutatorContext) VisitDirectDeps(visit func(Module)) {
