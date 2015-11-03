@@ -19,6 +19,10 @@ import (
 	"testing"
 )
 
+type Walker interface {
+	Walk() bool
+}
+
 type fooModule struct {
 	properties struct {
 		Foo string
@@ -37,6 +41,10 @@ func (f *fooModule) Foo() string {
 	return f.properties.Foo
 }
 
+func (f *fooModule) Walk() bool {
+	return true
+}
+
 type barModule struct {
 	properties struct {
 		Bar bool
@@ -53,6 +61,10 @@ func (b *barModule) GenerateBuildActions(ModuleContext) {
 
 func (b *barModule) Bar() bool {
 	return b.properties.Bar
+}
+
+func (b *barModule) Walk() bool {
+	return false
 }
 
 func TestContextParse(t *testing.T) {
@@ -80,7 +92,7 @@ func TestContextParse(t *testing.T) {
 		t.FailNow()
 	}
 
-	errs = ctx.resolveDependencies(nil)
+	errs = ctx.ResolveDependencies(nil)
 	if len(errs) > 0 {
 		t.Errorf("unexpected dep errors:")
 		for _, err := range errs {
@@ -88,14 +100,31 @@ func TestContextParse(t *testing.T) {
 		}
 		t.FailNow()
 	}
+}
 
-	errs = ctx.updateDependencies()
-	if len(errs) > 0 {
-		t.Errorf("unexpected dep cycle errors:")
-		for _, err := range errs {
-			t.Errorf("  %s", err)
-		}
-		t.FailNow()
+// |---B===D       - represents a non-walkable edge
+// A               = represents a walkable edge
+// |===C---E===G
+//     |       |   A should not be visited because it's the root node.
+//     |===F===|   B, D and E should not be walked.
+func TestWalkDeps(t *testing.T) {
+	ctx := NewContext()
+	ctx.RegisterModuleType("foo_module", newFooModule)
+	ctx.RegisterModuleType("bar_module", newBarModule)
+	ctx.ParseBlueprintsFiles("context_test_Blueprints")
+	ctx.ResolveDependencies(nil)
+
+	var output string
+	topModule := ctx.moduleGroups["A"].modules[0]
+	ctx.walkDeps(topModule,
+		func(module, parent Module) bool {
+			if module.(Walker).Walk() {
+				output += ctx.ModuleName(module)
+				return true
+			}
+			return false
+		})
+	if output != "CFG" {
+		t.Fatalf("unexpected walkDeps behaviour: %s\nshould be: CFG", output)
 	}
-
 }

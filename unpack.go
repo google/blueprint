@@ -161,19 +161,22 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			}
 			fallthrough
 		case reflect.Ptr:
-			if fieldValue.IsNil() {
-				panic(fmt.Errorf("field %s contains a nil pointer",
-					field.Name))
-			}
-			fieldValue = fieldValue.Elem()
-			elemType := fieldValue.Type()
-			if elemType.Kind() != reflect.Struct {
-				panic(fmt.Errorf("field %s contains a non-struct pointer",
-					field.Name))
+			switch ptrKind := fieldValue.Type().Elem().Kind(); ptrKind {
+			case reflect.Struct:
+				if fieldValue.IsNil() {
+					panic(fmt.Errorf("field %s contains a nil pointer",
+						field.Name))
+				}
+				fieldValue = fieldValue.Elem()
+			case reflect.Bool, reflect.String:
+				// Nothing
+			default:
+				panic(fmt.Errorf("field %s contains a pointer to %s",
+					field.Name, ptrKind))
 			}
 
 		case reflect.Int, reflect.Uint:
-			if !hasTag(field, "blueprint", "mutated") {
+			if !proptools.HasTag(field, "blueprint", "mutated") {
 				panic(fmt.Errorf(`int field %s must be tagged blueprint:"mutated"`, field.Name))
 			}
 
@@ -192,7 +195,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 
 		packedProperty.unpacked = true
 
-		if hasTag(field, "blueprint", "mutated") {
+		if proptools.HasTag(field, "blueprint", "mutated") {
 			errs = append(errs,
 				&Error{
 					Err: fmt.Errorf("mutated field %s cannot be set in a Blueprint file", propertyName),
@@ -204,7 +207,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			continue
 		}
 
-		if filterKey != "" && !hasTag(field, filterKey, filterValue) {
+		if filterKey != "" && !proptools.HasTag(field, filterKey, filterValue) {
 			errs = append(errs,
 				&Error{
 					Err: fmt.Errorf("filtered field %s cannot be set in a Blueprint file", propertyName),
@@ -225,9 +228,19 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			newErrs = unpackString(fieldValue, packedProperty.property)
 		case reflect.Slice:
 			newErrs = unpackSlice(fieldValue, packedProperty.property)
-		case reflect.Ptr, reflect.Interface:
-			fieldValue = fieldValue.Elem()
-			fallthrough
+		case reflect.Ptr:
+			switch ptrKind := fieldValue.Type().Elem().Kind(); ptrKind {
+			case reflect.Bool:
+				newValue := reflect.New(fieldValue.Type().Elem())
+				newErrs = unpackBool(newValue.Elem(), packedProperty.property)
+				fieldValue.Set(newValue)
+			case reflect.String:
+				newValue := reflect.New(fieldValue.Type().Elem())
+				newErrs = unpackString(newValue.Elem(), packedProperty.property)
+				fieldValue.Set(newValue)
+			default:
+				panic(fmt.Errorf("unexpected pointer kind %s", ptrKind))
+			}
 		case reflect.Struct:
 			localFilterKey, localFilterValue := filterKey, filterValue
 			if k, v, err := HasFilter(field.Tag); err != nil {
@@ -248,6 +261,8 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			}
 			newErrs = unpackStruct(propertyName+".", fieldValue,
 				packedProperty.property, propertyMap, localFilterKey, localFilterValue)
+		default:
+			panic(fmt.Errorf("unexpected kind %s", kind))
 		}
 		errs = append(errs, newErrs...)
 		if len(errs) >= maxErrors {
@@ -293,7 +308,7 @@ func unpackSlice(sliceValue reflect.Value, property *parser.Property) []error {
 		}
 	}
 
-	var list []string
+	list := []string{}
 	for _, value := range property.Value.ListValue {
 		if value.Type != parser.String {
 			// The parser should not produce this.
@@ -324,17 +339,6 @@ func unpackStruct(namePrefix string, structValue reflect.Value,
 	}
 
 	return unpackStructValue(namePrefix, structValue, propertyMap, filterKey, filterValue)
-}
-
-func hasTag(field reflect.StructField, name, value string) bool {
-	tag := field.Tag.Get(name)
-	for _, entry := range strings.Split(tag, ",") {
-		if entry == value {
-			return true
-		}
-	}
-
-	return false
 }
 
 func HasFilter(field reflect.StructTag) (k, v string, err error) {

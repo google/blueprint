@@ -224,12 +224,16 @@ func (e *Error) Error() string {
 // RegisterSingletonFactory methods must be called before it can do anything
 // useful.
 func NewContext() *Context {
-	return &Context{
+	ctx := &Context{
 		moduleFactories:  make(map[string]ModuleFactory),
 		moduleGroups:     make(map[string]*moduleGroup),
 		moduleInfo:       make(map[Module]*moduleInfo),
 		moduleNinjaNames: make(map[string]*moduleGroup),
 	}
+
+	ctx.RegisterBottomUpMutator("blueprint_deps", blueprintDepsMutator)
+
+	return ctx
 }
 
 // A ModuleFactory function creates a new Module object.  See the
@@ -402,6 +406,10 @@ func (c *Context) RegisterBottomUpMutator(name string, mutator BottomUpMutator) 
 //
 // The mutator type names given here must be unique to all bottom up or early
 // mutators in the Context.
+//
+// Deprecated, use a BottomUpMutator instead.  The only difference between
+// EarlyMutator and BottomUpMutator is that EarlyMutator runs before the
+// deprecated DynamicDependencies.
 func (c *Context) RegisterEarlyMutator(name string, mutator EarlyMutator) {
 	for _, m := range c.variantMutatorNames {
 		if m == name {
@@ -1057,27 +1065,8 @@ func (c *Context) addModule(module *moduleInfo) []error {
 // modules defined in the parsed Blueprints files are valid.  This means that
 // the modules depended upon are defined and that no circular dependencies
 // exist.
-//
-// The config argument is made available to all of the DynamicDependerModule
-// objects via the Config method on the DynamicDependerModuleContext objects
-// passed to their DynamicDependencies method.
 func (c *Context) ResolveDependencies(config interface{}) []error {
-	errs := c.runEarlyMutators(config)
-	if len(errs) > 0 {
-		return errs
-	}
-
-	errs = c.resolveDependencies(config)
-	if len(errs) > 0 {
-		return errs
-	}
-
-	errs = c.updateDependencies()
-	if len(errs) > 0 {
-		return errs
-	}
-
-	errs = c.runMutators(config)
+	errs := c.runMutators(config)
 	if len(errs) > 0 {
 		return errs
 	}
@@ -1086,74 +1075,24 @@ func (c *Context) ResolveDependencies(config interface{}) []error {
 	return nil
 }
 
-// moduleDeps adds dependencies to a module.  If the module implements the
+// Default dependencies handling.  If the module implements the (deprecated)
 // DynamicDependerModule interface then this set consists of the union of those
 // module names listed in its "deps" property, those returned by its
 // DynamicDependencies method, and those added by calling AddDependencies or
 // AddVariationDependencies on DynamicDependencyModuleContext.  Otherwise it
 // is simply those names listed in its "deps" property.
-func (c *Context) moduleDeps(module *moduleInfo,
-	config interface{}) (errs []error) {
+func blueprintDepsMutator(ctx BottomUpMutatorContext) {
+	ctx.AddDependency(ctx.Module(), ctx.moduleInfo().properties.Deps...)
 
-	depNamesSet := make(map[string]bool)
-	depNames := []string{}
+	if dynamicDepender, ok := ctx.Module().(DynamicDependerModule); ok {
+		dynamicDeps := dynamicDepender.DynamicDependencies(ctx)
 
-	for _, depName := range module.properties.Deps {
-		if !depNamesSet[depName] {
-			depNamesSet[depName] = true
-			depNames = append(depNames, depName)
+		if ctx.Failed() {
+			return
 		}
+
+		ctx.AddDependency(ctx.Module(), dynamicDeps...)
 	}
-
-	dynamicDepender, ok := module.logicModule.(DynamicDependerModule)
-	if ok {
-		ddmctx := &dynamicDependerModuleContext{
-			baseModuleContext: baseModuleContext{
-				context: c,
-				config:  config,
-				module:  module,
-			},
-			module: module,
-		}
-
-		dynamicDeps := dynamicDepender.DynamicDependencies(ddmctx)
-
-		if len(ddmctx.errs) > 0 {
-			return ddmctx.errs
-		}
-
-		for _, depName := range dynamicDeps {
-			if !depNamesSet[depName] {
-				depNamesSet[depName] = true
-				depNames = append(depNames, depName)
-			}
-		}
-	}
-
-	for _, depName := range depNames {
-		newErrs := c.addDependency(module, depName)
-		if len(newErrs) > 0 {
-			errs = append(errs, newErrs...)
-		}
-	}
-	return errs
-}
-
-// resolveDependencies populates the directDeps list for every module.  In doing so it checks for
-// missing dependencies and self-dependant modules.
-func (c *Context) resolveDependencies(config interface{}) (errs []error) {
-	for _, group := range c.moduleGroups {
-		for _, module := range group.modules {
-			module.directDeps = make([]*moduleInfo, 0, len(module.properties.Deps))
-
-			newErrs := c.moduleDeps(module, config)
-			if len(newErrs) > 0 {
-				errs = append(errs, newErrs...)
-			}
-		}
-	}
-
-	return
 }
 
 // findMatchingVariant searches the moduleGroup for a module with the same variant as module,
@@ -1545,10 +1484,20 @@ func (c *Context) runEarlyMutators(config interface{}) (errs []error) {
 		}
 	}
 
+	errs = c.updateDependencies()
+	if len(errs) > 0 {
+		return errs
+	}
+
 	return nil
 }
 
 func (c *Context) runMutators(config interface{}) (errs []error) {
+	errs = c.runEarlyMutators(config)
+	if len(errs) > 0 {
+		return errs
+	}
+
 	for _, mutator := range c.mutatorInfo {
 		if mutator.topDownMutator != nil {
 			errs = c.runTopDownMutator(config, mutator.name, mutator.topDownMutator)
@@ -1823,6 +1772,27 @@ func (c *Context) processLocalBuildActions(out, in *localBuildActions,
 	}
 
 	return nil
+}
+
+func (c *Context) walkDeps(topModule *moduleInfo,
+	visit func(Module, Module) bool) {
+
+	visited := make(map[*moduleInfo]bool)
+
+	var walk func(module *moduleInfo)
+	walk = func(module *moduleInfo) {
+		visited[module] = true
+
+		for _, moduleDep := range module.directDeps {
+			if !visited[moduleDep] {
+				if visit(moduleDep.logicModule, module.logicModule) {
+					walk(moduleDep)
+				}
+			}
+		}
+	}
+
+	walk(topModule)
 }
 
 func (c *Context) visitDepsDepthFirst(topModule *moduleInfo, visit func(Module)) {

@@ -81,7 +81,7 @@ default $
 # Variant:
 # Type:    bootstrap_go_package
 # Factory: github.com/google/blueprint/bootstrap.func·003
-# Defined: Blueprints:70:1
+# Defined: Blueprints:80:1
 
 build $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-bootstrap/pkg/github.com/google/blueprint/bootstrap.a $
@@ -108,7 +108,7 @@ default $
 # Variant:
 # Type:    bootstrap_go_package
 # Factory: github.com/google/blueprint/bootstrap.func·003
-# Defined: Blueprints:89:1
+# Defined: Blueprints:99:1
 
 build $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-bootstrap-bpdoc/pkg/github.com/google/blueprint/bootstrap/bpdoc.a $
@@ -179,7 +179,10 @@ default $
 
 build $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a $
-        : g.bootstrap.compile ${g.bootstrap.srcDir}/proptools/proptools.go | $
+        : g.bootstrap.compile ${g.bootstrap.srcDir}/proptools/clone.go $
+        ${g.bootstrap.srcDir}/proptools/extend.go $
+        ${g.bootstrap.srcDir}/proptools/proptools.go $
+        ${g.bootstrap.srcDir}/proptools/typeequal.go | $
         ${g.bootstrap.compileCmd}
     pkgPath = github.com/google/blueprint/proptools
 default $
@@ -190,7 +193,7 @@ default $
 # Variant:
 # Type:    bootstrap_core_go_binary
 # Factory: github.com/google/blueprint/bootstrap.func·005
-# Defined: Blueprints:132:1
+# Defined: Blueprints:142:1
 
 build ${g.bootstrap.buildDir}/.bootstrap/choosestage/obj/choosestage.a: $
         g.bootstrap.compile ${g.bootstrap.srcDir}/choosestage/choosestage.go | $
@@ -212,7 +215,7 @@ default ${g.bootstrap.BinDir}/choosestage
 # Variant:
 # Type:    bootstrap_core_go_binary
 # Factory: github.com/google/blueprint/bootstrap.func·005
-# Defined: Blueprints:122:1
+# Defined: Blueprints:132:1
 
 build ${g.bootstrap.buildDir}/.bootstrap/gotestmain/obj/gotestmain.a: $
         g.bootstrap.compile ${g.bootstrap.srcDir}/gotestmain/gotestmain.go | $
@@ -234,7 +237,7 @@ default ${g.bootstrap.BinDir}/gotestmain
 # Variant:
 # Type:    bootstrap_core_go_binary
 # Factory: github.com/google/blueprint/bootstrap.func·005
-# Defined: Blueprints:127:1
+# Defined: Blueprints:137:1
 
 build ${g.bootstrap.buildDir}/.bootstrap/gotestrunner/obj/gotestrunner.a: $
         g.bootstrap.compile ${g.bootstrap.srcDir}/gotestrunner/gotestrunner.go $
@@ -256,7 +259,7 @@ default ${g.bootstrap.BinDir}/gotestrunner
 # Variant:
 # Type:    bootstrap_core_go_binary
 # Factory: github.com/google/blueprint/bootstrap.func·005
-# Defined: Blueprints:101:1
+# Defined: Blueprints:111:1
 
 build ${g.bootstrap.buildDir}/.bootstrap/minibp/obj/minibp.a: $
         g.bootstrap.compile ${g.bootstrap.srcDir}/bootstrap/minibp/main.go | $
