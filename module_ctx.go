@@ -199,10 +199,13 @@ func (d *baseModuleContext) ModuleErrorf(format string,
 func (d *baseModuleContext) PropertyErrorf(property, format string,
 	args ...interface{}) {
 
-	pos, ok := d.module.propertyPos[property]
-	if !ok {
-		panic(fmt.Errorf("property %q was not set for this module", property))
+	pos := d.module.propertyPos[property]
+
+	if !pos.IsValid() {
+		pos = d.module.pos
 	}
+
+	format = property + ": " + format
 
 	d.errs = append(d.errs, &Error{
 		Err: fmt.Errorf(format, args...),
