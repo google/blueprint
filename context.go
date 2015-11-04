@@ -1112,12 +1112,10 @@ func (c *Context) findMatchingVariant(module *moduleInfo, group *moduleGroup) *m
 }
 
 func (c *Context) addDependency(module *moduleInfo, depName string) []error {
-	depsPos := module.propertyPos["deps"]
-
 	if depName == module.properties.Name {
 		return []error{&Error{
 			Err: fmt.Errorf("%q depends on itself", depName),
-			Pos: depsPos,
+			Pos: module.pos,
 		}}
 	}
 
@@ -1126,7 +1124,7 @@ func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 		return []error{&Error{
 			Err: fmt.Errorf("%q depends on undefined module %q",
 				module.properties.Name, depName),
-			Pos: depsPos,
+			Pos: module.pos,
 		}}
 	}
 
@@ -1145,13 +1143,13 @@ func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 		Err: fmt.Errorf("dependency %q of %q missing variant %q",
 			depInfo.modules[0].properties.Name, module.properties.Name,
 			c.prettyPrintVariant(module.dependencyVariant)),
-		Pos: depsPos,
+		Pos: module.pos,
 	}}
 }
 
-func (c *Context) addReverseDependency(module *moduleInfo, destName string) []error {
+func (c *Context) findReverseDependency(module *moduleInfo, destName string) (*moduleInfo, []error) {
 	if destName == module.properties.Name {
-		return []error{&Error{
+		return nil, []error{&Error{
 			Err: fmt.Errorf("%q depends on itself", destName),
 			Pos: module.pos,
 		}}
@@ -1159,7 +1157,7 @@ func (c *Context) addReverseDependency(module *moduleInfo, destName string) []er
 
 	destInfo, ok := c.moduleGroups[destName]
 	if !ok {
-		return []error{&Error{
+		return nil, []error{&Error{
 			Err: fmt.Errorf("%q has a reverse dependency on undefined module %q",
 				module.properties.Name, destName),
 			Pos: module.pos,
@@ -1167,11 +1165,10 @@ func (c *Context) addReverseDependency(module *moduleInfo, destName string) []er
 	}
 
 	if m := c.findMatchingVariant(module, destInfo); m != nil {
-		m.directDeps = append(m.directDeps, module)
-		return nil
+		return m, nil
 	}
 
-	return []error{&Error{
+	return nil, []error{&Error{
 		Err: fmt.Errorf("reverse dependency %q of %q missing variant %q",
 			destName, module.properties.Name,
 			c.prettyPrintVariant(module.dependencyVariant)),
@@ -1182,14 +1179,12 @@ func (c *Context) addReverseDependency(module *moduleInfo, destName string) []er
 func (c *Context) addVariationDependency(module *moduleInfo, variations []Variation,
 	depName string, far bool) []error {
 
-	depsPos := module.propertyPos["deps"]
-
 	depInfo, ok := c.moduleGroups[depName]
 	if !ok {
 		return []error{&Error{
 			Err: fmt.Errorf("%q depends on undefined module %q",
 				module.properties.Name, depName),
-			Pos: depsPos,
+			Pos: module.pos,
 		}}
 	}
 
@@ -1214,13 +1209,19 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 			found = m.variant.equal(newVariant)
 		}
 		if found {
+			if module == m {
+				return []error{&Error{
+					Err: fmt.Errorf("%q depends on itself", depName),
+					Pos: module.pos,
+				}}
+			}
 			// AddVariationDependency allows adding a dependency on itself, but only if
 			// that module is earlier in the module list than this one, since we always
 			// run GenerateBuildActions in order for the variants of a module
 			if depInfo == module.group && beforeInModuleList(module, m, module.group.modules) {
 				return []error{&Error{
 					Err: fmt.Errorf("%q depends on later version of itself", depName),
-					Pos: depsPos,
+					Pos: module.pos,
 				}}
 			}
 			module.directDeps = append(module.directDeps, m)
@@ -1232,7 +1233,7 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 		Err: fmt.Errorf("dependency %q of %q missing variant %q",
 			depInfo.modules[0].properties.Name, module.properties.Name,
 			c.prettyPrintVariant(newVariant)),
-		Pos: depsPos,
+		Pos: module.pos,
 	}}
 }
 
@@ -1310,7 +1311,7 @@ func (c *Context) updateDependencies() (errs []error) {
 				Err: fmt.Errorf("    %q depends on %q",
 					curModule.properties.Name,
 					nextModule.properties.Name),
-				Pos: curModule.propertyPos["deps"],
+				Pos: curModule.pos,
 			})
 			curModule = nextModule
 		}
@@ -1541,6 +1542,8 @@ func (c *Context) runTopDownMutator(config interface{},
 func (c *Context) runBottomUpMutator(config interface{},
 	name string, mutator BottomUpMutator) (errs []error) {
 
+	reverseDeps := make(map[*moduleInfo][]*moduleInfo)
+
 	for _, module := range c.modulesSorted {
 		newModules := make([]*moduleInfo, 0, 1)
 
@@ -1554,7 +1557,8 @@ func (c *Context) runBottomUpMutator(config interface{},
 				config:  config,
 				module:  module,
 			},
-			name: name,
+			name:        name,
+			reverseDeps: reverseDeps,
 		}
 
 		mutator(mctx)
@@ -1578,6 +1582,11 @@ func (c *Context) runBottomUpMutator(config interface{},
 		}
 
 		module.group.modules = spliceModules(module.group.modules, module, newModules)
+	}
+
+	for module, deps := range reverseDeps {
+		sort.Sort(moduleSorter(deps))
+		module.directDeps = append(module.directDeps, deps...)
 	}
 
 	errs = c.updateDependencies()
@@ -2615,6 +2624,9 @@ func (c *Context) writeLocalBuildActions(nw *ninjaWriter,
 
 func beforeInModuleList(a, b *moduleInfo, list []*moduleInfo) bool {
 	found := false
+	if a == b {
+		return false
+	}
 	for _, l := range list {
 		if l == a {
 			found = true
