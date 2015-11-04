@@ -1214,6 +1214,12 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 			found = m.variant.equal(newVariant)
 		}
 		if found {
+			if module == m {
+				return []error{&Error{
+					Err: fmt.Errorf("%q depends on itself", depName),
+					Pos: depsPos,
+				}}
+			}
 			// AddVariationDependency allows adding a dependency on itself, but only if
 			// that module is earlier in the module list than this one, since we always
 			// run GenerateBuildActions in order for the variants of a module
@@ -2615,6 +2621,9 @@ func (c *Context) writeLocalBuildActions(nw *ninjaWriter,
 
 func beforeInModuleList(a, b *moduleInfo, list []*moduleInfo) bool {
 	found := false
+	if a == b {
+		return false
+	}
 	for _, l := range list {
 		if l == a {
 			found = true
