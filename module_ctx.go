@@ -328,7 +328,8 @@ func (m *moduleContext) VisitAllModuleVariants(visit func(Module)) {
 
 type mutatorContext struct {
 	baseModuleContext
-	name string
+	name        string
+	reverseDeps map[*moduleInfo][]*moduleInfo
 }
 
 type baseMutatorContext interface {
@@ -453,12 +454,18 @@ func (mctx *mutatorContext) AddDependency(module Module, deps ...string) {
 
 // Add a dependency from the destination to the given module.
 // Does not affect the ordering of the current mutator pass, but will be ordered
-// correctly for all future mutator passes.
+// correctly for all future mutator passes.  All reverse dependencies for a destination module are
+// collected until the end of the mutator pass, sorted by name, and then appended to the destination
+// module's dependency list.
 func (mctx *mutatorContext) AddReverseDependency(module Module, destName string) {
-	errs := mctx.context.addReverseDependency(mctx.module, destName)
+	destModule, errs := mctx.context.findReverseDependency(mctx.context.moduleInfo[module], destName)
 	if len(errs) > 0 {
 		mctx.errs = append(mctx.errs, errs...)
+		return
 	}
+
+	mctx.reverseDeps[destModule] = append(mctx.reverseDeps[destModule],
+		mctx.context.moduleInfo[module])
 }
 
 // AddVariationDependencies adds deps as dependencies of the current module, but uses the variations

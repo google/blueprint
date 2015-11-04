@@ -1149,9 +1149,9 @@ func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 	}}
 }
 
-func (c *Context) addReverseDependency(module *moduleInfo, destName string) []error {
+func (c *Context) findReverseDependency(module *moduleInfo, destName string) (*moduleInfo, []error) {
 	if destName == module.properties.Name {
-		return []error{&Error{
+		return nil, []error{&Error{
 			Err: fmt.Errorf("%q depends on itself", destName),
 			Pos: module.pos,
 		}}
@@ -1159,7 +1159,7 @@ func (c *Context) addReverseDependency(module *moduleInfo, destName string) []er
 
 	destInfo, ok := c.moduleGroups[destName]
 	if !ok {
-		return []error{&Error{
+		return nil, []error{&Error{
 			Err: fmt.Errorf("%q has a reverse dependency on undefined module %q",
 				module.properties.Name, destName),
 			Pos: module.pos,
@@ -1167,11 +1167,10 @@ func (c *Context) addReverseDependency(module *moduleInfo, destName string) []er
 	}
 
 	if m := c.findMatchingVariant(module, destInfo); m != nil {
-		m.directDeps = append(m.directDeps, module)
-		return nil
+		return m, nil
 	}
 
-	return []error{&Error{
+	return nil, []error{&Error{
 		Err: fmt.Errorf("reverse dependency %q of %q missing variant %q",
 			destName, module.properties.Name,
 			c.prettyPrintVariant(module.dependencyVariant)),
@@ -1547,6 +1546,8 @@ func (c *Context) runTopDownMutator(config interface{},
 func (c *Context) runBottomUpMutator(config interface{},
 	name string, mutator BottomUpMutator) (errs []error) {
 
+	reverseDeps := make(map[*moduleInfo][]*moduleInfo)
+
 	for _, module := range c.modulesSorted {
 		newModules := make([]*moduleInfo, 0, 1)
 
@@ -1560,7 +1561,8 @@ func (c *Context) runBottomUpMutator(config interface{},
 				config:  config,
 				module:  module,
 			},
-			name: name,
+			name:        name,
+			reverseDeps: reverseDeps,
 		}
 
 		mutator(mctx)
@@ -1584,6 +1586,11 @@ func (c *Context) runBottomUpMutator(config interface{},
 		}
 
 		module.group.modules = spliceModules(module.group.modules, module, newModules)
+	}
+
+	for module, deps := range reverseDeps {
+		sort.Sort(moduleSorter(deps))
+		module.directDeps = append(module.directDeps, deps...)
 	}
 
 	errs = c.updateDependencies()
