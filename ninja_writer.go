@@ -103,7 +103,7 @@ func (n *ninjaWriter) Rule(name string) error {
 	return err
 }
 
-func (n *ninjaWriter) Build(rule string, outputs, explicitDeps, implicitDeps,
+func (n *ninjaWriter) Build(comment string, rule string, outputs, explicitDeps, implicitDeps,
 	orderOnlyDeps []string) error {
 
 	n.justDidBlankLine = false
@@ -114,6 +114,10 @@ func (n *ninjaWriter) Build(rule string, outputs, explicitDeps, implicitDeps,
 	wrapper := ninjaWriterWithWrap{
 		ninjaWriter: n,
 		maxLineLen:  maxLineLen,
+	}
+
+	if comment != "" {
+		wrapper.Comment(comment)
 	}
 
 	wrapper.WriteString("build")
