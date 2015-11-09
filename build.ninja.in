@@ -54,7 +54,7 @@ rule g.bootstrap.link
 # Module:  blueprint
 # Variant:
 # Type:    bootstrap_go_package
-# Factory: github.com/google/blueprint/bootstrap.func·003
+# Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
 # Defined: Blueprints:1:1
 
 build $
@@ -80,7 +80,7 @@ default $
 # Module:  blueprint-bootstrap
 # Variant:
 # Type:    bootstrap_go_package
-# Factory: github.com/google/blueprint/bootstrap.func·003
+# Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
 # Defined: Blueprints:80:1
 
 build $
@@ -107,7 +107,7 @@ default $
 # Module:  blueprint-bootstrap-bpdoc
 # Variant:
 # Type:    bootstrap_go_package
-# Factory: github.com/google/blueprint/bootstrap.func·003
+# Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
 # Defined: Blueprints:99:1
 
 build $
@@ -127,7 +127,7 @@ default $
 # Module:  blueprint-deptools
 # Variant:
 # Type:    bootstrap_go_package
-# Factory: github.com/google/blueprint/bootstrap.func·003
+# Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
 # Defined: Blueprints:46:1
 
 build $
@@ -142,7 +142,7 @@ default $
 # Module:  blueprint-parser
 # Variant:
 # Type:    bootstrap_go_package
-# Factory: github.com/google/blueprint/bootstrap.func·003
+# Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
 # Defined: Blueprints:31:1
 
 build $
@@ -159,7 +159,7 @@ default $
 # Module:  blueprint-pathtools
 # Variant:
 # Type:    bootstrap_go_package
-# Factory: github.com/google/blueprint/bootstrap.func·003
+# Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
 # Defined: Blueprints:52:1
 
 build $
@@ -174,7 +174,7 @@ default $
 # Module:  blueprint-proptools
 # Variant:
 # Type:    bootstrap_go_package
-# Factory: github.com/google/blueprint/bootstrap.func·003
+# Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
 # Defined: Blueprints:64:1
 
 build $
@@ -192,7 +192,7 @@ default $
 # Module:  choosestage
 # Variant:
 # Type:    bootstrap_core_go_binary
-# Factory: github.com/google/blueprint/bootstrap.func·005
+# Factory: github.com/google/blueprint/bootstrap.newGoBinaryModuleFactory.func1
 # Defined: Blueprints:142:1
 
 build ${g.bootstrap.buildDir}/.bootstrap/choosestage/obj/choosestage.a: $
@@ -206,6 +206,7 @@ build ${g.bootstrap.buildDir}/.bootstrap/choosestage/obj/a.out: $
         ${g.bootstrap.buildDir}/.bootstrap/choosestage/obj/choosestage.a | $
         ${g.bootstrap.linkCmd}
 default ${g.bootstrap.buildDir}/.bootstrap/choosestage/obj/a.out
+
 build ${g.bootstrap.BinDir}/choosestage: g.bootstrap.cp $
         ${g.bootstrap.buildDir}/.bootstrap/choosestage/obj/a.out
 default ${g.bootstrap.BinDir}/choosestage
@@ -214,7 +215,7 @@ default ${g.bootstrap.BinDir}/choosestage
 # Module:  gotestmain
 # Variant:
 # Type:    bootstrap_core_go_binary
-# Factory: github.com/google/blueprint/bootstrap.func·005
+# Factory: github.com/google/blueprint/bootstrap.newGoBinaryModuleFactory.func1
 # Defined: Blueprints:132:1
 
 build ${g.bootstrap.buildDir}/.bootstrap/gotestmain/obj/gotestmain.a: $
@@ -228,6 +229,7 @@ build ${g.bootstrap.buildDir}/.bootstrap/gotestmain/obj/a.out: $
         ${g.bootstrap.buildDir}/.bootstrap/gotestmain/obj/gotestmain.a | $
         ${g.bootstrap.linkCmd}
 default ${g.bootstrap.buildDir}/.bootstrap/gotestmain/obj/a.out
+
 build ${g.bootstrap.BinDir}/gotestmain: g.bootstrap.cp $
         ${g.bootstrap.buildDir}/.bootstrap/gotestmain/obj/a.out
 default ${g.bootstrap.BinDir}/gotestmain
@@ -236,7 +238,7 @@ default ${g.bootstrap.BinDir}/gotestmain
 # Module:  gotestrunner
 # Variant:
 # Type:    bootstrap_core_go_binary
-# Factory: github.com/google/blueprint/bootstrap.func·005
+# Factory: github.com/google/blueprint/bootstrap.newGoBinaryModuleFactory.func1
 # Defined: Blueprints:137:1
 
 build ${g.bootstrap.buildDir}/.bootstrap/gotestrunner/obj/gotestrunner.a: $
@@ -250,6 +252,7 @@ build ${g.bootstrap.buildDir}/.bootstrap/gotestrunner/obj/a.out: $
         ${g.bootstrap.buildDir}/.bootstrap/gotestrunner/obj/gotestrunner.a | $
         ${g.bootstrap.linkCmd}
 default ${g.bootstrap.buildDir}/.bootstrap/gotestrunner/obj/a.out
+
 build ${g.bootstrap.BinDir}/gotestrunner: g.bootstrap.cp $
         ${g.bootstrap.buildDir}/.bootstrap/gotestrunner/obj/a.out
 default ${g.bootstrap.BinDir}/gotestrunner
@@ -258,7 +261,7 @@ default ${g.bootstrap.BinDir}/gotestrunner
 # Module:  minibp
 # Variant:
 # Type:    bootstrap_core_go_binary
-# Factory: github.com/google/blueprint/bootstrap.func·005
+# Factory: github.com/google/blueprint/bootstrap.newGoBinaryModuleFactory.func1
 # Defined: Blueprints:111:1
 
 build ${g.bootstrap.buildDir}/.bootstrap/minibp/obj/minibp.a: $
@@ -287,7 +290,7 @@ default ${g.bootstrap.BinDir}/minibp
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Singleton: bootstrap
-# Factory:   github.com/google/blueprint/bootstrap.func·012
+# Factory:   github.com/google/blueprint/bootstrap.newSingletonFactory.func1
 
 rule s.bootstrap.primarybp
     command = ${g.bootstrap.BinDir}/minibp --build-primary ${runTests} -m ${g.bootstrap.bootstrapManifest} --timestamp ${timestamp} --timestampdep ${timestampdep} -b ${g.bootstrap.buildDir} -d ${outfile}.d -o ${outfile} ${in}
@@ -316,8 +319,10 @@ build ${g.bootstrap.buildDir}/.bootstrap/bootstrap.ninja.in: $
         s.bootstrap.minibp ${g.bootstrap.srcDir}/Blueprints | $
         ${g.bootstrap.bootstrapManifest} ${g.bootstrap.BinDir}/minibp
 default ${g.bootstrap.buildDir}/.bootstrap/bootstrap.ninja.in
+
 build ${g.bootstrap.buildDir}/.bootstrap/notAFile: phony
 default ${g.bootstrap.buildDir}/.bootstrap/notAFile
+
 build ${g.bootstrap.buildDir}/.bootstrap/build.ninja.in: $
         g.bootstrap.chooseStage $
         ${g.bootstrap.buildDir}/.bootstrap/bootstrap.ninja.in $

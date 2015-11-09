@@ -349,7 +349,7 @@ func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*PackageContext]string)
 		nw.Default(outputs...)
 	}
 
-	return nil
+	return nw.BlankLine()
 }
 
 func valueList(list []*ninjaString, pkgNames map[*PackageContext]string,
