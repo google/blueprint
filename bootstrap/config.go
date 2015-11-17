@@ -38,6 +38,13 @@ type ConfigInterface interface {
 	GeneratingPrimaryBuilder() bool
 }
 
+type ConfigInterface2 interface {
+	// CreateNinjaFile should return true if this build invocation is creating
+	// a build.ninja file. Otherwise, only parsing and dependency evaluation
+	// will happen.
+	CreateNinjaFile() bool
+}
+
 type Stage int
 
 const (
