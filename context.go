@@ -1913,10 +1913,9 @@ func (c *Context) requireNinjaVersion(major, minor, micro int) {
 }
 
 func (c *Context) setBuildDir(value *ninjaString) {
-	if c.buildDir != nil {
-		panic("buildDir set multiple times")
+	if c.buildDir == nil {
+		c.buildDir = value
 	}
-	c.buildDir = value
 }
 
 func (c *Context) makeUniquePackageNames(
