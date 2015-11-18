@@ -2144,6 +2144,23 @@ func (c *Context) VisitDepsDepthFirstIf(module Module,
 	c.visitDepsDepthFirstIf(c.moduleInfo[module], pred, visit)
 }
 
+func (c *Context) PrimaryModule(module Module) Module {
+	return c.moduleInfo[module].group.modules[0].logicModule
+}
+
+func (c *Context) FinalModule(module Module) Module {
+	modules := c.moduleInfo[module].group.modules
+	return modules[len(modules)-1].logicModule
+}
+
+func (c *Context) VisitAllModuleVariants(module Module,
+	visit func(Module)) {
+
+	for _, module := range c.moduleInfo[module].group.modules {
+		visit(module.logicModule)
+	}
+}
+
 // WriteBuildFile writes the Ninja manifeset text for the generated build
 // actions to w.  If this is called before PrepareBuildActions successfully
 // completes then ErrBuildActionsNotReady is returned.

@@ -49,6 +49,11 @@ type SingletonContext interface {
 	VisitDepsDepthFirstIf(module Module, pred func(Module) bool,
 		visit func(Module))
 
+	VisitAllModuleVariants(module Module, visit func(Module))
+
+	PrimaryModule(module Module) Module
+	FinalModule(module Module) Module
+
 	AddNinjaFileDeps(deps ...string)
 }
 
@@ -164,6 +169,18 @@ func (s *singletonContext) VisitDepsDepthFirstIf(module Module,
 	pred func(Module) bool, visit func(Module)) {
 
 	s.context.VisitDepsDepthFirstIf(module, pred, visit)
+}
+
+func (s *singletonContext) PrimaryModule(module Module) Module {
+	return s.context.PrimaryModule(module)
+}
+
+func (s *singletonContext) FinalModule(module Module) Module {
+	return s.context.FinalModule(module)
+}
+
+func (s *singletonContext) VisitAllModuleVariants(module Module, visit func(Module)) {
+	s.context.VisitAllModuleVariants(module, visit)
 }
 
 func (s *singletonContext) AddNinjaFileDeps(deps ...string) {
