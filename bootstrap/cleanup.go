@@ -130,7 +130,7 @@ func removeFileAndEmptyDirs(path string) error {
 		}
 		pathErr := err.(*os.PathError)
 		switch pathErr.Err {
-		case syscall.ENOTEMPTY, syscall.EEXIST:
+		case syscall.ENOTEMPTY, syscall.EEXIST, syscall.ENOTDIR:
 			return nil
 		}
 		return err
