@@ -1,1 +1,9 @@
 out.test
+
+# Patch related files.
+*.patch
+*.orig
+*.rej
+
+# Temp files created by most text editors.
+*~
