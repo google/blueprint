@@ -722,7 +722,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 		// BuildDir must be different between the three stages, otherwise the
 		// cleanup process will remove files from the other builds.
-		ctx.SetBuildDir(pctx, miniBootstrapDir)
+		ctx.SetNinjaBuildDir(pctx, miniBootstrapDir)
 
 		// Generate the Ninja file to build the primary builder. Save the
 		// timestamps and deps, so that we can come back to this stage if
@@ -811,7 +811,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 		// BuildDir must be different between the three stages, otherwise the
 		// cleanup process will remove files from the other builds.
-		ctx.SetBuildDir(pctx, bootstrapDir)
+		ctx.SetNinjaBuildDir(pctx, bootstrapDir)
 
 		// We generate the depfile here that includes the dependencies for all
 		// the Blueprints files that contribute to generating the big build
@@ -901,7 +901,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		})
 
 	case StageMain:
-		ctx.SetBuildDir(pctx, "${buildDir}")
+		ctx.SetNinjaBuildDir(pctx, "${buildDir}")
 
 		// We're generating a non-bootstrapper Ninja file, so we need to set it
 		// up to re-bootstrap if necessary. We do this by making build.ninja.in
