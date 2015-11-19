@@ -18,11 +18,12 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"github.com/google/blueprint"
 	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"github.com/google/blueprint"
 )
 
 const logFileName = ".ninja_log"
@@ -32,12 +33,9 @@ const logFileName = ".ninja_log"
 func removeAbandonedFiles(ctx *blueprint.Context, config *Config,
 	srcDir, manifestFile string) error {
 
-	buildDir := BuildDir
-	switch config.stage {
-	case StageBootstrap:
-		buildDir = filepath.Join(buildDir, miniBootstrapSubDir)
-	case StagePrimary:
-		buildDir = filepath.Join(buildDir, bootstrapSubDir)
+	ninjaBuildDir, err := ctx.NinjaBuildDir()
+	if err != nil {
+		return err
 	}
 
 	targetRules, err := ctx.AllTargets()
@@ -49,13 +47,14 @@ func removeAbandonedFiles(ctx *blueprint.Context, config *Config,
 		"@@SrcDir@@", srcDir,
 		"@@BuildDir@@", BuildDir,
 		"@@BootstrapManifest@@", manifestFile)
+	ninjaBuildDir = replacer.Replace(ninjaBuildDir)
 	targets := make(map[string]bool)
 	for target := range targetRules {
 		replacedTarget := replacer.Replace(target)
 		targets[filepath.Clean(replacedTarget)] = true
 	}
 
-	filePaths, err := parseNinjaLog(buildDir)
+	filePaths, err := parseNinjaLog(ninjaBuildDir)
 	if err != nil {
 		return err
 	}
@@ -73,8 +72,8 @@ func removeAbandonedFiles(ctx *blueprint.Context, config *Config,
 	return nil
 }
 
-func parseNinjaLog(buildDir string) ([]string, error) {
-	logFilePath := filepath.Join(buildDir, logFileName)
+func parseNinjaLog(ninjaBuildDir string) ([]string, error) {
+	logFilePath := filepath.Join(ninjaBuildDir, logFileName)
 	logFile, err := os.Open(logFilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -130,7 +129,7 @@ func removeFileAndEmptyDirs(path string) error {
 		}
 		pathErr := err.(*os.PathError)
 		switch pathErr.Err {
-		case syscall.ENOTEMPTY, syscall.EEXIST:
+		case syscall.ENOTEMPTY, syscall.EEXIST, syscall.ENOTDIR:
 			return nil
 		}
 		return err

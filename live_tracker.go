@@ -42,10 +42,11 @@ func (l *liveTracker) AddBuildDefDeps(def *buildDef) error {
 	l.Lock()
 	defer l.Unlock()
 
-	err := l.addRule(def.Rule)
+	ruleDef, err := l.addRule(def.Rule)
 	if err != nil {
 		return err
 	}
+	def.RuleDef = ruleDef
 
 	err = l.addNinjaStringListDeps(def.Outputs)
 	if err != nil {
@@ -77,36 +78,41 @@ func (l *liveTracker) AddBuildDefDeps(def *buildDef) error {
 	return nil
 }
 
-func (l *liveTracker) addRule(r Rule) error {
-	_, ok := l.rules[r]
+func (l *liveTracker) addRule(r Rule) (def *ruleDef, err error) {
+	def, ok := l.rules[r]
 	if !ok {
-		def, err := r.def(l.config)
+		def, err = r.def(l.config)
 		if err == errRuleIsBuiltin {
 			// No need to do anything for built-in rules.
-			return nil
+			return nil, nil
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		if def.Pool != nil {
 			err = l.addPool(def.Pool)
 			if err != nil {
-				return err
+				return nil, err
 			}
+		}
+
+		err = l.addNinjaStringListDeps(def.CommandDeps)
+		if err != nil {
+			return nil, err
 		}
 
 		for _, value := range def.Variables {
 			err = l.addNinjaStringDeps(value)
 			if err != nil {
-				return err
+				return nil, err
 			}
 		}
 
 		l.rules[r] = def
 	}
 
-	return nil
+	return
 }
 
 func (l *liveTracker) addPool(p Pool) error {

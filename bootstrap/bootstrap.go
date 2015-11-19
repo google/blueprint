@@ -38,6 +38,7 @@ var (
 		blueprint.RuleParams{
 			Command: "GOROOT='$goRoot' $compileCmd -o $out -p $pkgPath -complete " +
 				"$incFlags -pack $in",
+			CommandDeps: []string{"$compileCmd"},
 			Description: "compile $out",
 		},
 		"pkgPath", "incFlags")
@@ -45,6 +46,7 @@ var (
 	link = pctx.StaticRule("link",
 		blueprint.RuleParams{
 			Command:     "GOROOT='$goRoot' $linkCmd -o $out $libDirFlags $in",
+			CommandDeps: []string{"$linkCmd"},
 			Description: "link $out",
 		},
 		"libDirFlags")
@@ -52,6 +54,7 @@ var (
 	goTestMain = pctx.StaticRule("gotestmain",
 		blueprint.RuleParams{
 			Command:     "$goTestMainCmd -o $out -pkg $pkg $in",
+			CommandDeps: []string{"$goTestMainCmd"},
 			Description: "gotestmain $out",
 		},
 		"pkg")
@@ -59,6 +62,7 @@ var (
 	pluginGenSrc = pctx.StaticRule("pluginGenSrc",
 		blueprint.RuleParams{
 			Command:     "$pluginGenSrcCmd -o $out -p $pkg $plugins",
+			CommandDeps: []string{"$pluginGenSrcCmd"},
 			Description: "create $out",
 		},
 		"pkg", "plugins")
@@ -66,6 +70,7 @@ var (
 	test = pctx.StaticRule("test",
 		blueprint.RuleParams{
 			Command:     "$goTestRunnerCmd -p $pkgSrcDir -f $out -- $in -test.short",
+			CommandDeps: []string{"$goTestRunnerCmd"},
 			Description: "test $pkg",
 		},
 		"pkg", "pkgSrcDir")
@@ -80,6 +85,7 @@ var (
 	bootstrap = pctx.StaticRule("bootstrap",
 		blueprint.RuleParams{
 			Command:     "BUILDDIR=$buildDir $bootstrapCmd -i $in",
+			CommandDeps: []string{"$bootstrapCmd"},
 			Description: "bootstrap $in",
 			Generator:   true,
 		})
@@ -87,6 +93,7 @@ var (
 	chooseStage = pctx.StaticRule("chooseStage",
 		blueprint.RuleParams{
 			Command:     "$chooseStageCmd --current $current --bootstrap $bootstrapManifest -o $out $in",
+			CommandDeps: []string{"$chooseStageCmd", "$bootstrapManifest"},
 			Description: "choosing next stage",
 		},
 		"current", "generator")
@@ -409,11 +416,10 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 		}
 
 		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:      link,
-			Outputs:   []string{aoutFile},
-			Inputs:    []string{archiveFile},
-			Implicits: []string{"$linkCmd"},
-			Args:      linkArgs,
+			Rule:    link,
+			Outputs: []string{aoutFile},
+			Inputs:  []string{archiveFile},
+			Args:    linkArgs,
 		})
 
 		ctx.Build(pctx, blueprint.BuildParams{
@@ -448,9 +454,8 @@ func buildGoPluginLoader(ctx blueprint.ModuleContext, pkgPath, pluginSrc string,
 		})
 
 	ctx.Build(pctx, blueprint.BuildParams{
-		Rule:      pluginGenSrc,
-		Outputs:   []string{pluginSrc},
-		Implicits: []string{"$pluginGenSrcCmd"},
+		Rule:    pluginGenSrc,
+		Outputs: []string{pluginSrc},
 		Args: map[string]string{
 			"pkg":     pkgPath,
 			"plugins": strings.Join(pluginPaths, " "),
@@ -468,7 +473,7 @@ func buildGoPackage(ctx blueprint.ModuleContext, pkgRoot string,
 	srcFiles = append(srcFiles, genSrcs...)
 
 	var incFlags []string
-	deps := []string{"$compileCmd"}
+	var deps []string
 	ctx.VisitDepsDepthFirstIf(isGoPackageProducer,
 		func(module blueprint.Module) {
 			dep := module.(goPackageProducer)
@@ -515,10 +520,9 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 		append(srcs, testSrcs...), genSrcs, nil)
 
 	ctx.Build(pctx, blueprint.BuildParams{
-		Rule:      goTestMain,
-		Outputs:   []string{mainFile},
-		Inputs:    testFiles,
-		Implicits: []string{"$goTestMainCmd"},
+		Rule:    goTestMain,
+		Outputs: []string{mainFile},
+		Inputs:  testFiles,
 		Args: map[string]string{
 			"pkg": pkgPath,
 		},
@@ -536,7 +540,7 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 		Rule:      compile,
 		Outputs:   []string{testArchive},
 		Inputs:    []string{mainFile},
-		Implicits: []string{"$compileCmd", testPkgArchive},
+		Implicits: []string{testPkgArchive},
 		Args: map[string]string{
 			"pkgPath":  "main",
 			"incFlags": "-I " + testRoot,
@@ -544,20 +548,18 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 	})
 
 	ctx.Build(pctx, blueprint.BuildParams{
-		Rule:      link,
-		Outputs:   []string{testFile},
-		Inputs:    []string{testArchive},
-		Implicits: []string{"$linkCmd"},
+		Rule:    link,
+		Outputs: []string{testFile},
+		Inputs:  []string{testArchive},
 		Args: map[string]string{
 			"libDirFlags": strings.Join(libDirFlags, " "),
 		},
 	})
 
 	ctx.Build(pctx, blueprint.BuildParams{
-		Rule:      test,
-		Outputs:   []string{testPassed},
-		Inputs:    []string{testFile},
-		Implicits: []string{"$goTestRunnerCmd"},
+		Rule:    test,
+		Outputs: []string{testPassed},
+		Inputs:  []string{testFile},
 		Args: map[string]string{
 			"pkg":       pkgPath,
 			"pkgSrcDir": filepath.Dir(testFiles[0]),
@@ -720,7 +722,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 		// BuildDir must be different between the three stages, otherwise the
 		// cleanup process will remove files from the other builds.
-		ctx.SetBuildDir(pctx, miniBootstrapDir)
+		ctx.SetNinjaBuildDir(pctx, miniBootstrapDir)
 
 		// Generate the Ninja file to build the primary builder. Save the
 		// timestamps and deps, so that we can come back to this stage if
@@ -759,6 +761,11 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			blueprint.RuleParams{
 				Command: fmt.Sprintf("%s $runTests -m $bootstrapManifest "+
 					"-b $buildDir -d $out.d -o $out $in", minibpFile),
+				// $bootstrapManifest is here so that when it is updated, we
+				// force a rebuild of bootstrap.ninja.in. chooseStage should
+				// have already copied the new version over, but kept the old
+				// timestamps to force this regeneration.
+				CommandDeps: []string{"$bootstrapManifest", minibpFile},
 				Description: "minibp $out",
 				Generator:   true,
 				Depfile:     "$out.d",
@@ -775,12 +782,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			Rule:    minibp,
 			Outputs: []string{bootstrapNinjaFile},
 			Inputs:  []string{topLevelBlueprints},
-			// $bootstrapManifest is here so that when it is updated, we
-			// force a rebuild of bootstrap.ninja.in. chooseStage should
-			// have already copied the new version over, but kept the old
-			// timestamps to force this regeneration.
-			Implicits: []string{"$bootstrapManifest", minibpFile},
-			Args:      args,
+			Args:    args,
 		})
 
 		// When the current build.ninja file is a bootstrapper, we always want
@@ -797,7 +799,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			Rule:      chooseStage,
 			Outputs:   []string{filepath.Join(bootstrapDir, "build.ninja.in")},
 			Inputs:    []string{bootstrapNinjaFile, primaryBuilderNinjaFile},
-			Implicits: []string{"$chooseStageCmd", "$bootstrapManifest", notAFile},
+			Implicits: []string{notAFile},
 			Args: map[string]string{
 				"current": bootstrapNinjaFile,
 			},
@@ -809,7 +811,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 		// BuildDir must be different between the three stages, otherwise the
 		// cleanup process will remove files from the other builds.
-		ctx.SetBuildDir(pctx, bootstrapDir)
+		ctx.SetNinjaBuildDir(pctx, bootstrapDir)
 
 		// We generate the depfile here that includes the dependencies for all
 		// the Blueprints files that contribute to generating the big build
@@ -848,13 +850,13 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			blueprint.RuleParams{
 				Command: fmt.Sprintf("%s %s -b $buildDir --docs $out %s", primaryBuilderFile,
 					primaryBuilderExtraFlags, topLevelBlueprints),
+				CommandDeps: []string{primaryBuilderFile},
 				Description: fmt.Sprintf("%s docs $out", primaryBuilderName),
 			})
 
 		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:      bigbpDocs,
-			Outputs:   []string{docsFile},
-			Implicits: []string{primaryBuilderFile},
+			Rule:    bigbpDocs,
+			Outputs: []string{docsFile},
 		})
 
 		// Detect whether we need to rebuild the primary stage by going back to
@@ -885,7 +887,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			Rule:      chooseStage,
 			Outputs:   []string{filepath.Join(bootstrapDir, "build.ninja.in")},
 			Inputs:    []string{bootstrapNinjaFile, primaryBuilderNinjaFile, mainNinjaFile},
-			Implicits: []string{"$chooseStageCmd", "$bootstrapManifest", notAFile, primaryBuilderNinjaTimestampFile},
+			Implicits: []string{notAFile, primaryBuilderNinjaTimestampFile},
 			Args: map[string]string{
 				"current": primaryBuilderNinjaFile,
 			},
@@ -899,7 +901,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		})
 
 	case StageMain:
-		ctx.SetBuildDir(pctx, "${buildDir}")
+		ctx.SetNinjaBuildDir(pctx, "${buildDir}")
 
 		// We're generating a non-bootstrapper Ninja file, so we need to set it
 		// up to re-bootstrap if necessary. We do this by making build.ninja.in
@@ -935,7 +937,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			Rule:      chooseStage,
 			Outputs:   []string{filepath.Join(bootstrapDir, "build.ninja.in")},
 			Inputs:    []string{bootstrapNinjaFile, primaryBuilderNinjaFile, mainNinjaFile},
-			Implicits: []string{"$chooseStageCmd", "$bootstrapManifest", primaryBuilderNinjaTimestampFile, mainNinjaTimestampFile},
+			Implicits: []string{primaryBuilderNinjaTimestampFile, mainNinjaTimestampFile},
 			Args: map[string]string{
 				"current":   mainNinjaFile,
 				"generator": "true",
@@ -962,10 +964,9 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	}
 
 	ctx.Build(pctx, blueprint.BuildParams{
-		Rule:      bootstrap,
-		Outputs:   []string{"$buildDir/build.ninja"},
-		Inputs:    []string{filepath.Join(bootstrapDir, "build.ninja.in")},
-		Implicits: []string{"$bootstrapCmd"},
+		Rule:    bootstrap,
+		Outputs: []string{"$buildDir/build.ninja"},
+		Inputs:  []string{filepath.Join(bootstrapDir, "build.ninja.in")},
 	})
 }
 

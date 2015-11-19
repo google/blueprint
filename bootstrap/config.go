@@ -38,6 +38,12 @@ type ConfigInterface interface {
 	GeneratingPrimaryBuilder() bool
 }
 
+type ConfigRemoveAbandonedFiles interface {
+	// RemoveAbandonedFiles should return true if files listed in the
+	// .ninja_log but not the output build.ninja file should be deleted.
+	RemoveAbandonedFiles() bool
+}
+
 type Stage int
 
 const (

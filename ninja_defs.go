@@ -53,10 +53,9 @@ type PoolParams struct {
 }
 
 // A RuleParams object contains the set of parameters that make up a Ninja rule
-// definition.  Each field except for Comment corresponds with a Ninja variable
-// of the same name.
+// definition.
 type RuleParams struct {
-	Comment        string // The comment that will appear above the definition.
+	// These fields correspond to a Ninja variable of the same name.
 	Command        string // The command that Ninja will run for the rule.
 	Depfile        string // The dependency file name.
 	Deps           Deps   // The format of the dependency file.
@@ -66,6 +65,10 @@ type RuleParams struct {
 	Restat         bool   // Whether Ninja should re-stat the rule's outputs.
 	Rspfile        string // The response file.
 	RspfileContent string // The response file content.
+
+	// These fields are used internally in Blueprint
+	CommandDeps []string // Command-specific implicit dependencies to prepend to builds
+	Comment     string   // The comment that will appear above the definition.
 }
 
 // A BuildParams object contains the set of parameters that make up a Ninja
@@ -73,6 +76,7 @@ type RuleParams struct {
 // Ninja build statement.  The Args field contains variable names and values
 // that are set within the build statement's scope in the Ninja file.
 type BuildParams struct {
+	Comment   string            // The comment that will appear above the definition.
 	Rule      Rule              // The rule to invoke.
 	Outputs   []string          // The list of output targets.
 	Inputs    []string          // The list of explicit input dependencies.
@@ -119,9 +123,10 @@ func (p *poolDef) WriteTo(nw *ninjaWriter, name string) error {
 // A ruleDef describes a rule definition.  It does not include the name of the
 // rule.
 type ruleDef struct {
-	Comment   string
-	Pool      Pool
-	Variables map[string]*ninjaString
+	CommandDeps []*ninjaString
+	Comment     string
+	Pool        Pool
+	Variables   map[string]*ninjaString
 }
 
 func parseRuleParams(scope scope, params *RuleParams) (*ruleDef,
@@ -193,6 +198,11 @@ func parseRuleParams(scope scope, params *RuleParams) (*ruleDef,
 		r.Variables["rspfile_content"] = value
 	}
 
+	r.CommandDeps, err = parseNinjaStrings(scope, params.CommandDeps)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing CommandDeps param: %s", err)
+	}
+
 	return r, nil
 }
 
@@ -236,7 +246,9 @@ func (r *ruleDef) WriteTo(nw *ninjaWriter, name string,
 
 // A buildDef describes a build target definition.
 type buildDef struct {
+	Comment   string
 	Rule      Rule
+	RuleDef   *ruleDef
 	Outputs   []*ninjaString
 	Inputs    []*ninjaString
 	Implicits []*ninjaString
@@ -248,9 +260,11 @@ type buildDef struct {
 func parseBuildParams(scope scope, params *BuildParams) (*buildDef,
 	error) {
 
+	comment := params.Comment
 	rule := params.Rule
 
 	b := &buildDef{
+		Comment: comment,
 		Rule: rule,
 	}
 
@@ -315,13 +329,19 @@ func parseBuildParams(scope scope, params *BuildParams) (*buildDef,
 
 func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*PackageContext]string) error {
 	var (
+		comment       = b.Comment
 		rule          = b.Rule.fullName(pkgNames)
 		outputs       = valueList(b.Outputs, pkgNames, outputEscaper)
 		explicitDeps  = valueList(b.Inputs, pkgNames, inputEscaper)
 		implicitDeps  = valueList(b.Implicits, pkgNames, inputEscaper)
 		orderOnlyDeps = valueList(b.OrderOnly, pkgNames, inputEscaper)
 	)
-	err := nw.Build(rule, outputs, explicitDeps, implicitDeps, orderOnlyDeps)
+
+	if b.RuleDef != nil {
+		implicitDeps = append(valueList(b.RuleDef.CommandDeps, pkgNames, inputEscaper), implicitDeps...)
+	}
+
+	err := nw.Build(comment, rule, outputs, explicitDeps, implicitDeps, orderOnlyDeps)
 	if err != nil {
 		return err
 	}
@@ -349,7 +369,7 @@ func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*PackageContext]string)
 		nw.Default(outputs...)
 	}
 
-	return nil
+	return nw.BlankLine()
 }
 
 func valueList(list []*ninjaString, pkgNames map[*PackageContext]string,
