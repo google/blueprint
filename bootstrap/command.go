@@ -161,10 +161,12 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		}
 	}
 
-	srcDir := filepath.Dir(bootstrapConfig.topLevelBlueprintsFile)
-	err = removeAbandonedFiles(ctx, bootstrapConfig, srcDir, manifestFile)
-	if err != nil {
-		fatalf("error removing abandoned files: %s", err)
+	if c, ok := config.(ConfigRemoveAbandonedFiles); !ok || c.RemoveAbandonedFiles() {
+		srcDir := filepath.Dir(bootstrapConfig.topLevelBlueprintsFile)
+		err := removeAbandonedFiles(ctx, bootstrapConfig, srcDir, manifestFile)
+		if err != nil {
+			fatalf("error removing abandoned files: %s", err)
+		}
 	}
 }
 
