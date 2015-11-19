@@ -37,11 +37,10 @@ type SingletonContext interface {
 	Build(pctx *PackageContext, params BuildParams)
 	RequireNinjaVersion(major, minor, micro int)
 
-	// SetBuildDir sets the value of the top-level "builddir" Ninja variable
+	// SetNinjaBuildDir sets the value of the top-level "builddir" Ninja variable
 	// that controls where Ninja stores its build log files.  This value can be
-	// set at most one time for a single build.  Setting it multiple times (even
-	// across different singletons) will result in a panic.
-	SetBuildDir(pctx *PackageContext, value string)
+	// set at most one time for a single build, later calls are ignored.
+	SetNinjaBuildDir(pctx *PackageContext, value string)
 
 	VisitAllModules(visit func(Module))
 	VisitAllModulesIf(pred func(Module) bool, visit func(Module))
@@ -138,7 +137,7 @@ func (s *singletonContext) RequireNinjaVersion(major, minor, micro int) {
 	s.context.requireNinjaVersion(major, minor, micro)
 }
 
-func (s *singletonContext) SetBuildDir(pctx *PackageContext, value string) {
+func (s *singletonContext) SetNinjaBuildDir(pctx *PackageContext, value string) {
 	s.scope.ReparentTo(pctx)
 
 	ninjaValue, err := parseNinjaString(s.scope, value)
@@ -146,7 +145,7 @@ func (s *singletonContext) SetBuildDir(pctx *PackageContext, value string) {
 		panic(err)
 	}
 
-	s.context.setBuildDir(ninjaValue)
+	s.context.setNinjaBuildDir(ninjaValue)
 }
 
 func (s *singletonContext) VisitAllModules(visit func(Module)) {

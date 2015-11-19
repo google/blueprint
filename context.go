@@ -88,7 +88,7 @@ type Context struct {
 	globalRules     map[Rule]*ruleDef
 
 	// set during PrepareBuildActions
-	buildDir           *ninjaString // The builddir special Ninja variable
+	ninjaBuildDir      *ninjaString // The builddir special Ninja variable
 	requiredNinjaMajor int          // For the ninja_required_version variable
 	requiredNinjaMinor int          // For the ninja_required_version variable
 	requiredNinjaMicro int          // For the ninja_required_version variable
@@ -1435,8 +1435,8 @@ func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs [
 
 	deps = append(depsModules, depsSingletons...)
 
-	if c.buildDir != nil {
-		liveGlobals.addNinjaStringDeps(c.buildDir)
+	if c.ninjaBuildDir != nil {
+		liveGlobals.addNinjaStringDeps(c.ninjaBuildDir)
 	}
 
 	pkgNames := c.makeUniquePackageNames(liveGlobals)
@@ -1630,7 +1630,7 @@ func spliceModulesAtIndex(modules []*moduleInfo, i int, newModules []*moduleInfo
 }
 
 func (c *Context) initSpecialVariables() {
-	c.buildDir = nil
+	c.ninjaBuildDir = nil
 	c.requiredNinjaMajor = 1
 	c.requiredNinjaMinor = 6
 	c.requiredNinjaMicro = 0
@@ -1912,9 +1912,9 @@ func (c *Context) requireNinjaVersion(major, minor, micro int) {
 	}
 }
 
-func (c *Context) setBuildDir(value *ninjaString) {
-	if c.buildDir == nil {
-		c.buildDir = value
+func (c *Context) setNinjaBuildDir(value *ninjaString) {
+	if c.ninjaBuildDir == nil {
+		c.ninjaBuildDir = value
 	}
 }
 
@@ -2083,6 +2083,14 @@ func (c *Context) AllTargets() (map[string]string, error) {
 	}
 
 	return targets, nil
+}
+
+func (c *Context) NinjaBuildDir() (string, error) {
+	if c.ninjaBuildDir != nil {
+		return c.ninjaBuildDir.Eval(c.globalVariables)
+	} else {
+		return "", nil
+	}
 }
 
 // ModuleTypePropertyStructs returns a mapping from module type name to a list of pointers to
@@ -2290,8 +2298,8 @@ func (c *Context) writeNinjaRequiredVersion(nw *ninjaWriter) error {
 }
 
 func (c *Context) writeBuildDir(nw *ninjaWriter) error {
-	if c.buildDir != nil {
-		err := nw.Assign("builddir", c.buildDir.Value(c.pkgNames))
+	if c.ninjaBuildDir != nil {
+		err := nw.Assign("builddir", c.ninjaBuildDir.Value(c.pkgNames))
 		if err != nil {
 			return err
 		}
