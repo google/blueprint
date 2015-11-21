@@ -181,7 +181,68 @@ var clonePropertiesTestCases = []struct {
 			S: nil,
 		},
 	},
+	{
+		// Anonymous struct
+		in: &struct {
+			EmbeddedStruct
+			Nested struct{ EmbeddedStruct }
+		}{
+			EmbeddedStruct: EmbeddedStruct{
+				S: "string1",
+			},
+			Nested: struct{ EmbeddedStruct }{
+				EmbeddedStruct: EmbeddedStruct{
+					S: "string2",
+				},
+			},
+		},
+		out: &struct {
+			EmbeddedStruct
+			Nested struct{ EmbeddedStruct }
+		}{
+			EmbeddedStruct: EmbeddedStruct{
+				S: "string1",
+			},
+			Nested: struct{ EmbeddedStruct }{
+				EmbeddedStruct: EmbeddedStruct{
+					S: "string2",
+				},
+			},
+		},
+	},
+	{
+		// Anonymous interface
+		in: &struct {
+			EmbeddedInterface
+			Nested struct{ EmbeddedInterface }
+		}{
+			EmbeddedInterface: &struct{ S string }{
+				S: "string1",
+			},
+			Nested: struct{ EmbeddedInterface }{
+				EmbeddedInterface: &struct{ S string }{
+					S: "string2",
+				},
+			},
+		},
+		out: &struct {
+			EmbeddedInterface
+			Nested struct{ EmbeddedInterface }
+		}{
+			EmbeddedInterface: &struct{ S string }{
+				S: "string1",
+			},
+			Nested: struct{ EmbeddedInterface }{
+				EmbeddedInterface: &struct{ S string }{
+					S: "string2",
+				},
+			},
+		},
+	},
 }
+
+type EmbeddedStruct struct{ S string }
+type EmbeddedInterface interface{}
 
 func TestCloneProperties(t *testing.T) {
 	for _, testCase := range clonePropertiesTestCases {
