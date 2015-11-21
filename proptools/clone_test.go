@@ -130,6 +130,26 @@ var clonePropertiesTestCases = []struct {
 		},
 	},
 	{
+		// Clone nested interface
+		in: &struct {
+			Nested struct{ S interface{} }
+		}{
+			Nested: struct{ S interface{} }{
+				S: &struct{ S string }{
+					S: "string1",
+				},
+			},
+		},
+		out: &struct {
+			Nested struct{ S interface{} }
+		}{
+			Nested: struct{ S interface{} }{
+				S: &struct{ S string }{
+					S: "string1",
+				},
+			},
+		},
+	}, {
 		// Empty struct
 		in:  &struct{}{},
 		out: &struct{}{},
@@ -268,6 +288,25 @@ var cloneEmptyPropertiesTestCases = []struct {
 		},
 	},
 	{
+		// Clone nested interface
+		in: &struct {
+			Nested struct{ S interface{} }
+		}{
+			Nested: struct{ S interface{} }{
+				S: &struct{ S string }{
+					S: "string1",
+				},
+			},
+		},
+		out: &struct {
+			Nested struct{ S interface{} }
+		}{
+			Nested: struct{ S interface{} }{
+				S: &struct{ S string }{},
+			},
+		},
+	},
+	{
 		// Empty struct
 		in:  &struct{}{},
 		out: &struct{}{},
@@ -295,11 +334,61 @@ var cloneEmptyPropertiesTestCases = []struct {
 		},
 		out: &struct{ S *struct{} }{},
 	},
+	{
+		// Anonymous struct
+		in: &struct {
+			EmbeddedStruct
+			Nested struct{ EmbeddedStruct }
+		}{
+			EmbeddedStruct: EmbeddedStruct{
+				S: "string1",
+			},
+			Nested: struct{ EmbeddedStruct }{
+				EmbeddedStruct: EmbeddedStruct{
+					S: "string2",
+				},
+			},
+		},
+		out: &struct {
+			EmbeddedStruct
+			Nested struct{ EmbeddedStruct }
+		}{
+			EmbeddedStruct: EmbeddedStruct{},
+			Nested: struct{ EmbeddedStruct }{
+				EmbeddedStruct: EmbeddedStruct{},
+			},
+		},
+	},
+	{
+		// Anonymous interface
+		in: &struct {
+			EmbeddedInterface
+			Nested struct{ EmbeddedInterface }
+		}{
+			EmbeddedInterface: &struct{ S string }{
+				S: "string1",
+			},
+			Nested: struct{ EmbeddedInterface }{
+				EmbeddedInterface: &struct{ S string }{
+					S: "string2",
+				},
+			},
+		},
+		out: &struct {
+			EmbeddedInterface
+			Nested struct{ EmbeddedInterface }
+		}{
+			EmbeddedInterface: &struct{ S string }{},
+			Nested: struct{ EmbeddedInterface }{
+				EmbeddedInterface: &struct{ S string }{},
+			},
+		},
+	},
 }
 
 func TestCloneEmptyProperties(t *testing.T) {
 	for _, testCase := range cloneEmptyPropertiesTestCases {
-		testString := fmt.Sprintf("%s", testCase.in)
+		testString := fmt.Sprintf("%#v", testCase.in)
 
 		got := CloneEmptyProperties(reflect.ValueOf(testCase.in).Elem()).Interface()
 
@@ -314,9 +403,9 @@ func TestCloneEmptyProperties(t *testing.T) {
 
 func TestZeroProperties(t *testing.T) {
 	for _, testCase := range cloneEmptyPropertiesTestCases {
-		testString := fmt.Sprintf("%s", testCase.in)
+		testString := fmt.Sprintf("%#v", testCase.in)
 
-		got := CloneEmptyProperties(reflect.ValueOf(testCase.in).Elem()).Interface()
+		got := CloneProperties(reflect.ValueOf(testCase.in).Elem()).Interface()
 		ZeroProperties(reflect.ValueOf(got).Elem())
 
 		if !reflect.DeepEqual(testCase.out, got) {
