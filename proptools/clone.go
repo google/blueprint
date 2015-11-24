@@ -140,7 +140,7 @@ func ZeroProperties(structValue reflect.Value) {
 		fieldValue := structValue.Field(i)
 
 		switch fieldValue.Kind() {
-		case reflect.Bool, reflect.String, reflect.Struct, reflect.Slice, reflect.Int, reflect.Uint:
+		case reflect.Bool, reflect.String, reflect.Slice, reflect.Int, reflect.Uint:
 			fieldValue.Set(reflect.Zero(fieldValue.Type()))
 		case reflect.Interface:
 			if fieldValue.IsNil() {
@@ -172,7 +172,8 @@ func ZeroProperties(structValue reflect.Value) {
 				panic(fmt.Errorf("can't zero field %q: points to a %s",
 					field.Name, fieldValue.Elem().Kind()))
 			}
-
+		case reflect.Struct:
+			ZeroProperties(fieldValue)
 		default:
 			panic(fmt.Errorf("unexpected kind for property struct field %q: %s",
 				field.Name, fieldValue.Kind()))

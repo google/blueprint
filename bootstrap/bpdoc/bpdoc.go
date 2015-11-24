@@ -240,8 +240,15 @@ func newDocs(t *doc.Type) (*PropertyStructDocs, error) {
 
 func structProperties(structType *ast.StructType) (props []PropertyDocs, err error) {
 	for _, f := range structType.Fields.List {
-		//fmt.Printf("%T %#v\n", f, f)
-		for _, n := range f.Names {
+		names := f.Names
+		if names == nil {
+			// Anonymous fields have no name, use the type as the name
+			// TODO: hide the name and make the properties show up in the embedding struct
+			if t, ok := f.Type.(*ast.Ident); ok {
+				names = append(names, t)
+			}
+		}
+		for _, n := range names {
 			var name, typ, tag, text string
 			var innerProps []PropertyDocs
 			if n != nil {
