@@ -409,6 +409,90 @@ var appendPropertiesTestCases = []struct {
 			S: nil,
 		},
 	},
+	{
+		// Anonymous struct
+		in1: &struct {
+			EmbeddedStruct
+			Nested struct{ EmbeddedStruct }
+		}{
+			EmbeddedStruct: EmbeddedStruct{
+				S: "string1",
+			},
+			Nested: struct{ EmbeddedStruct }{
+				EmbeddedStruct: EmbeddedStruct{
+					S: "string2",
+				},
+			},
+		},
+		in2: &struct {
+			EmbeddedStruct
+			Nested struct{ EmbeddedStruct }
+		}{
+			EmbeddedStruct: EmbeddedStruct{
+				S: "string3",
+			},
+			Nested: struct{ EmbeddedStruct }{
+				EmbeddedStruct: EmbeddedStruct{
+					S: "string4",
+				},
+			},
+		},
+		out: &struct {
+			EmbeddedStruct
+			Nested struct{ EmbeddedStruct }
+		}{
+			EmbeddedStruct: EmbeddedStruct{
+				S: "string1string3",
+			},
+			Nested: struct{ EmbeddedStruct }{
+				EmbeddedStruct: EmbeddedStruct{
+					S: "string2string4",
+				},
+			},
+		},
+	},
+	{
+		// Anonymous interface
+		in1: &struct {
+			EmbeddedInterface
+			Nested struct{ EmbeddedInterface }
+		}{
+			EmbeddedInterface: &struct{ S string }{
+				S: "string1",
+			},
+			Nested: struct{ EmbeddedInterface }{
+				EmbeddedInterface: &struct{ S string }{
+					S: "string2",
+				},
+			},
+		},
+		in2: &struct {
+			EmbeddedInterface
+			Nested struct{ EmbeddedInterface }
+		}{
+			EmbeddedInterface: &struct{ S string }{
+				S: "string3",
+			},
+			Nested: struct{ EmbeddedInterface }{
+				EmbeddedInterface: &struct{ S string }{
+					S: "string4",
+				},
+			},
+		},
+		out: &struct {
+			EmbeddedInterface
+			Nested struct{ EmbeddedInterface }
+		}{
+			EmbeddedInterface: &struct{ S string }{
+				S: "string1string3",
+			},
+			Nested: struct{ EmbeddedInterface }{
+				EmbeddedInterface: &struct{ S string }{
+					S: "string2string4",
+				},
+			},
+		},
+	},
 
 	// Errors
 

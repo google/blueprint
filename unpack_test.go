@@ -228,7 +228,136 @@ var validUnpackTestCases = []struct {
 			},
 		},
 	},
+
+	// Anonymous struct
+	{`
+		m {
+			name: "abc",
+			nested: {
+				name: "def",
+			},
+		}
+		`,
+		struct {
+			EmbeddedStruct
+			Nested struct {
+				EmbeddedStruct
+			}
+		}{
+			EmbeddedStruct: EmbeddedStruct{
+				Name: "abc",
+			},
+			Nested: struct {
+				EmbeddedStruct
+			}{
+				EmbeddedStruct: EmbeddedStruct{
+					Name: "def",
+				},
+			},
+		},
+		nil,
+	},
+
+	// Anonymous interface
+	{`
+		m {
+			name: "abc",
+			nested: {
+				name: "def",
+			},
+		}
+		`,
+		struct {
+			EmbeddedInterface
+			Nested struct {
+				EmbeddedInterface
+			}
+		}{
+			EmbeddedInterface: &struct{ Name string }{
+				Name: "abc",
+			},
+			Nested: struct {
+				EmbeddedInterface
+			}{
+				EmbeddedInterface: &struct{ Name string }{
+					Name: "def",
+				},
+			},
+		},
+		nil,
+	},
+
+	// Anonymous struct with name collision
+	{`
+		m {
+			name: "abc",
+			nested: {
+				name: "def",
+			},
+		}
+		`,
+		struct {
+			Name string
+			EmbeddedStruct
+			Nested struct {
+				Name string
+				EmbeddedStruct
+			}
+		}{
+			Name: "abc",
+			EmbeddedStruct: EmbeddedStruct{
+				Name: "abc",
+			},
+			Nested: struct {
+				Name string
+				EmbeddedStruct
+			}{
+				Name: "def",
+				EmbeddedStruct: EmbeddedStruct{
+					Name: "def",
+				},
+			},
+		},
+		nil,
+	},
+
+	// Anonymous interface with name collision
+	{`
+		m {
+			name: "abc",
+			nested: {
+				name: "def",
+			},
+		}
+		`,
+		struct {
+			Name string
+			EmbeddedInterface
+			Nested struct {
+				Name string
+				EmbeddedInterface
+			}
+		}{
+			Name: "abc",
+			EmbeddedInterface: &struct{ Name string }{
+				Name: "abc",
+			},
+			Nested: struct {
+				Name string
+				EmbeddedInterface
+			}{
+				Name: "def",
+				EmbeddedInterface: &struct{ Name string }{
+					Name: "def",
+				},
+			},
+		},
+		nil,
+	},
 }
+
+type EmbeddedStruct struct{ Name string }
+type EmbeddedInterface interface{}
 
 func TestUnpackProperties(t *testing.T) {
 	for _, testCase := range validUnpackTestCases {

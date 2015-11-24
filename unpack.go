@@ -134,8 +134,10 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			continue
 		}
 
+		propertyName := namePrefix + proptools.PropertyNameForField(field.Name)
+
 		if !fieldValue.CanSet() {
-			panic(fmt.Errorf("field %s is not settable", field.Name))
+			panic(fmt.Errorf("field %s is not settable", propertyName))
 		}
 
 		// To make testing easier we validate the struct field's type regardless
@@ -146,47 +148,47 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 		case reflect.Slice:
 			elemType := field.Type.Elem()
 			if elemType.Kind() != reflect.String {
-				panic(fmt.Errorf("field %s is a non-string slice", field.Name))
+				panic(fmt.Errorf("field %s is a non-string slice", propertyName))
 			}
 		case reflect.Interface:
 			if fieldValue.IsNil() {
-				panic(fmt.Errorf("field %s contains a nil interface",
-					field.Name))
+				panic(fmt.Errorf("field %s contains a nil interface", propertyName))
 			}
 			fieldValue = fieldValue.Elem()
 			elemType := fieldValue.Type()
 			if elemType.Kind() != reflect.Ptr {
-				panic(fmt.Errorf("field %s contains a non-pointer interface",
-					field.Name))
+				panic(fmt.Errorf("field %s contains a non-pointer interface", propertyName))
 			}
 			fallthrough
 		case reflect.Ptr:
 			switch ptrKind := fieldValue.Type().Elem().Kind(); ptrKind {
 			case reflect.Struct:
 				if fieldValue.IsNil() {
-					panic(fmt.Errorf("field %s contains a nil pointer",
-						field.Name))
+					panic(fmt.Errorf("field %s contains a nil pointer", propertyName))
 				}
 				fieldValue = fieldValue.Elem()
 			case reflect.Bool, reflect.String:
 				// Nothing
 			default:
-				panic(fmt.Errorf("field %s contains a pointer to %s",
-					field.Name, ptrKind))
+				panic(fmt.Errorf("field %s contains a pointer to %s", propertyName, ptrKind))
 			}
 
 		case reflect.Int, reflect.Uint:
 			if !proptools.HasTag(field, "blueprint", "mutated") {
-				panic(fmt.Errorf(`int field %s must be tagged blueprint:"mutated"`, field.Name))
+				panic(fmt.Errorf(`int field %s must be tagged blueprint:"mutated"`, propertyName))
 			}
 
 		default:
-			panic(fmt.Errorf("unsupported kind for field %s: %s",
-				field.Name, kind))
+			panic(fmt.Errorf("unsupported kind for field %s: %s", propertyName, kind))
+		}
+
+		if field.Anonymous && fieldValue.Kind() == reflect.Struct {
+			newErrs := unpackStructValue(namePrefix, fieldValue, propertyMap, filterKey, filterValue)
+			errs = append(errs, newErrs...)
+			continue
 		}
 
 		// Get the property value if it was specified.
-		propertyName := namePrefix + proptools.PropertyNameForField(field.Name)
 		packedProperty, ok := propertyMap[propertyName]
 		if !ok {
 			// This property wasn't specified.
