@@ -25,9 +25,9 @@ import (
 // to the output .ninja file.  A variable may contain references to other global
 // Ninja variables, but circular variable references are not allowed.
 type Variable interface {
-	packageContext() *PackageContext
+	packageContext() *packageContext
 	name() string                                        // "foo"
-	fullName(pkgNames map[*PackageContext]string) string // "pkg.foo" or "path.to.pkg.foo"
+	fullName(pkgNames map[*packageContext]string) string // "pkg.foo" or "path.to.pkg.foo"
 	value(config interface{}) (*ninjaString, error)
 	String() string
 }
@@ -35,9 +35,9 @@ type Variable interface {
 // A Pool represents a Ninja pool that will be written to the output .ninja
 // file.
 type Pool interface {
-	packageContext() *PackageContext
+	packageContext() *packageContext
 	name() string                                        // "foo"
-	fullName(pkgNames map[*PackageContext]string) string // "pkg.foo" or "path.to.pkg.foo"
+	fullName(pkgNames map[*packageContext]string) string // "pkg.foo" or "path.to.pkg.foo"
 	def(config interface{}) (*poolDef, error)
 	String() string
 }
@@ -45,9 +45,9 @@ type Pool interface {
 // A Rule represents a Ninja build rule that will be written to the output
 // .ninja file.
 type Rule interface {
-	packageContext() *PackageContext
+	packageContext() *packageContext
 	name() string                                        // "foo"
-	fullName(pkgNames map[*PackageContext]string) string // "pkg.foo" or "path.to.pkg.foo"
+	fullName(pkgNames map[*packageContext]string) string // "pkg.foo" or "path.to.pkg.foo"
 	def(config interface{}) (*ruleDef, error)
 	scope() *basicScope
 	isArg(argName string) bool
@@ -260,8 +260,8 @@ func newLocalScope(parent *basicScope, namePrefix string) *localScope {
 // package context.  This allows a ModuleContext and SingletonContext to call
 // a function defined in a different Go package and have that function retain
 // access to all of the package-scoped variables of its own package.
-func (s *localScope) ReparentTo(pctx *PackageContext) {
-	s.scope.parent = pctx.scope
+func (s *localScope) ReparentTo(pctx PackageContext) {
+	s.scope.parent = pctx.getScope()
 }
 
 func (s *localScope) LookupVariable(name string) (Variable, error) {
@@ -354,7 +354,7 @@ type localVariable struct {
 	value_     *ninjaString
 }
 
-func (l *localVariable) packageContext() *PackageContext {
+func (l *localVariable) packageContext() *packageContext {
 	return nil
 }
 
@@ -362,7 +362,7 @@ func (l *localVariable) name() string {
 	return l.name_
 }
 
-func (l *localVariable) fullName(pkgNames map[*PackageContext]string) string {
+func (l *localVariable) fullName(pkgNames map[*packageContext]string) string {
 	return l.namePrefix + l.name_
 }
 
@@ -382,7 +382,7 @@ type localRule struct {
 	scope_     *basicScope
 }
 
-func (l *localRule) packageContext() *PackageContext {
+func (l *localRule) packageContext() *packageContext {
 	return nil
 }
 
@@ -390,7 +390,7 @@ func (l *localRule) name() string {
 	return l.name_
 }
 
-func (l *localRule) fullName(pkgNames map[*PackageContext]string) string {
+func (l *localRule) fullName(pkgNames map[*packageContext]string) string {
 	return l.namePrefix + l.name_
 }
 

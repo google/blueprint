@@ -137,9 +137,9 @@ type ModuleContext interface {
 
 	ModuleSubDir() string
 
-	Variable(pctx *PackageContext, name, value string)
-	Rule(pctx *PackageContext, name string, params RuleParams, argNames ...string) Rule
-	Build(pctx *PackageContext, params BuildParams)
+	Variable(pctx PackageContext, name, value string)
+	Rule(pctx PackageContext, name string, params RuleParams, argNames ...string) Rule
+	Build(pctx PackageContext, params BuildParams)
 
 	AddNinjaFileDeps(deps ...string)
 
@@ -267,7 +267,7 @@ func (m *moduleContext) ModuleSubDir() string {
 	return m.module.variantName
 }
 
-func (m *moduleContext) Variable(pctx *PackageContext, name, value string) {
+func (m *moduleContext) Variable(pctx PackageContext, name, value string) {
 	m.scope.ReparentTo(pctx)
 
 	v, err := m.scope.AddLocalVariable(name, value)
@@ -278,7 +278,7 @@ func (m *moduleContext) Variable(pctx *PackageContext, name, value string) {
 	m.actionDefs.variables = append(m.actionDefs.variables, v)
 }
 
-func (m *moduleContext) Rule(pctx *PackageContext, name string,
+func (m *moduleContext) Rule(pctx PackageContext, name string,
 	params RuleParams, argNames ...string) Rule {
 
 	m.scope.ReparentTo(pctx)
@@ -293,7 +293,7 @@ func (m *moduleContext) Rule(pctx *PackageContext, name string,
 	return r
 }
 
-func (m *moduleContext) Build(pctx *PackageContext, params BuildParams) {
+func (m *moduleContext) Build(pctx PackageContext, params BuildParams) {
 	m.scope.ReparentTo(pctx)
 
 	def, err := parseBuildParams(m.scope, &params)
