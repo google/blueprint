@@ -32,15 +32,15 @@ type SingletonContext interface {
 	ModuleErrorf(module Module, format string, args ...interface{})
 	Errorf(format string, args ...interface{})
 
-	Variable(pctx *PackageContext, name, value string)
-	Rule(pctx *PackageContext, name string, params RuleParams, argNames ...string) Rule
-	Build(pctx *PackageContext, params BuildParams)
+	Variable(pctx PackageContext, name, value string)
+	Rule(pctx PackageContext, name string, params RuleParams, argNames ...string) Rule
+	Build(pctx PackageContext, params BuildParams)
 	RequireNinjaVersion(major, minor, micro int)
 
 	// SetNinjaBuildDir sets the value of the top-level "builddir" Ninja variable
 	// that controls where Ninja stores its build log files.  This value can be
 	// set at most one time for a single build, later calls are ignored.
-	SetNinjaBuildDir(pctx *PackageContext, value string)
+	SetNinjaBuildDir(pctx PackageContext, value string)
 
 	VisitAllModules(visit func(Module))
 	VisitAllModulesIf(pred func(Module) bool, visit func(Module))
@@ -96,7 +96,7 @@ func (s *singletonContext) Errorf(format string, args ...interface{}) {
 	s.errs = append(s.errs, fmt.Errorf(format, args...))
 }
 
-func (s *singletonContext) Variable(pctx *PackageContext, name, value string) {
+func (s *singletonContext) Variable(pctx PackageContext, name, value string) {
 	s.scope.ReparentTo(pctx)
 
 	v, err := s.scope.AddLocalVariable(name, value)
@@ -107,7 +107,7 @@ func (s *singletonContext) Variable(pctx *PackageContext, name, value string) {
 	s.actionDefs.variables = append(s.actionDefs.variables, v)
 }
 
-func (s *singletonContext) Rule(pctx *PackageContext, name string,
+func (s *singletonContext) Rule(pctx PackageContext, name string,
 	params RuleParams, argNames ...string) Rule {
 
 	s.scope.ReparentTo(pctx)
@@ -122,7 +122,7 @@ func (s *singletonContext) Rule(pctx *PackageContext, name string,
 	return r
 }
 
-func (s *singletonContext) Build(pctx *PackageContext, params BuildParams) {
+func (s *singletonContext) Build(pctx PackageContext, params BuildParams) {
 	s.scope.ReparentTo(pctx)
 
 	def, err := parseBuildParams(s.scope, &params)
@@ -137,7 +137,7 @@ func (s *singletonContext) RequireNinjaVersion(major, minor, micro int) {
 	s.context.requireNinjaVersion(major, minor, micro)
 }
 
-func (s *singletonContext) SetNinjaBuildDir(pctx *PackageContext, value string) {
+func (s *singletonContext) SetNinjaBuildDir(pctx PackageContext, value string) {
 	s.scope.ReparentTo(pctx)
 
 	ninjaValue, err := parseNinjaString(s.scope, value)

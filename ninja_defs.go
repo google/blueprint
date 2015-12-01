@@ -207,7 +207,7 @@ func parseRuleParams(scope scope, params *RuleParams) (*ruleDef,
 }
 
 func (r *ruleDef) WriteTo(nw *ninjaWriter, name string,
-	pkgNames map[*PackageContext]string) error {
+	pkgNames map[*packageContext]string) error {
 
 	if r.Comment != "" {
 		err := nw.Comment(r.Comment)
@@ -327,7 +327,7 @@ func parseBuildParams(scope scope, params *BuildParams) (*buildDef,
 	return b, nil
 }
 
-func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*PackageContext]string) error {
+func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*packageContext]string) error {
 	var (
 		comment       = b.Comment
 		rule          = b.Rule.fullName(pkgNames)
@@ -372,7 +372,7 @@ func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*PackageContext]string)
 	return nw.BlankLine()
 }
 
-func valueList(list []*ninjaString, pkgNames map[*PackageContext]string,
+func valueList(list []*ninjaString, pkgNames map[*packageContext]string,
 	escaper *strings.Replacer) []string {
 
 	result := make([]string, len(list))

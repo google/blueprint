@@ -53,20 +53,42 @@ import (
 //             Outputs: []string{"$myPrivateVar"},
 //         })
 //     }
-type PackageContext struct {
+type PackageContext interface {
+	Import(pkgPath string)
+	ImportAs(as, pkgPath string)
+
+	StaticVariable(name, value string) Variable
+	VariableFunc(name string, f func(config interface{}) (string, error)) Variable
+	VariableConfigMethod(name string, method interface{}) Variable
+
+	StaticPool(name string, params PoolParams) Pool
+	PoolFunc(name string, f func(interface{}) (PoolParams, error)) Pool
+
+	StaticRule(name string, params RuleParams, argNames ...string) Rule
+	RuleFunc(name string, f func(interface{}) (RuleParams, error), argNames ...string) Rule
+
+	getScope() *basicScope
+}
+
+type packageContext struct {
 	fullName  string
 	shortName string
 	pkgPath   string
 	scope     *basicScope
 }
+var _ PackageContext = &packageContext{}
 
-var packageContexts = map[string]*PackageContext{}
+func (p *packageContext) getScope() *basicScope {
+	return p.scope
+}
+
+var packageContexts = map[string]*packageContext{}
 
 // NewPackageContext creates a PackageContext object for a given package.  The
 // pkgPath argument should always be set to the full path used to import the
 // package.  This function may only be called from a Go package's init()
 // function or as part of a package-scoped variable initialization.
-func NewPackageContext(pkgPath string) *PackageContext {
+func NewPackageContext(pkgPath string) PackageContext {
 	checkCalledFromInit()
 
 	if _, present := packageContexts[pkgPath]; present {
@@ -82,7 +104,7 @@ func NewPackageContext(pkgPath string) *PackageContext {
 	i := strings.LastIndex(pkgPath, "/")
 	shortName := pkgPath[i+1:]
 
-	p := &PackageContext{
+	p := &packageContext{
 		fullName:  pkgName,
 		shortName: shortName,
 		pkgPath:   pkgPath,
@@ -198,7 +220,7 @@ func pkgPathToName(pkgPath string) string {
 // from Go's import declaration, which derives the local name from the package
 // clause in the imported package.  By convention these names are made to match,
 // but this is not required.
-func (p *PackageContext) Import(pkgPath string) {
+func (p *packageContext) Import(pkgPath string) {
 	checkCalledFromInit()
 	importPkg, ok := packageContexts[pkgPath]
 	if !ok {
@@ -214,7 +236,7 @@ func (p *PackageContext) Import(pkgPath string) {
 // ImportAs provides the same functionality as Import, but it allows the local
 // name that will be used to refer to the package to be specified explicitly.
 // It may only be called from a Go package's init() function.
-func (p *PackageContext) ImportAs(as, pkgPath string) {
+func (p *packageContext) ImportAs(as, pkgPath string) {
 	checkCalledFromInit()
 	importPkg, ok := packageContexts[pkgPath]
 	if !ok {
@@ -233,7 +255,7 @@ func (p *PackageContext) ImportAs(as, pkgPath string) {
 }
 
 type staticVariable struct {
-	pctx   *PackageContext
+	pctx   *packageContext
 	name_  string
 	value_ string
 }
@@ -247,7 +269,7 @@ type staticVariable struct {
 // represents a Ninja variable that will be output.  The name argument should
 // exactly match the Go variable name, and the value string may reference other
 // Ninja variables that are visible within the calling Go package.
-func (p *PackageContext) StaticVariable(name, value string) Variable {
+func (p *packageContext) StaticVariable(name, value string) Variable {
 	checkCalledFromInit()
 	err := validateNinjaName(name)
 	if err != nil {
@@ -263,7 +285,7 @@ func (p *PackageContext) StaticVariable(name, value string) Variable {
 	return v
 }
 
-func (v *staticVariable) packageContext() *PackageContext {
+func (v *staticVariable) packageContext() *packageContext {
 	return v.pctx
 }
 
@@ -271,7 +293,7 @@ func (v *staticVariable) name() string {
 	return v.name_
 }
 
-func (v *staticVariable) fullName(pkgNames map[*PackageContext]string) string {
+func (v *staticVariable) fullName(pkgNames map[*packageContext]string) string {
 	return packageNamespacePrefix(pkgNames[v.pctx]) + v.name_
 }
 
@@ -289,7 +311,7 @@ func (v *staticVariable) String() string {
 }
 
 type variableFunc struct {
-	pctx   *PackageContext
+	pctx   *packageContext
 	name_  string
 	value_ func(interface{}) (string, error)
 }
@@ -305,7 +327,7 @@ type variableFunc struct {
 // exactly match the Go variable name, and the value string returned by f may
 // reference other Ninja variables that are visible within the calling Go
 // package.
-func (p *PackageContext) VariableFunc(name string,
+func (p *packageContext) VariableFunc(name string,
 	f func(config interface{}) (string, error)) Variable {
 
 	checkCalledFromInit()
@@ -335,7 +357,7 @@ func (p *PackageContext) VariableFunc(name string,
 // exactly match the Go variable name, and the value string returned by method
 // may reference other Ninja variables that are visible within the calling Go
 // package.
-func (p *PackageContext) VariableConfigMethod(name string,
+func (p *packageContext) VariableConfigMethod(name string,
 	method interface{}) Variable {
 
 	checkCalledFromInit()
@@ -363,7 +385,7 @@ func (p *PackageContext) VariableConfigMethod(name string,
 	return v
 }
 
-func (v *variableFunc) packageContext() *PackageContext {
+func (v *variableFunc) packageContext() *packageContext {
 	return v.pctx
 }
 
@@ -371,7 +393,7 @@ func (v *variableFunc) name() string {
 	return v.name_
 }
 
-func (v *variableFunc) fullName(pkgNames map[*PackageContext]string) string {
+func (v *variableFunc) fullName(pkgNames map[*packageContext]string) string {
 	return packageNamespacePrefix(pkgNames[v.pctx]) + v.name_
 }
 
@@ -423,7 +445,7 @@ type argVariable struct {
 	name_ string
 }
 
-func (v *argVariable) packageContext() *PackageContext {
+func (v *argVariable) packageContext() *packageContext {
 	panic("this should not be called")
 }
 
@@ -431,7 +453,7 @@ func (v *argVariable) name() string {
 	return v.name_
 }
 
-func (v *argVariable) fullName(pkgNames map[*PackageContext]string) string {
+func (v *argVariable) fullName(pkgNames map[*packageContext]string) string {
 	return v.name_
 }
 
@@ -444,7 +466,7 @@ func (v *argVariable) String() string {
 }
 
 type staticPool struct {
-	pctx   *PackageContext
+	pctx   *packageContext
 	name_  string
 	params PoolParams
 }
@@ -458,7 +480,7 @@ type staticPool struct {
 // represents a Ninja pool that will be output.  The name argument should
 // exactly match the Go variable name, and the params fields may reference other
 // Ninja variables that are visible within the calling Go package.
-func (p *PackageContext) StaticPool(name string, params PoolParams) Pool {
+func (p *packageContext) StaticPool(name string, params PoolParams) Pool {
 	checkCalledFromInit()
 
 	err := validateNinjaName(name)
@@ -475,7 +497,7 @@ func (p *PackageContext) StaticPool(name string, params PoolParams) Pool {
 	return pool
 }
 
-func (p *staticPool) packageContext() *PackageContext {
+func (p *staticPool) packageContext() *packageContext {
 	return p.pctx
 }
 
@@ -483,7 +505,7 @@ func (p *staticPool) name() string {
 	return p.name_
 }
 
-func (p *staticPool) fullName(pkgNames map[*PackageContext]string) string {
+func (p *staticPool) fullName(pkgNames map[*packageContext]string) string {
 	return packageNamespacePrefix(pkgNames[p.pctx]) + p.name_
 }
 
@@ -500,7 +522,7 @@ func (p *staticPool) String() string {
 }
 
 type poolFunc struct {
-	pctx       *PackageContext
+	pctx       *packageContext
 	name_      string
 	paramsFunc func(interface{}) (PoolParams, error)
 }
@@ -515,7 +537,7 @@ type poolFunc struct {
 // exactly match the Go variable name, and the string fields of the PoolParams
 // returned by f may reference other Ninja variables that are visible within the
 // calling Go package.
-func (p *PackageContext) PoolFunc(name string, f func(interface{}) (PoolParams,
+func (p *packageContext) PoolFunc(name string, f func(interface{}) (PoolParams,
 	error)) Pool {
 
 	checkCalledFromInit()
@@ -534,7 +556,7 @@ func (p *PackageContext) PoolFunc(name string, f func(interface{}) (PoolParams,
 	return pool
 }
 
-func (p *poolFunc) packageContext() *PackageContext {
+func (p *poolFunc) packageContext() *packageContext {
 	return p.pctx
 }
 
@@ -542,7 +564,7 @@ func (p *poolFunc) name() string {
 	return p.name_
 }
 
-func (p *poolFunc) fullName(pkgNames map[*PackageContext]string) string {
+func (p *poolFunc) fullName(pkgNames map[*packageContext]string) string {
 	return packageNamespacePrefix(pkgNames[p.pctx]) + p.name_
 }
 
@@ -566,7 +588,7 @@ type builtinPool struct {
 	name_ string
 }
 
-func (p *builtinPool) packageContext() *PackageContext {
+func (p *builtinPool) packageContext() *packageContext {
 	return nil
 }
 
@@ -574,7 +596,7 @@ func (p *builtinPool) name() string {
 	return p.name_
 }
 
-func (p *builtinPool) fullName(pkgNames map[*PackageContext]string) string {
+func (p *builtinPool) fullName(pkgNames map[*packageContext]string) string {
 	return p.name_
 }
 
@@ -587,7 +609,7 @@ func (p *builtinPool) String() string {
 }
 
 type staticRule struct {
-	pctx       *PackageContext
+	pctx       *packageContext
 	name_      string
 	params     RuleParams
 	argNames   map[string]bool
@@ -613,7 +635,7 @@ type staticRule struct {
 // results in the package-scoped variable's value being used for build
 // statements that do not override the argument.  For argument names that do not
 // shadow package-scoped variables the default value is an empty string.
-func (p *PackageContext) StaticRule(name string, params RuleParams,
+func (p *packageContext) StaticRule(name string, params RuleParams,
 	argNames ...string) Rule {
 
 	checkCalledFromInit()
@@ -650,7 +672,7 @@ func (p *PackageContext) StaticRule(name string, params RuleParams,
 	return r
 }
 
-func (r *staticRule) packageContext() *PackageContext {
+func (r *staticRule) packageContext() *packageContext {
 	return r.pctx
 }
 
@@ -658,7 +680,7 @@ func (r *staticRule) name() string {
 	return r.name_
 }
 
-func (r *staticRule) fullName(pkgNames map[*PackageContext]string) string {
+func (r *staticRule) fullName(pkgNames map[*packageContext]string) string {
 	return packageNamespacePrefix(pkgNames[r.pctx]) + r.name_
 }
 
@@ -692,7 +714,7 @@ func (r *staticRule) String() string {
 }
 
 type ruleFunc struct {
-	pctx       *PackageContext
+	pctx       *packageContext
 	name_      string
 	paramsFunc func(interface{}) (RuleParams, error)
 	argNames   map[string]bool
@@ -719,7 +741,7 @@ type ruleFunc struct {
 // scoped variable results in the package-scoped variable's value being used for
 // build statements that do not override the argument.  For argument names that
 // do not shadow package-scoped variables the default value is an empty string.
-func (p *PackageContext) RuleFunc(name string, f func(interface{}) (RuleParams,
+func (p *packageContext) RuleFunc(name string, f func(interface{}) (RuleParams,
 	error), argNames ...string) Rule {
 
 	checkCalledFromInit()
@@ -756,7 +778,7 @@ func (p *PackageContext) RuleFunc(name string, f func(interface{}) (RuleParams,
 	return rule
 }
 
-func (r *ruleFunc) packageContext() *PackageContext {
+func (r *ruleFunc) packageContext() *packageContext {
 	return r.pctx
 }
 
@@ -764,7 +786,7 @@ func (r *ruleFunc) name() string {
 	return r.name_
 }
 
-func (r *ruleFunc) fullName(pkgNames map[*PackageContext]string) string {
+func (r *ruleFunc) fullName(pkgNames map[*packageContext]string) string {
 	return packageNamespacePrefix(pkgNames[r.pctx]) + r.name_
 }
 
@@ -807,7 +829,7 @@ type builtinRule struct {
 	sync.Mutex // protects scope_ during lazy creation
 }
 
-func (r *builtinRule) packageContext() *PackageContext {
+func (r *builtinRule) packageContext() *packageContext {
 	return nil
 }
 
@@ -815,7 +837,7 @@ func (r *builtinRule) name() string {
 	return r.name_
 }
 
-func (r *builtinRule) fullName(pkgNames map[*PackageContext]string) string {
+func (r *builtinRule) fullName(pkgNames map[*packageContext]string) string {
 	return r.name_
 }
 

@@ -82,7 +82,7 @@ type Context struct {
 	ignoreUnknownModuleTypes bool
 
 	// set during PrepareBuildActions
-	pkgNames        map[*PackageContext]string
+	pkgNames        map[*packageContext]string
 	globalVariables map[Variable]*ninjaString
 	globalPools     map[Pool]*poolDef
 	globalRules     map[Rule]*ruleDef
@@ -1919,13 +1919,13 @@ func (c *Context) setNinjaBuildDir(value *ninjaString) {
 }
 
 func (c *Context) makeUniquePackageNames(
-	liveGlobals *liveTracker) map[*PackageContext]string {
+	liveGlobals *liveTracker) map[*packageContext]string {
 
-	pkgs := make(map[string]*PackageContext)
-	pkgNames := make(map[*PackageContext]string)
-	longPkgNames := make(map[*PackageContext]bool)
+	pkgs := make(map[string]*packageContext)
+	pkgNames := make(map[*packageContext]string)
+	longPkgNames := make(map[*packageContext]bool)
 
-	processPackage := func(pctx *PackageContext) {
+	processPackage := func(pctx *packageContext) {
 		if pctx == nil {
 			// This is a built-in rule and has no package.
 			return
@@ -1972,7 +1972,7 @@ func (c *Context) makeUniquePackageNames(
 }
 
 func (c *Context) checkForVariableReferenceCycles(
-	variables map[Variable]*ninjaString, pkgNames map[*PackageContext]string) {
+	variables map[Variable]*ninjaString, pkgNames map[*packageContext]string) {
 
 	visited := make(map[Variable]bool)  // variables that were already checked
 	checking := make(map[Variable]bool) // variables actively being checked
@@ -2313,11 +2313,11 @@ func (c *Context) writeBuildDir(nw *ninjaWriter) error {
 }
 
 type globalEntity interface {
-	fullName(pkgNames map[*PackageContext]string) string
+	fullName(pkgNames map[*packageContext]string) string
 }
 
 type globalEntitySorter struct {
-	pkgNames map[*PackageContext]string
+	pkgNames map[*packageContext]string
 	entities []globalEntity
 }
 
