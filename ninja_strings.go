@@ -258,11 +258,11 @@ func parseNinjaStrings(scope scope, strs []string) ([]*ninjaString,
 	return result, nil
 }
 
-func (n *ninjaString) Value(pkgNames map[*PackageContext]string) string {
+func (n *ninjaString) Value(pkgNames map[*packageContext]string) string {
 	return n.ValueWithEscaper(pkgNames, defaultEscaper)
 }
 
-func (n *ninjaString) ValueWithEscaper(pkgNames map[*PackageContext]string,
+func (n *ninjaString) ValueWithEscaper(pkgNames map[*packageContext]string,
 	escaper *strings.Replacer) string {
 
 	str := escaper.Replace(n.strings[0])
