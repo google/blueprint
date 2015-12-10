@@ -29,7 +29,26 @@ function testcase()
   fi
 }
 
-
+# Run wrapper, filter the output, and compare against expectations
+# $1: Name of test
+function testcase_wrapper()
+{
+  echo -n "Running wrapper_$1..."
+  if ! ./blueprint.bash -v -d explain >log_wrapper_$1 2>&1; then
+    echo " Failed."
+    echo "Test wrapper_$1 Failed:" >>failed
+    tail log_wrapper_$1 >>failed
+    return
+  fi
+  grep -E "^(Choosing|Newer|Stage)" log_wrapper_$1 >test_wrapper_$1
+  if ! cmp -s test_wrapper_$1 ../tests/expected_wrapper_$1; then
+    echo " Failed."
+    echo "Test wrapper_$1 Failed:" >>failed
+    diff -u ../tests/expected_wrapper_$1 test_wrapper_$1 >>failed
+  else
+    echo " Passed."
+  fi
+}
 
 
 testcase start
@@ -85,8 +104,36 @@ sleep 2
 touch ../parser/parser_test.go
 testcase rebuild_test
 
+# Restart testing using the wrapper instead of going straight to ninja. This
+# will force each test to start in the correct bootstrap stage, so there are
+# less cases to test.
+cd ..
+rm -rf out.test
+mkdir -p out.test
+cd out.test
+../bootstrap.bash
 
+testcase_wrapper start
 
+# This test affects all bootstrap stages
+sleep 2
+touch ../Blueprints
+testcase_wrapper all
+
+# From now on, we're going to be modifying the build.ninja.in, so let's make our
+# own copy
+sleep 2
+../tests/bootstrap.bash -r
+
+sleep 2
+testcase_wrapper start2
+
+# This is similar to the last test, but incorporates a change into the source
+# build.ninja.in, so that we'll restart into the new version created by the
+# build.
+sleep 2
+echo "# test" >>src.build.ninja.in
+testcase_wrapper regen
 
 if [ -f failed ]; then
   cat failed
