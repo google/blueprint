@@ -31,6 +31,7 @@ type SingletonContext interface {
 
 	ModuleErrorf(module Module, format string, args ...interface{})
 	Errorf(format string, args ...interface{})
+	Failed() bool
 
 	Variable(pctx PackageContext, name, value string)
 	Rule(pctx PackageContext, name string, params RuleParams, argNames ...string) Rule
@@ -94,6 +95,10 @@ func (s *singletonContext) ModuleErrorf(logicModule Module, format string,
 func (s *singletonContext) Errorf(format string, args ...interface{}) {
 	// TODO: Make this not result in the error being printed as "internal error"
 	s.errs = append(s.errs, fmt.Errorf(format, args...))
+}
+
+func (s *singletonContext) Failed() bool {
+	return len(s.errs) > 0
 }
 
 func (s *singletonContext) Variable(pctx PackageContext, name, value string) {
