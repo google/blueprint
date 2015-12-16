@@ -458,6 +458,7 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 
 	scope = parser.NewScope(scope)
 	scope.Remove("subdirs")
+	scope.Remove("optional_subdirs")
 	scope.Remove("build")
 	file, errs = parser.ParseAndEval(filename, r, scope)
 	if len(errs) > 0 {
@@ -482,6 +483,11 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 		errs = append(errs, err)
 	}
 
+	optionalSubdirs, optionalSubdirsPos, err := getLocalStringListFromScope(scope, "optional_subdirs")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
 	build, buildPos, err := getLocalStringListFromScope(scope, "build")
 	if err != nil {
 		errs = append(errs, err)
@@ -489,11 +495,24 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 
 	subBlueprintsName, _, err := getStringFromScope(scope, "subname")
 
-	blueprints, deps, newErrs := c.findSubdirBlueprints(filepath.Dir(filename), subdirs, build,
-		subBlueprintsName, subdirsPos, buildPos)
-	if len(newErrs) > 0 {
-		errs = append(errs, newErrs...)
-	}
+	var blueprints []string
+
+	newBlueprints, newDeps, newErrs := c.findBuildBlueprints(filepath.Dir(filename), build, buildPos)
+	blueprints = append(blueprints, newBlueprints...)
+	deps = append(deps, newDeps...)
+	errs = append(errs, newErrs...)
+
+	newBlueprints, newDeps, newErrs = c.findSubdirBlueprints(filepath.Dir(filename), subdirs, subdirsPos,
+		subBlueprintsName, false)
+	blueprints = append(blueprints, newBlueprints...)
+	deps = append(deps, newDeps...)
+	errs = append(errs, newErrs...)
+
+	newBlueprints, newDeps, newErrs = c.findSubdirBlueprints(filepath.Dir(filename), optionalSubdirs,
+		optionalSubdirsPos, subBlueprintsName, true)
+	blueprints = append(blueprints, newBlueprints...)
+	deps = append(deps, newDeps...)
+	errs = append(errs, newErrs...)
 
 	subBlueprintsAndScope := make([]stringAndScope, len(blueprints))
 	for i, b := range blueprints {
@@ -703,8 +722,55 @@ func (c *Context) parseBlueprintsFile(filename string, scope *parser.Scope, root
 	}
 }
 
-func (c *Context) findSubdirBlueprints(dir string, subdirs, build []string, subBlueprintsName string,
-	subdirsPos, buildPos scanner.Position) (blueprints, deps []string, errs []error) {
+func (c *Context) findBuildBlueprints(dir string, build []string,
+	buildPos scanner.Position) (blueprints, deps []string, errs []error) {
+
+	for _, file := range build {
+		globPattern := filepath.Join(dir, file)
+		matches, matchedDirs, err := pathtools.Glob(globPattern)
+		if err != nil {
+			errs = append(errs, &Error{
+				Err: fmt.Errorf("%q: %s", globPattern, err.Error()),
+				Pos: buildPos,
+			})
+			continue
+		}
+
+		if len(matches) == 0 {
+			errs = append(errs, &Error{
+				Err: fmt.Errorf("%q: not found", globPattern),
+				Pos: buildPos,
+			})
+		}
+
+		// Depend on all searched directories so we pick up future changes.
+		deps = append(deps, matchedDirs...)
+
+		for _, foundBlueprints := range matches {
+			fileInfo, err := os.Stat(foundBlueprints)
+			if os.IsNotExist(err) {
+				errs = append(errs, &Error{
+					Err: fmt.Errorf("%q not found", foundBlueprints),
+				})
+				continue
+			}
+
+			if fileInfo.IsDir() {
+				errs = append(errs, &Error{
+					Err: fmt.Errorf("%q is a directory", foundBlueprints),
+				})
+				continue
+			}
+
+			blueprints = append(blueprints, foundBlueprints)
+		}
+	}
+
+	return blueprints, deps, errs
+}
+
+func (c *Context) findSubdirBlueprints(dir string, subdirs []string, subdirsPos scanner.Position,
+	subBlueprintsName string, optional bool) (blueprints, deps []string, errs []error) {
 
 	for _, subdir := range subdirs {
 		globPattern := filepath.Join(dir, subdir)
@@ -717,7 +783,7 @@ func (c *Context) findSubdirBlueprints(dir string, subdirs, build []string, subB
 			continue
 		}
 
-		if len(matches) == 0 {
+		if len(matches) == 0 && !optional {
 			errs = append(errs, &Error{
 				Err: fmt.Errorf("%q: not found", globPattern),
 				Pos: subdirsPos,
@@ -760,47 +826,6 @@ func (c *Context) findSubdirBlueprints(dir string, subdirs, build []string, subB
 				deps = append(deps, subBlueprints)
 				blueprints = append(blueprints, subBlueprints)
 			}
-		}
-	}
-
-	for _, file := range build {
-		globPattern := filepath.Join(dir, file)
-		matches, matchedDirs, err := pathtools.Glob(globPattern)
-		if err != nil {
-			errs = append(errs, &Error{
-				Err: fmt.Errorf("%q: %s", globPattern, err.Error()),
-				Pos: buildPos,
-			})
-			continue
-		}
-
-		if len(matches) == 0 {
-			errs = append(errs, &Error{
-				Err: fmt.Errorf("%q: not found", globPattern),
-				Pos: buildPos,
-			})
-		}
-
-		// Depend on all searched directories so we pick up future changes.
-		deps = append(deps, matchedDirs...)
-
-		for _, foundBlueprints := range matches {
-			fileInfo, err := os.Stat(foundBlueprints)
-			if os.IsNotExist(err) {
-				errs = append(errs, &Error{
-					Err: fmt.Errorf("%q not found", foundBlueprints),
-				})
-				continue
-			}
-
-			if fileInfo.IsDir() {
-				errs = append(errs, &Error{
-					Err: fmt.Errorf("%q is a directory", foundBlueprints),
-				})
-				continue
-			}
-
-			blueprints = append(blueprints, foundBlueprints)
 		}
 	}
 
