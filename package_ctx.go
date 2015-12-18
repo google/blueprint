@@ -67,15 +67,19 @@ type PackageContext interface {
 	StaticRule(name string, params RuleParams, argNames ...string) Rule
 	RuleFunc(name string, f func(interface{}) (RuleParams, error), argNames ...string) Rule
 
+	AddNinjaFileDeps(deps ...string)
+
 	getScope() *basicScope
 }
 
 type packageContext struct {
-	fullName  string
-	shortName string
-	pkgPath   string
-	scope     *basicScope
+	fullName      string
+	shortName     string
+	pkgPath       string
+	scope         *basicScope
+	ninjaFileDeps []string
 }
+
 var _ PackageContext = &packageContext{}
 
 func (p *packageContext) getScope() *basicScope {
@@ -861,4 +865,8 @@ func (r *builtinRule) isArg(argName string) bool {
 
 func (r *builtinRule) String() string {
 	return "<builtin>:" + r.name_
+}
+
+func (p *packageContext) AddNinjaFileDeps(deps ...string) {
+	p.ninjaFileDeps = append(p.ninjaFileDeps, deps...)
 }

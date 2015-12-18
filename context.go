@@ -1452,8 +1452,9 @@ func (c *Context) updateDependencies() (errs []error) {
 // config-specific values.
 //
 // The returned deps is a list of the ninja files dependencies that were added
-// by the modules and singletons via the ModuleContext.AddNinjaFileDeps() and
-// SingletonContext.AddNinjaFileDeps() methods.
+// by the modules and singletons via the ModuleContext.AddNinjaFileDeps(),
+// SingletonContext.AddNinjaFileDeps(), and PackageContext.AddNinjaFileDeps()
+// methods.
 func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs []error) {
 	c.buildActionsReady = false
 
@@ -1484,7 +1485,9 @@ func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs [
 		liveGlobals.addNinjaStringDeps(c.ninjaBuildDir)
 	}
 
-	pkgNames := c.makeUniquePackageNames(liveGlobals)
+	pkgNames, depsPackages := c.makeUniquePackageNames(liveGlobals)
+
+	deps = append(deps, depsPackages...)
 
 	// This will panic if it finds a problem since it's a programming error.
 	c.checkForVariableReferenceCycles(liveGlobals.variables, pkgNames)
@@ -1978,7 +1981,7 @@ func (c *Context) setNinjaBuildDir(value *ninjaString) {
 }
 
 func (c *Context) makeUniquePackageNames(
-	liveGlobals *liveTracker) map[*packageContext]string {
+	liveGlobals *liveTracker) (map[*packageContext]string, []string) {
 
 	pkgs := make(map[string]*packageContext)
 	pkgNames := make(map[*packageContext]string)
@@ -2027,7 +2030,13 @@ func (c *Context) makeUniquePackageNames(
 		pkgNames[pctx] = pctx.fullName
 	}
 
-	return pkgNames
+	// Create deps list from calls to PackageContext.AddNinjaFileDeps
+	deps := []string{}
+	for _, pkg := range pkgs {
+		deps = append(deps, pkg.ninjaFileDeps...)
+	}
+
+	return pkgNames, deps
 }
 
 func (c *Context) checkForVariableReferenceCycles(
