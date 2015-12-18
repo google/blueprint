@@ -27,6 +27,7 @@ type SingletonContext interface {
 
 	ModuleName(module Module) string
 	ModuleDir(module Module) string
+	ModuleSubDir(module Module) string
 	BlueprintFile(module Module) string
 
 	ModuleErrorf(module Module, format string, args ...interface{})
@@ -80,6 +81,10 @@ func (s *singletonContext) ModuleName(logicModule Module) string {
 
 func (s *singletonContext) ModuleDir(logicModule Module) string {
 	return s.context.ModuleDir(logicModule)
+}
+
+func (s *singletonContext) ModuleSubDir(logicModule Module) string {
+	return s.context.ModuleSubDir(logicModule)
 }
 
 func (s *singletonContext) BlueprintFile(logicModule Module) string {

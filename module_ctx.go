@@ -146,6 +146,8 @@ type ModuleContext interface {
 	PrimaryModule() Module
 	FinalModule() Module
 	VisitAllModuleVariants(visit func(Module))
+
+	GetMissingDependencies() []string
 }
 
 var _ BaseModuleContext = (*baseModuleContext)(nil)
@@ -221,9 +223,10 @@ var _ ModuleContext = (*moduleContext)(nil)
 
 type moduleContext struct {
 	baseModuleContext
-	scope         *localScope
-	ninjaFileDeps []string
-	actionDefs    localBuildActions
+	scope              *localScope
+	ninjaFileDeps      []string
+	actionDefs         localBuildActions
+	handledMissingDeps bool
 }
 
 func (m *moduleContext) OtherModuleName(logicModule Module) string {
@@ -320,6 +323,11 @@ func (m *moduleContext) VisitAllModuleVariants(visit func(Module)) {
 	for _, module := range m.module.group.modules {
 		visit(module.logicModule)
 	}
+}
+
+func (m *moduleContext) GetMissingDependencies() []string {
+	m.handledMissingDeps = true
+	return m.module.missingDeps
 }
 
 //
