@@ -81,6 +81,9 @@ type Context struct {
 	// set by SetIgnoreUnknownModuleTypes
 	ignoreUnknownModuleTypes bool
 
+	// set by SetAllowMissingDependencies
+	allowMissingDependencies bool
+
 	// set during PrepareBuildActions
 	pkgNames        map[*packageContext]string
 	globalVariables map[Variable]*ninjaString
@@ -137,7 +140,8 @@ type moduleInfo struct {
 	moduleProperties []interface{}
 
 	// set during ResolveDependencies
-	directDeps []*moduleInfo
+	directDeps  []*moduleInfo
+	missingDeps []string
 
 	// set during updateDependencies
 	reverseDeps []*moduleInfo
@@ -435,6 +439,14 @@ func (c *Context) RegisterEarlyMutator(name string, mutator EarlyMutator) {
 // bootstrapping process.
 func (c *Context) SetIgnoreUnknownModuleTypes(ignoreUnknownModuleTypes bool) {
 	c.ignoreUnknownModuleTypes = ignoreUnknownModuleTypes
+}
+
+// SetAllowMissingDependencies changes the behavior of Blueprint to ignore
+// unresolved dependencies.  If the module's GenerateBuildActions calls
+// ModuleContext.GetMissingDependencies Blueprint will not emit any errors
+// for missing dependencies.
+func (c *Context) SetAllowMissingDependencies(allowMissingDependencies bool) {
+	c.allowMissingDependencies = allowMissingDependencies
 }
 
 // Parse parses a single Blueprints file from r, creating Module objects for
@@ -1146,6 +1158,10 @@ func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 
 	depInfo, ok := c.moduleGroups[depName]
 	if !ok {
+		if c.allowMissingDependencies {
+			module.missingDeps = append(module.missingDeps, depName)
+			return nil
+		}
 		return []error{&Error{
 			Err: fmt.Errorf("%q depends on undefined module %q",
 				module.properties.Name, depName),
@@ -1206,6 +1222,10 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 
 	depInfo, ok := c.moduleGroups[depName]
 	if !ok {
+		if c.allowMissingDependencies {
+			module.missingDeps = append(module.missingDeps, depName)
+			return nil
+		}
 		return []error{&Error{
 			Err: fmt.Errorf("%q depends on undefined module %q",
 				module.properties.Name, depName),
@@ -1699,13 +1719,27 @@ func (c *Context) generateModuleBuildActions(config interface{},
 				config:  config,
 				module:  module,
 			},
-			scope: scope,
+			scope:              scope,
+			handledMissingDeps: module.missingDeps == nil,
 		}
 
 		mctx.module.logicModule.GenerateBuildActions(mctx)
 
 		if len(mctx.errs) > 0 {
 			errsCh <- mctx.errs
+			return true
+		}
+
+		if module.missingDeps != nil && !mctx.handledMissingDeps {
+			var errs []error
+			for _, depName := range module.missingDeps {
+				errs = append(errs, &Error{
+					Err: fmt.Errorf("%q depends on undefined module %q",
+						module.properties.Name, depName),
+					Pos: module.pos,
+				})
+			}
+			errsCh <- errs
 			return true
 		}
 
