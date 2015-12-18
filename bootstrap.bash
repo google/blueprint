@@ -10,6 +10,7 @@
 # their default values are set:
 #
 #   BOOTSTRAP
+#   WRAPPER
 #   SRCDIR
 #   BUILDDIR
 #   BOOTSTRAP_MANIFEST
@@ -28,7 +29,14 @@ EXTRA_ARGS=""
 # BOOTSTRAP should be set to the path of the bootstrap script.  It can be
 # either an absolute path or one relative to the build directory (which of
 # these is used should probably match what's used for SRCDIR).
-[ -z "$BOOTSTRAP" ] && BOOTSTRAP="${BASH_SOURCE[0]}"
+if [ -z "$BOOTSTRAP" ]; then
+    BOOTSTRAP="${BASH_SOURCE[0]}"
+
+    # WRAPPER should only be set if you want a ninja wrapper script to be
+    # installed into the builddir. It is set to blueprint's blueprint.bash
+    # only if BOOTSTRAP and WRAPPER are unset.
+    [ -z "$WRAPPER" ] && WRAPPER="`dirname "${BOOTSTRAP}"`/blueprint.bash"
+fi
 
 # SRCDIR should be set to the path of the root source directory.  It can be
 # either an absolute path or a path relative to the build directory.  Whether
@@ -128,3 +136,10 @@ sed -e "s|@@SrcDir@@|$SRCDIR|g"                        \
     -e "s|@@Bootstrap@@|$BOOTSTRAP|g"                  \
     -e "s|@@BootstrapManifest@@|$BOOTSTRAP_MANIFEST|g" \
     $IN > $BUILDDIR/build.ninja
+
+echo "BOOTSTRAP=\"${BOOTSTRAP}\"" > $BUILDDIR/.blueprint.bootstrap
+echo "BOOTSTRAP_MANIFEST=\"${BOOTSTRAP_MANIFEST}\"" >> $BUILDDIR/.blueprint.bootstrap
+
+if [ ! -z "$WRAPPER" ]; then
+    cp $WRAPPER $BUILDDIR/
+fi

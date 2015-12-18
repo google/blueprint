@@ -17,8 +17,8 @@ before_script:
 script:
     - go test ./...
     - mkdir stage
-    - cd stage 
+    - cd stage
     - ../bootstrap.bash
-    - ninja
+    - ./blueprint.bash
     - diff -us ../build.ninja.in .bootstrap/bootstrap.ninja.in
     - ../tests/test.sh
