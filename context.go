@@ -2139,6 +2139,11 @@ func (c *Context) ModuleDir(logicModule Module) string {
 	return filepath.Dir(module.relBlueprintsFile)
 }
 
+func (c *Context) ModuleSubDir(logicModule Module) string {
+	module := c.moduleInfo[logicModule]
+	return module.variantName
+}
+
 func (c *Context) BlueprintFile(logicModule Module) string {
 	module := c.moduleInfo[logicModule]
 	return module.relBlueprintsFile
