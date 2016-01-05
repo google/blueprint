@@ -29,8 +29,8 @@ import (
 // An error returned by AppendProperties that applies to a specific property will be an
 // *ExtendPropertyError, and can have the property name and error extracted from it.
 //
-// The append operation is defined as appending strings, pointers to strings, and slices of
-// strings normally, OR-ing bool values, replacing non-nil pointers to booleans, and recursing into
+// The append operation is defined as appending strings and slices of strings normally, OR-ing bool
+// values, replacing non-nil pointers to booleans or strings, and recursing into
 // embedded structs, pointers to structs, and interfaces containing
 // pointers to structs.  Appending the zero value of a property will always be a no-op.
 func AppendProperties(dst interface{}, src interface{}, filter ExtendPropertyFilterFunc) error {
@@ -47,8 +47,8 @@ func AppendProperties(dst interface{}, src interface{}, filter ExtendPropertyFil
 // An error returned by PrependProperties that applies to a specific property will be an
 // *ExtendPropertyError, and can have the property name and error extracted from it.
 //
-// The prepend operation is defined as prepending strings, pointers to strings, and slices of
-// strings normally, OR-ing bool values, replacing non-nil pointers to booleans, and recursing into
+// The prepend operation is defined as prepending strings, and slices of strings normally, OR-ing
+// bool values, replacing non-nil pointers to booleans or strings, and recursing into
 // embedded structs, pointers to structs, and interfaces containing
 // pointers to structs.  Prepending the zero value of a property will always be a no-op.
 func PrependProperties(dst interface{}, src interface{}, filter ExtendPropertyFilterFunc) error {
@@ -67,8 +67,8 @@ func PrependProperties(dst interface{}, src interface{}, filter ExtendPropertyFi
 // An error returned by AppendMatchingProperties that applies to a specific property will be an
 // *ExtendPropertyError, and can have the property name and error extracted from it.
 //
-// The append operation is defined as appending strings, pointers to strings, and slices of
-// strings normally, OR-ing bool values, replacing non-nil pointers to booleans, and recursing into
+// The append operation is defined as appending strings, and slices of strings normally, OR-ing bool
+// values, replacing non-nil pointers to booleans or strings, and recursing into
 // embedded structs, pointers to structs, and interfaces containing
 // pointers to structs.  Appending the zero value of a property will always be a no-op.
 func AppendMatchingProperties(dst []interface{}, src interface{},
@@ -88,8 +88,8 @@ func AppendMatchingProperties(dst []interface{}, src interface{},
 // An error returned by PrependProperties that applies to a specific property will be an
 // *ExtendPropertyError, and can have the property name and error extracted from it.
 //
-// The prepend operation is defined as prepending strings, pointers to strings, and slices of
-// strings normally, OR-ing bool values, replacing non-nil pointers to booleans, and recursing into
+// The prepend operation is defined as prepending strings, and slices of strings normally, OR-ing
+// bool values, replacing non-nil pointers to booleans or strings, and recursing into
 // embedded structs, pointers to structs, and interfaces containing
 // pointers to structs.  Prepending the zero value of a property will always be a no-op.
 func PrependMatchingProperties(dst []interface{}, src interface{},
@@ -321,14 +321,13 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 						dstFieldValue.Set(reflect.ValueOf(BoolPtr(srcFieldValue.Elem().Bool())))
 					}
 				case reflect.String:
-					dstStr := ""
-					if !dstFieldValue.IsNil() {
-						dstStr = dstFieldValue.Elem().String()
-					}
 					if prepend {
-						dstFieldValue.Set(reflect.ValueOf(StringPtr(srcFieldValue.Elem().String() + dstStr)))
+						if dstFieldValue.IsNil() {
+							dstFieldValue.Set(reflect.ValueOf(StringPtr(srcFieldValue.Elem().String())))
+						}
 					} else {
-						dstFieldValue.Set(reflect.ValueOf(StringPtr(dstStr + srcFieldValue.Elem().String())))
+						// For append, replace the original value.
+						dstFieldValue.Set(reflect.ValueOf(StringPtr(srcFieldValue.Elem().String())))
 					}
 				default:
 					panic(fmt.Errorf("unexpected pointer kind %s", ptrKind))
