@@ -184,7 +184,7 @@ var appendPropertiesTestCases = []struct {
 			S3: StringPtr("string4"),
 		},
 		out: &struct{ S1, S2, S3, S4 *string }{
-			S1: StringPtr("string1string3"),
+			S1: StringPtr("string3"),
 			S2: StringPtr("string2"),
 			S3: StringPtr("string4"),
 			S4: nil,
@@ -201,7 +201,7 @@ var appendPropertiesTestCases = []struct {
 			S3: StringPtr("string4"),
 		},
 		out: &struct{ S1, S2, S3, S4 *string }{
-			S1: StringPtr("string3string1"),
+			S1: StringPtr("string1"),
 			S2: StringPtr("string2"),
 			S3: StringPtr("string4"),
 			S4: nil,
