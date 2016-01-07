@@ -177,12 +177,15 @@ func fatalf(format string, args ...interface{}) {
 }
 
 func fatalErrors(errs []error) {
+	red := "\x1b[31m"
+	unred := "\x1b[0m"
+
 	for _, err := range errs {
-		switch err.(type) {
+		switch err := err.(type) {
 		case *blueprint.Error:
-			_, _ = fmt.Printf("%s\n", err.Error())
+			fmt.Printf("%serror:%s %s\n", red, unred, err.Error())
 		default:
-			_, _ = fmt.Printf("internal error: %s\n", err)
+			fmt.Printf("%sinternal error:%s %s\n", red, unred, err)
 		}
 	}
 	os.Exit(1)
