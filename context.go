@@ -157,6 +157,14 @@ type moduleInfo struct {
 	actionDefs localBuildActions
 }
 
+func (module *moduleInfo) String() string {
+	s := fmt.Sprintf("module %q", module.properties.Name)
+	if module.variantName != "" {
+		s += fmt.Sprintf(" variant %q", module.variantName)
+	}
+	return s
+}
+
 // A Variation is a way that a variant of a module differs from other variants of the same module.
 // For example, two variants of the same module might have Variation{"arch","arm"} and
 // Variation{"arch","arm64"}
@@ -1122,13 +1130,20 @@ func blueprintDepsMutator(ctx BottomUpMutatorContext) {
 	ctx.AddDependency(ctx.Module(), ctx.moduleInfo().properties.Deps...)
 
 	if dynamicDepender, ok := ctx.Module().(DynamicDependerModule); ok {
-		dynamicDeps := dynamicDepender.DynamicDependencies(ctx)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					ctx.error(newPanicErrorf(r, "DynamicDependencies for %s", ctx.moduleInfo()))
+				}
+			}()
+			dynamicDeps := dynamicDepender.DynamicDependencies(ctx)
 
-		if ctx.Failed() {
-			return
-		}
+			if ctx.Failed() {
+				return
+			}
 
-		ctx.AddDependency(ctx.Module(), dynamicDeps...)
+			ctx.AddDependency(ctx.Module(), dynamicDeps...)
+		}()
 	}
 }
 
@@ -1516,7 +1531,20 @@ func (c *Context) runEarlyMutators(config interface{}) (errs []error) {
 					},
 					name: mutator.name,
 				}
-				mutator.mutator(mctx)
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							in := fmt.Sprintf("early mutator %q for %s", mutator.name, module)
+							if err, ok := r.(panicError); ok {
+								err.addIn(in)
+								mctx.error(err)
+							} else {
+								mctx.error(newPanicErrorf(r, in))
+							}
+						}
+					}()
+					mutator.mutator(mctx)
+				}()
 				if len(mctx.errs) > 0 {
 					errs = append(errs, mctx.errs...)
 					return errs
@@ -1576,8 +1604,21 @@ func (c *Context) runTopDownMutator(config interface{},
 			},
 			name: name,
 		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					in := fmt.Sprintf("top down mutator %q for %s", name, module)
+					if err, ok := r.(panicError); ok {
+						err.addIn(in)
+						mctx.error(err)
+					} else {
+						mctx.error(newPanicErrorf(r, in))
+					}
+				}
+			}()
+			mutator(mctx)
+		}()
 
-		mutator(mctx)
 		if len(mctx.errs) > 0 {
 			errs = append(errs, mctx.errs...)
 			return errs
@@ -1609,7 +1650,20 @@ func (c *Context) runBottomUpMutator(config interface{},
 			reverseDeps: reverseDeps,
 		}
 
-		mutator(mctx)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					in := fmt.Sprintf("bottom up mutator %q for %s", name, module)
+					if err, ok := r.(panicError); ok {
+						err.addIn(in)
+						mctx.error(err)
+					} else {
+						mctx.error(newPanicErrorf(r, in))
+					}
+				}
+			}()
+			mutator(mctx)
+		}()
 		if len(mctx.errs) > 0 {
 			errs = append(errs, mctx.errs...)
 			return errs
@@ -1726,7 +1780,20 @@ func (c *Context) generateModuleBuildActions(config interface{},
 			handledMissingDeps: module.missingDeps == nil,
 		}
 
-		mctx.module.logicModule.GenerateBuildActions(mctx)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					in := fmt.Sprintf("GenerateBuildActions for %s", module)
+					if err, ok := r.(panicError); ok {
+						err.addIn(in)
+						mctx.error(err)
+					} else {
+						mctx.error(newPanicErrorf(r, in))
+					}
+				}
+			}()
+			mctx.module.logicModule.GenerateBuildActions(mctx)
+		}()
 
 		if len(mctx.errs) > 0 {
 			errsCh <- mctx.errs
@@ -1781,7 +1848,20 @@ func (c *Context) generateSingletonBuildActions(config interface{},
 			scope:   scope,
 		}
 
-		info.singleton.GenerateBuildActions(sctx)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					in := fmt.Sprintf("GenerateBuildActions for singleton %s", info.name)
+					if err, ok := r.(panicError); ok {
+						err.addIn(in)
+						sctx.error(err)
+					} else {
+						sctx.error(newPanicErrorf(r, in))
+					}
+				}
+			}()
+			info.singleton.GenerateBuildActions(sctx)
+		}()
 
 		if len(sctx.errs) > 0 {
 			errs = append(errs, sctx.errs...)
@@ -1849,6 +1929,14 @@ func (c *Context) walkDeps(topModule *moduleInfo,
 	visit func(Module, Module) bool) {
 
 	visited := make(map[*moduleInfo]bool)
+	var visiting *moduleInfo
+
+	defer func() {
+		if r := recover(); r != nil {
+			panic(newPanicErrorf(r, "WalkDeps(%s, %s) for dependency %s",
+				topModule, funcName(visit), visiting))
+		}
+	}()
 
 	var walk func(module *moduleInfo)
 	walk = func(module *moduleInfo) {
@@ -1856,6 +1944,7 @@ func (c *Context) walkDeps(topModule *moduleInfo,
 
 		for _, moduleDep := range module.directDeps {
 			if !visited[moduleDep] {
+				visiting = moduleDep
 				if visit(moduleDep.logicModule, module.logicModule) {
 					walk(moduleDep)
 				}
@@ -1866,8 +1955,18 @@ func (c *Context) walkDeps(topModule *moduleInfo,
 	walk(topModule)
 }
 
+type innerPanicError error
+
 func (c *Context) visitDepsDepthFirst(topModule *moduleInfo, visit func(Module)) {
 	visited := make(map[*moduleInfo]bool)
+	var visiting *moduleInfo
+
+	defer func() {
+		if r := recover(); r != nil {
+			panic(newPanicErrorf(r, "VisitDepsDepthFirst(%s, %s) for dependency %s",
+				topModule, funcName(visit), visiting))
+		}
+	}()
 
 	var walk func(module *moduleInfo)
 	walk = func(module *moduleInfo) {
@@ -1879,6 +1978,7 @@ func (c *Context) visitDepsDepthFirst(topModule *moduleInfo, visit func(Module))
 		}
 
 		if module != topModule {
+			visiting = module
 			visit(module.logicModule)
 		}
 	}
@@ -1890,6 +1990,14 @@ func (c *Context) visitDepsDepthFirstIf(topModule *moduleInfo, pred func(Module)
 	visit func(Module)) {
 
 	visited := make(map[*moduleInfo]bool)
+	var visiting *moduleInfo
+
+	defer func() {
+		if r := recover(); r != nil {
+			panic(newPanicErrorf(r, "VisitDepsDepthFirstIf(%s, %s, %s) for dependency %s",
+				topModule, funcName(pred), funcName(visit), visiting))
+		}
+	}()
 
 	var walk func(module *moduleInfo)
 	walk = func(module *moduleInfo) {
@@ -1902,6 +2010,7 @@ func (c *Context) visitDepsDepthFirstIf(topModule *moduleInfo, pred func(Module)
 
 		if module != topModule {
 			if pred(module.logicModule) {
+				visiting = module
 				visit(module.logicModule)
 			}
 		}
@@ -1911,7 +2020,16 @@ func (c *Context) visitDepsDepthFirstIf(topModule *moduleInfo, pred func(Module)
 }
 
 func (c *Context) visitDirectDeps(module *moduleInfo, visit func(Module)) {
-	for _, dep := range module.directDeps {
+	var dep *moduleInfo
+
+	defer func() {
+		if r := recover(); r != nil {
+			panic(newPanicErrorf(r, "VisitDirectDeps(%s, %s) for dependency %s",
+				module, funcName(visit), dep))
+		}
+	}()
+
+	for _, dep = range module.directDeps {
 		visit(dep.logicModule)
 	}
 }
@@ -1919,7 +2037,16 @@ func (c *Context) visitDirectDeps(module *moduleInfo, visit func(Module)) {
 func (c *Context) visitDirectDepsIf(module *moduleInfo, pred func(Module) bool,
 	visit func(Module)) {
 
-	for _, dep := range module.directDeps {
+	var dep *moduleInfo
+
+	defer func() {
+		if r := recover(); r != nil {
+			panic(newPanicErrorf(r, "VisitDirectDepsIf(%s, %s, %s) for dependency %s",
+				module, funcName(pred), funcName(visit), dep))
+		}
+	}()
+
+	for _, dep = range module.directDeps {
 		if pred(dep.logicModule) {
 			visit(dep.logicModule)
 		}
@@ -1940,9 +2067,18 @@ func (c *Context) sortedModuleNames() []string {
 }
 
 func (c *Context) visitAllModules(visit func(Module)) {
+	var module *moduleInfo
+
+	defer func() {
+		if r := recover(); r != nil {
+			panic(newPanicErrorf(r, "VisitAllModules(%s) for %s",
+				funcName(visit), module))
+		}
+	}()
+
 	for _, moduleName := range c.sortedModuleNames() {
 		group := c.moduleGroups[moduleName]
-		for _, module := range group.modules {
+		for _, module = range group.modules {
 			visit(module.logicModule)
 		}
 	}
@@ -1951,6 +2087,15 @@ func (c *Context) visitAllModules(visit func(Module)) {
 func (c *Context) visitAllModulesIf(pred func(Module) bool,
 	visit func(Module)) {
 
+	var module *moduleInfo
+
+	defer func() {
+		if r := recover(); r != nil {
+			panic(newPanicErrorf(r, "VisitAllModulesIf(%s, %s) for %s",
+				funcName(pred), funcName(visit), module))
+		}
+	}()
+
 	for _, moduleName := range c.sortedModuleNames() {
 		group := c.moduleGroups[moduleName]
 		for _, module := range group.modules {
@@ -1958,6 +2103,23 @@ func (c *Context) visitAllModulesIf(pred func(Module) bool,
 				visit(module.logicModule)
 			}
 		}
+	}
+}
+
+func (c *Context) visitAllModuleVariants(module *moduleInfo,
+	visit func(Module)) {
+
+	var variant *moduleInfo
+
+	defer func() {
+		if r := recover(); r != nil {
+			panic(newPanicErrorf(r, "VisitAllModuleVariants(%s, %s) for %s",
+				module, funcName(visit), variant))
+		}
+	}()
+
+	for _, variant = range module.group.modules {
+		visit(variant.logicModule)
 	}
 }
 
@@ -2236,9 +2398,7 @@ func (c *Context) FinalModule(module Module) Module {
 func (c *Context) VisitAllModuleVariants(module Module,
 	visit func(Module)) {
 
-	for _, module := range c.moduleInfo[module].group.modules {
-		visit(module.logicModule)
-	}
+	c.visitAllModuleVariants(c.moduleInfo[module], visit)
 }
 
 // WriteBuildFile writes the Ninja manifeset text for the generated build
@@ -2737,6 +2897,34 @@ func beforeInModuleList(a, b *moduleInfo, list []*moduleInfo) bool {
 		missing = b
 	}
 	panic(fmt.Errorf("element %v not found in list %v", missing, list))
+}
+
+type panicError struct {
+	panic interface{}
+	stack []byte
+	in    string
+}
+
+func newPanicErrorf(panic interface{}, in string, a ...interface{}) error {
+	buf := make([]byte, 4096)
+	count := runtime.Stack(buf, false)
+	return panicError{
+		panic: panic,
+		in:    fmt.Sprintf(in, a...),
+		stack: buf[:count],
+	}
+}
+
+func (p panicError) Error() string {
+	return fmt.Sprintf("panic in %s\n%s\n%s\n", p.in, p.panic, p.stack)
+}
+
+func (p *panicError) addIn(in string) {
+	p.in += " in " + in
+}
+
+func funcName(f interface{}) string {
+	return runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
 }
 
 var fileHeaderTemplate = `******************************************************************************
