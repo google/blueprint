@@ -119,6 +119,7 @@ type BaseModuleContext interface {
 	Failed() bool
 
 	moduleInfo() *moduleInfo
+	error(err error)
 }
 
 type DynamicDependerModuleContext BottomUpMutatorContext
@@ -180,10 +181,16 @@ func (d *baseModuleContext) Config() interface{} {
 	return d.config
 }
 
+func (d *baseModuleContext) error(err error) {
+	if err != nil {
+		d.errs = append(d.errs, err)
+	}
+}
+
 func (d *baseModuleContext) Errorf(pos scanner.Position,
 	format string, args ...interface{}) {
 
-	d.errs = append(d.errs, &Error{
+	d.error(&Error{
 		Err: fmt.Errorf(format, args...),
 		Pos: pos,
 	})
@@ -192,7 +199,7 @@ func (d *baseModuleContext) Errorf(pos scanner.Position,
 func (d *baseModuleContext) ModuleErrorf(format string,
 	args ...interface{}) {
 
-	d.errs = append(d.errs, &Error{
+	d.error(&Error{
 		Err: fmt.Errorf(format, args...),
 		Pos: d.module.pos,
 	})
@@ -209,7 +216,7 @@ func (d *baseModuleContext) PropertyErrorf(property, format string,
 
 	format = property + ": " + format
 
-	d.errs = append(d.errs, &Error{
+	d.error(&Error{
 		Err: fmt.Errorf(format, args...),
 		Pos: pos,
 	})
@@ -320,9 +327,7 @@ func (m *moduleContext) FinalModule() Module {
 }
 
 func (m *moduleContext) VisitAllModuleVariants(visit func(Module)) {
-	for _, module := range m.module.group.modules {
-		visit(module.logicModule)
-	}
+	m.context.visitAllModuleVariants(m.module, visit)
 }
 
 func (m *moduleContext) GetMissingDependencies() []string {

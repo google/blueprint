@@ -91,15 +91,21 @@ func (s *singletonContext) BlueprintFile(logicModule Module) string {
 	return s.context.BlueprintFile(logicModule)
 }
 
+func (s *singletonContext) error(err error) {
+	if err != nil {
+		s.errs = append(s.errs, err)
+	}
+}
+
 func (s *singletonContext) ModuleErrorf(logicModule Module, format string,
 	args ...interface{}) {
 
-	s.errs = append(s.errs, s.context.ModuleErrorf(logicModule, format, args...))
+	s.error(s.context.ModuleErrorf(logicModule, format, args...))
 }
 
 func (s *singletonContext) Errorf(format string, args ...interface{}) {
 	// TODO: Make this not result in the error being printed as "internal error"
-	s.errs = append(s.errs, fmt.Errorf(format, args...))
+	s.error(fmt.Errorf(format, args...))
 }
 
 func (s *singletonContext) Failed() bool {
