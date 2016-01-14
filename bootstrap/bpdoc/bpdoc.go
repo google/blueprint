@@ -501,13 +501,11 @@ func nestedPropertyStructs(s reflect.Value) map[string]reflect.Value {
 						}
 						elem = elem.Elem()
 					}
-					if elem.Kind() != reflect.Struct {
-						panic(fmt.Errorf("can't get type of field %q: points to a "+
-							"non-struct", field.Name))
+					if elem.Kind() == reflect.Struct {
+						nestPoint := prefix + proptools.PropertyNameForField(field.Name)
+						ret[nestPoint] = elem
+						walk(elem, nestPoint+".")
 					}
-					nestPoint := prefix + proptools.PropertyNameForField(field.Name)
-					ret[nestPoint] = elem
-					walk(elem, nestPoint+".")
 				}
 			default:
 				panic(fmt.Errorf("unexpected kind for property struct field %q: %s",

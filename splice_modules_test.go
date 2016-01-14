@@ -28,10 +28,6 @@ var (
 	testModuleF = &moduleInfo{variantName: "testModuleF"}
 )
 
-func (m *moduleInfo) String() string {
-	return m.variantName
-}
-
 var spliceModulesTestCases = []struct {
 	in         []*moduleInfo
 	replace    *moduleInfo
