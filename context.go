@@ -1846,6 +1846,7 @@ func (c *Context) generateSingletonBuildActions(config interface{},
 			context: c,
 			config:  config,
 			scope:   scope,
+			globals: liveGlobals,
 		}
 
 		func() {
