@@ -1846,6 +1846,7 @@ func (c *Context) generateSingletonBuildActions(config interface{},
 			context: c,
 			config:  config,
 			scope:   scope,
+			globals: liveGlobals,
 		}
 
 		func() {
@@ -1940,10 +1941,9 @@ func (c *Context) walkDeps(topModule *moduleInfo,
 
 	var walk func(module *moduleInfo)
 	walk = func(module *moduleInfo) {
-		visited[module] = true
-
 		for _, moduleDep := range module.directDeps {
 			if !visited[moduleDep] {
+				visited[moduleDep] = true
 				visiting = moduleDep
 				if visit(moduleDep.logicModule, module.logicModule) {
 					walk(moduleDep)
