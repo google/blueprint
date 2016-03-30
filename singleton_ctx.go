@@ -44,6 +44,11 @@ type SingletonContext interface {
 	// set at most one time for a single build, later calls are ignored.
 	SetNinjaBuildDir(pctx PackageContext, value string)
 
+	// Eval takes a string with embedded ninja variables, and returns a string
+	// with all of the variables recursively expanded. Any variables references
+	// are expanded in the scope of the PackageContext.
+	Eval(pctx PackageContext, ninjaStr string) (string, error)
+
 	VisitAllModules(visit func(Module))
 	VisitAllModulesIf(pred func(Module) bool, visit func(Module))
 	VisitDepsDepthFirst(module Module, visit func(Module))
@@ -64,6 +69,7 @@ type singletonContext struct {
 	context *Context
 	config  interface{}
 	scope   *localScope
+	globals *liveTracker
 
 	ninjaFileDeps []string
 	errs          []error
@@ -147,6 +153,22 @@ func (s *singletonContext) Build(pctx PackageContext, params BuildParams) {
 	}
 
 	s.actionDefs.buildDefs = append(s.actionDefs.buildDefs, def)
+}
+
+func (s *singletonContext) Eval(pctx PackageContext, str string) (string, error) {
+	s.scope.ReparentTo(pctx)
+
+	ninjaStr, err := parseNinjaString(s.scope, str)
+	if err != nil {
+		return "", err
+	}
+
+	err = s.globals.addNinjaStringDeps(ninjaStr)
+	if err != nil {
+		return "", err
+	}
+
+	return ninjaStr.Eval(s.globals.variables)
 }
 
 func (s *singletonContext) RequireNinjaVersion(major, minor, micro int) {

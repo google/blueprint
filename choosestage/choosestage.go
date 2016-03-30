@@ -29,7 +29,7 @@
 // The timestamp of the first file is not updated so that it can be regenerated
 // with any local changes.
 
-package choosestage
+package main
 
 import (
 	"bytes"
