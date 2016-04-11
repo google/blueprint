@@ -143,7 +143,7 @@ func propagateStageBootstrap(mctx blueprint.TopDownMutatorContext) {
 func pluginDeps(ctx blueprint.BottomUpMutatorContext) {
 	if pkg, ok := ctx.Module().(*goPackage); ok {
 		for _, plugin := range pkg.properties.PluginFor {
-			ctx.AddReverseDependency(ctx.Module(), plugin)
+			ctx.AddReverseDependency(ctx.Module(), nil, plugin)
 		}
 	}
 }
