@@ -200,6 +200,9 @@ type goPackage struct {
 		Srcs      []string
 		TestSrcs  []string
 		PluginFor []string
+
+		// The stage in which this module should be built
+		BuildStage Stage `blueprint:"mutated"`
 	}
 
 	// The root dir in which the package .a file is located.  The full .a file
@@ -214,9 +217,6 @@ type goPackage struct {
 
 	// The bootstrap Config
 	config *Config
-
-	// The stage in which this module should be built
-	buildStage Stage
 }
 
 var _ goPackageProducer = (*goPackage)(nil)
@@ -224,9 +224,9 @@ var _ goPackageProducer = (*goPackage)(nil)
 func newGoPackageModuleFactory(config *Config) func() (blueprint.Module, []interface{}) {
 	return func() (blueprint.Module, []interface{}) {
 		module := &goPackage{
-			buildStage: StagePrimary,
-			config:     config,
+			config: config,
 		}
+		module.properties.BuildStage = StagePrimary
 		return module, []interface{}{&module.properties}
 	}
 }
@@ -248,11 +248,11 @@ func (g *goPackage) GoTestTarget() string {
 }
 
 func (g *goPackage) BuildStage() Stage {
-	return g.buildStage
+	return g.properties.BuildStage
 }
 
 func (g *goPackage) SetBuildStage(buildStage Stage) {
-	g.buildStage = buildStage
+	g.properties.BuildStage = buildStage
 }
 
 func (g *goPackage) IsPluginFor(name string) bool {
@@ -326,6 +326,9 @@ type goBinary struct {
 		Srcs           []string
 		TestSrcs       []string
 		PrimaryBuilder bool
+
+		// The stage in which this module should be built
+		BuildStage Stage `blueprint:"mutated"`
 	}
 
 	// The path of the test .a file that is to be built.
@@ -333,17 +336,14 @@ type goBinary struct {
 
 	// The bootstrap Config
 	config *Config
-
-	// The stage in which this module should be built
-	buildStage Stage
 }
 
 func newGoBinaryModuleFactory(config *Config, buildStage Stage) func() (blueprint.Module, []interface{}) {
 	return func() (blueprint.Module, []interface{}) {
 		module := &goBinary{
-			config:     config,
-			buildStage: buildStage,
+			config: config,
 		}
+		module.properties.BuildStage = buildStage
 		return module, []interface{}{&module.properties}
 	}
 }
@@ -353,11 +353,11 @@ func (g *goBinary) GoTestTarget() string {
 }
 
 func (g *goBinary) BuildStage() Stage {
-	return g.buildStage
+	return g.properties.BuildStage
 }
 
 func (g *goBinary) SetBuildStage(buildStage Stage) {
-	g.buildStage = buildStage
+	g.properties.BuildStage = buildStage
 }
 
 func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {

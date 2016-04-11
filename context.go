@@ -899,6 +899,37 @@ func getStringFromScope(scope *parser.Scope, v string) (string, scanner.Position
 	}
 }
 
+// Clones a build logic module by calling the factory method for its module type, and then cloning
+// property values.  Any values stored in the module object that are not stored in properties
+// structs will be lost.
+func (c *Context) cloneLogicModule(origModule *moduleInfo) (Module, []interface{}) {
+	typeName := origModule.typeName
+	factory, ok := c.moduleFactories[typeName]
+	if !ok {
+		panic(fmt.Sprintf("unrecognized module type %q during cloning", typeName))
+	}
+
+	props := []interface{}{
+		&origModule.properties,
+	}
+	newLogicModule, newProperties := factory()
+
+	newProperties = append(props, newProperties...)
+
+	if len(newProperties) != len(origModule.moduleProperties) {
+		panic("mismatched properties array length in " + origModule.properties.Name)
+	}
+
+	for i := range newProperties {
+		dst := reflect.ValueOf(newProperties[i]).Elem()
+		src := reflect.ValueOf(origModule.moduleProperties[i]).Elem()
+
+		proptools.CopyProperties(dst, src)
+	}
+
+	return newLogicModule, newProperties
+}
+
 func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 	variationNames []string) ([]*moduleInfo, []error) {
 
@@ -912,12 +943,6 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 	var errs []error
 
 	for i, variationName := range variationNames {
-		typeName := origModule.typeName
-		factory, ok := c.moduleFactories[typeName]
-		if !ok {
-			panic(fmt.Sprintf("unrecognized module type %q during cloning", typeName))
-		}
-
 		var newLogicModule Module
 		var newProperties []interface{}
 
@@ -925,26 +950,9 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 			// Reuse the existing module for the first new variant
 			// This both saves creating a new module, and causes the insertion in c.moduleInfo below
 			// with logicModule as the key to replace the original entry in c.moduleInfo
-			newLogicModule = origModule.logicModule
-			newProperties = origModule.moduleProperties
+			newLogicModule, newProperties = origModule.logicModule, origModule.moduleProperties
 		} else {
-			props := []interface{}{
-				&origModule.properties,
-			}
-			newLogicModule, newProperties = factory()
-
-			newProperties = append(props, newProperties...)
-
-			if len(newProperties) != len(origModule.moduleProperties) {
-				panic("mismatched properties array length in " + origModule.properties.Name)
-			}
-
-			for i := range newProperties {
-				dst := reflect.ValueOf(newProperties[i]).Elem()
-				src := reflect.ValueOf(origModule.moduleProperties[i]).Elem()
-
-				proptools.CopyProperties(dst, src)
-			}
+			newLogicModule, newProperties = c.cloneLogicModule(origModule)
 		}
 
 		newVariant := origModule.variant.clone()
@@ -1115,6 +1123,8 @@ func (c *Context) ResolveDependencies(config interface{}) []error {
 	if len(errs) > 0 {
 		return errs
 	}
+
+	c.cloneModules()
 
 	c.dependenciesReady = true
 	return nil
@@ -1697,6 +1707,18 @@ func (c *Context) runBottomUpMutator(config interface{},
 	}
 
 	return errs
+}
+
+// Replaces every build logic module with a clone of itself.  Prevents introducing problems where
+// a mutator sets a non-property member variable on a module, which works until a later mutator
+// creates variants of that module.
+func (c *Context) cloneModules() {
+	for _, m := range c.modulesSorted {
+		origLogicModule := m.logicModule
+		m.logicModule, m.moduleProperties = c.cloneLogicModule(m)
+		delete(c.moduleInfo, origLogicModule)
+		c.moduleInfo[m.logicModule] = m
+	}
 }
 
 func spliceModules(modules []*moduleInfo, origModule *moduleInfo,
