@@ -1312,6 +1312,30 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 	}}
 }
 
+func (c *Context) addInterVariantDependency(origModule *moduleInfo, tag DependencyTag,
+	from, to Module) {
+
+	var fromInfo, toInfo *moduleInfo
+	for _, m := range origModule.splitModules {
+		if m.logicModule == from {
+			fromInfo = m
+		}
+		if m.logicModule == to {
+			toInfo = m
+			if fromInfo != nil {
+				panic(fmt.Errorf("%q depends on later version of itself", origModule.properties.Name))
+			}
+		}
+	}
+
+	if fromInfo == nil || toInfo == nil {
+		panic(fmt.Errorf("AddInterVariantDependency called for module %q on invalid variant",
+			origModule.properties.Name))
+	}
+
+	fromInfo.directDeps = append(fromInfo.directDeps, depInfo{toInfo, tag})
+}
+
 func (c *Context) parallelVisitAllBottomUp(visit func(group *moduleInfo) bool) {
 	doneCh := make(chan *moduleInfo)
 	count := 0

@@ -423,6 +423,7 @@ type BottomUpMutatorContext interface {
 	SetDependencyVariation(string)
 	AddVariationDependencies([]Variation, DependencyTag, ...string)
 	AddFarVariationDependencies([]Variation, DependencyTag, ...string)
+	AddInterVariantDependency(tag DependencyTag, from, to Module)
 }
 
 // A Mutator function is called for each Module, and can use
@@ -570,4 +571,8 @@ func (mctx *mutatorContext) AddFarVariationDependencies(variations []Variation, 
 			mctx.errs = append(mctx.errs, errs...)
 		}
 	}
+}
+
+func (mctx *mutatorContext) AddInterVariantDependency(tag DependencyTag, from, to Module) {
+	mctx.context.addInterVariantDependency(mctx.module, tag, from, to)
 }
