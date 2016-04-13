@@ -140,7 +140,7 @@ type moduleInfo struct {
 	moduleProperties []interface{}
 
 	// set during ResolveDependencies
-	directDeps  []*moduleInfo
+	directDeps  []depInfo
 	missingDeps []string
 
 	// set during updateDependencies
@@ -155,6 +155,11 @@ type moduleInfo struct {
 
 	// set during PrepareBuildActions
 	actionDefs localBuildActions
+}
+
+type depInfo struct {
+	module *moduleInfo
+	tag    DependencyTag
 }
 
 func (module *moduleInfo) String() string {
@@ -899,6 +904,37 @@ func getStringFromScope(scope *parser.Scope, v string) (string, scanner.Position
 	}
 }
 
+// Clones a build logic module by calling the factory method for its module type, and then cloning
+// property values.  Any values stored in the module object that are not stored in properties
+// structs will be lost.
+func (c *Context) cloneLogicModule(origModule *moduleInfo) (Module, []interface{}) {
+	typeName := origModule.typeName
+	factory, ok := c.moduleFactories[typeName]
+	if !ok {
+		panic(fmt.Sprintf("unrecognized module type %q during cloning", typeName))
+	}
+
+	props := []interface{}{
+		&origModule.properties,
+	}
+	newLogicModule, newProperties := factory()
+
+	newProperties = append(props, newProperties...)
+
+	if len(newProperties) != len(origModule.moduleProperties) {
+		panic("mismatched properties array length in " + origModule.properties.Name)
+	}
+
+	for i := range newProperties {
+		dst := reflect.ValueOf(newProperties[i]).Elem()
+		src := reflect.ValueOf(origModule.moduleProperties[i]).Elem()
+
+		proptools.CopyProperties(dst, src)
+	}
+
+	return newLogicModule, newProperties
+}
+
 func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 	variationNames []string) ([]*moduleInfo, []error) {
 
@@ -912,12 +948,6 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 	var errs []error
 
 	for i, variationName := range variationNames {
-		typeName := origModule.typeName
-		factory, ok := c.moduleFactories[typeName]
-		if !ok {
-			panic(fmt.Sprintf("unrecognized module type %q during cloning", typeName))
-		}
-
 		var newLogicModule Module
 		var newProperties []interface{}
 
@@ -925,26 +955,9 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 			// Reuse the existing module for the first new variant
 			// This both saves creating a new module, and causes the insertion in c.moduleInfo below
 			// with logicModule as the key to replace the original entry in c.moduleInfo
-			newLogicModule = origModule.logicModule
-			newProperties = origModule.moduleProperties
+			newLogicModule, newProperties = origModule.logicModule, origModule.moduleProperties
 		} else {
-			props := []interface{}{
-				&origModule.properties,
-			}
-			newLogicModule, newProperties = factory()
-
-			newProperties = append(props, newProperties...)
-
-			if len(newProperties) != len(origModule.moduleProperties) {
-				panic("mismatched properties array length in " + origModule.properties.Name)
-			}
-
-			for i := range newProperties {
-				dst := reflect.ValueOf(newProperties[i]).Elem()
-				src := reflect.ValueOf(origModule.moduleProperties[i]).Elem()
-
-				proptools.CopyProperties(dst, src)
-			}
+			newLogicModule, newProperties = c.cloneLogicModule(origModule)
 		}
 
 		newVariant := origModule.variant.clone()
@@ -952,7 +965,7 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 
 		m := *origModule
 		newModule := &m
-		newModule.directDeps = append([]*moduleInfo(nil), origModule.directDeps...)
+		newModule.directDeps = append([]depInfo{}, origModule.directDeps...)
 		newModule.logicModule = newLogicModule
 		newModule.variant = newVariant
 		newModule.dependencyVariant = origModule.dependencyVariant.clone()
@@ -989,9 +1002,9 @@ func (c *Context) convertDepsToVariation(module *moduleInfo,
 	mutatorName, variationName string) (errs []error) {
 
 	for i, dep := range module.directDeps {
-		if dep.logicModule == nil {
+		if dep.module.logicModule == nil {
 			var newDep *moduleInfo
-			for _, m := range dep.splitModules {
+			for _, m := range dep.module.splitModules {
 				if m.variant[mutatorName] == variationName {
 					newDep = m
 					break
@@ -1000,12 +1013,12 @@ func (c *Context) convertDepsToVariation(module *moduleInfo,
 			if newDep == nil {
 				errs = append(errs, &Error{
 					Err: fmt.Errorf("failed to find variation %q for module %q needed by %q",
-						variationName, dep.properties.Name, module.properties.Name),
+						variationName, dep.module.properties.Name, module.properties.Name),
 					Pos: module.pos,
 				})
 				continue
 			}
-			module.directDeps[i] = newDep
+			module.directDeps[i].module = newDep
 		}
 	}
 
@@ -1116,6 +1129,8 @@ func (c *Context) ResolveDependencies(config interface{}) []error {
 		return errs
 	}
 
+	c.cloneModules()
+
 	c.dependenciesReady = true
 	return nil
 }
@@ -1127,7 +1142,7 @@ func (c *Context) ResolveDependencies(config interface{}) []error {
 // AddVariationDependencies on DynamicDependencyModuleContext.  Otherwise it
 // is simply those names listed in its "deps" property.
 func blueprintDepsMutator(ctx BottomUpMutatorContext) {
-	ctx.AddDependency(ctx.Module(), ctx.moduleInfo().properties.Deps...)
+	ctx.AddDependency(ctx.Module(), nil, ctx.moduleInfo().properties.Deps...)
 
 	if dynamicDepender, ok := ctx.Module().(DynamicDependerModule); ok {
 		func() {
@@ -1142,7 +1157,7 @@ func blueprintDepsMutator(ctx BottomUpMutatorContext) {
 				return
 			}
 
-			ctx.AddDependency(ctx.Module(), dynamicDeps...)
+			ctx.AddDependency(ctx.Module(), nil, dynamicDeps...)
 		}()
 	}
 }
@@ -1163,7 +1178,7 @@ func (c *Context) findMatchingVariant(module *moduleInfo, group *moduleGroup) *m
 	return nil
 }
 
-func (c *Context) addDependency(module *moduleInfo, depName string) []error {
+func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName string) []error {
 	if depName == module.properties.Name {
 		return []error{&Error{
 			Err: fmt.Errorf("%q depends on itself", depName),
@@ -1171,7 +1186,7 @@ func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 		}}
 	}
 
-	depInfo, ok := c.moduleGroups[depName]
+	depGroup, ok := c.moduleGroups[depName]
 	if !ok {
 		if c.allowMissingDependencies {
 			module.missingDeps = append(module.missingDeps, depName)
@@ -1184,20 +1199,20 @@ func (c *Context) addDependency(module *moduleInfo, depName string) []error {
 		}}
 	}
 
-	for _, m := range module.directDeps {
-		if m.group == depInfo {
-			return nil
+	if m := c.findMatchingVariant(module, depGroup); m != nil {
+		for _, dep := range module.directDeps {
+			if m == dep.module {
+				// TODO(ccross): what if adding a dependency with a different tag?
+				return nil
+			}
 		}
-	}
-
-	if m := c.findMatchingVariant(module, depInfo); m != nil {
-		module.directDeps = append(module.directDeps, m)
+		module.directDeps = append(module.directDeps, depInfo{m, tag})
 		return nil
 	}
 
 	return []error{&Error{
 		Err: fmt.Errorf("dependency %q of %q missing variant %q",
-			depInfo.modules[0].properties.Name, module.properties.Name,
+			depGroup.modules[0].properties.Name, module.properties.Name,
 			c.prettyPrintVariant(module.dependencyVariant)),
 		Pos: module.pos,
 	}}
@@ -1233,9 +1248,9 @@ func (c *Context) findReverseDependency(module *moduleInfo, destName string) (*m
 }
 
 func (c *Context) addVariationDependency(module *moduleInfo, variations []Variation,
-	depName string, far bool) []error {
+	tag DependencyTag, depName string, far bool) []error {
 
-	depInfo, ok := c.moduleGroups[depName]
+	depGroup, ok := c.moduleGroups[depName]
 	if !ok {
 		if c.allowMissingDependencies {
 			module.missingDeps = append(module.missingDeps, depName)
@@ -1261,7 +1276,7 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 		newVariant[v.Mutator] = v.Variation
 	}
 
-	for _, m := range depInfo.modules {
+	for _, m := range depGroup.modules {
 		var found bool
 		if far {
 			found = m.variant.subset(newVariant)
@@ -1278,23 +1293,47 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 			// AddVariationDependency allows adding a dependency on itself, but only if
 			// that module is earlier in the module list than this one, since we always
 			// run GenerateBuildActions in order for the variants of a module
-			if depInfo == module.group && beforeInModuleList(module, m, module.group.modules) {
+			if depGroup == module.group && beforeInModuleList(module, m, module.group.modules) {
 				return []error{&Error{
 					Err: fmt.Errorf("%q depends on later version of itself", depName),
 					Pos: module.pos,
 				}}
 			}
-			module.directDeps = append(module.directDeps, m)
+			module.directDeps = append(module.directDeps, depInfo{m, tag})
 			return nil
 		}
 	}
 
 	return []error{&Error{
 		Err: fmt.Errorf("dependency %q of %q missing variant %q",
-			depInfo.modules[0].properties.Name, module.properties.Name,
+			depGroup.modules[0].properties.Name, module.properties.Name,
 			c.prettyPrintVariant(newVariant)),
 		Pos: module.pos,
 	}}
+}
+
+func (c *Context) addInterVariantDependency(origModule *moduleInfo, tag DependencyTag,
+	from, to Module) {
+
+	var fromInfo, toInfo *moduleInfo
+	for _, m := range origModule.splitModules {
+		if m.logicModule == from {
+			fromInfo = m
+		}
+		if m.logicModule == to {
+			toInfo = m
+			if fromInfo != nil {
+				panic(fmt.Errorf("%q depends on later version of itself", origModule.properties.Name))
+			}
+		}
+	}
+
+	if fromInfo == nil || toInfo == nil {
+		panic(fmt.Errorf("AddInterVariantDependency called for module %q on invalid variant",
+			origModule.properties.Name))
+	}
+
+	fromInfo.directDeps = append(fromInfo.directDeps, depInfo{toInfo, tag})
 }
 
 func (c *Context) parallelVisitAllBottomUp(visit func(group *moduleInfo) bool) {
@@ -1393,7 +1432,7 @@ func (c *Context) updateDependencies() (errs []error) {
 		}
 
 		for _, dep := range module.directDeps {
-			deps[dep] = true
+			deps[dep.module] = true
 		}
 
 		module.reverseDeps = []*moduleInfo{}
@@ -1631,7 +1670,7 @@ func (c *Context) runTopDownMutator(config interface{},
 func (c *Context) runBottomUpMutator(config interface{},
 	name string, mutator BottomUpMutator) (errs []error) {
 
-	reverseDeps := make(map[*moduleInfo][]*moduleInfo)
+	reverseDeps := make(map[*moduleInfo][]depInfo)
 
 	for _, module := range c.modulesSorted {
 		newModules := make([]*moduleInfo, 0, 1)
@@ -1672,8 +1711,8 @@ func (c *Context) runBottomUpMutator(config interface{},
 		// Fix up any remaining dependencies on modules that were split into variants
 		// by replacing them with the first variant
 		for i, dep := range module.directDeps {
-			if dep.logicModule == nil {
-				module.directDeps[i] = dep.splitModules[0]
+			if dep.module.logicModule == nil {
+				module.directDeps[i].module = dep.module.splitModules[0]
 			}
 		}
 
@@ -1687,7 +1726,7 @@ func (c *Context) runBottomUpMutator(config interface{},
 	}
 
 	for module, deps := range reverseDeps {
-		sort.Sort(moduleSorter(deps))
+		sort.Sort(depSorter(deps))
 		module.directDeps = append(module.directDeps, deps...)
 	}
 
@@ -1697,6 +1736,18 @@ func (c *Context) runBottomUpMutator(config interface{},
 	}
 
 	return errs
+}
+
+// Replaces every build logic module with a clone of itself.  Prevents introducing problems where
+// a mutator sets a non-property member variable on a module, which works until a later mutator
+// creates variants of that module.
+func (c *Context) cloneModules() {
+	for _, m := range c.modulesSorted {
+		origLogicModule := m.logicModule
+		m.logicModule, m.moduleProperties = c.cloneLogicModule(m)
+		delete(c.moduleInfo, origLogicModule)
+		c.moduleInfo[m.logicModule] = m
+	}
 }
 
 func spliceModules(modules []*moduleInfo, origModule *moduleInfo,
@@ -1941,12 +1992,12 @@ func (c *Context) walkDeps(topModule *moduleInfo,
 
 	var walk func(module *moduleInfo)
 	walk = func(module *moduleInfo) {
-		for _, moduleDep := range module.directDeps {
-			if !visited[moduleDep] {
-				visited[moduleDep] = true
-				visiting = moduleDep
-				if visit(moduleDep.logicModule, module.logicModule) {
-					walk(moduleDep)
+		for _, dep := range module.directDeps {
+			if !visited[dep.module] {
+				visited[dep.module] = true
+				visiting = dep.module
+				if visit(dep.module.logicModule, module.logicModule) {
+					walk(dep.module)
 				}
 			}
 		}
@@ -1971,9 +2022,9 @@ func (c *Context) visitDepsDepthFirst(topModule *moduleInfo, visit func(Module))
 	var walk func(module *moduleInfo)
 	walk = func(module *moduleInfo) {
 		visited[module] = true
-		for _, moduleDep := range module.directDeps {
-			if !visited[moduleDep] {
-				walk(moduleDep)
+		for _, dep := range module.directDeps {
+			if !visited[dep.module] {
+				walk(dep.module)
 			}
 		}
 
@@ -2002,9 +2053,9 @@ func (c *Context) visitDepsDepthFirstIf(topModule *moduleInfo, pred func(Module)
 	var walk func(module *moduleInfo)
 	walk = func(module *moduleInfo) {
 		visited[module] = true
-		for _, moduleDep := range module.directDeps {
-			if !visited[moduleDep] {
-				walk(moduleDep)
+		for _, dep := range module.directDeps {
+			if !visited[dep.module] {
+				walk(dep.module)
 			}
 		}
 
@@ -2017,40 +2068,6 @@ func (c *Context) visitDepsDepthFirstIf(topModule *moduleInfo, pred func(Module)
 	}
 
 	walk(topModule)
-}
-
-func (c *Context) visitDirectDeps(module *moduleInfo, visit func(Module)) {
-	var dep *moduleInfo
-
-	defer func() {
-		if r := recover(); r != nil {
-			panic(newPanicErrorf(r, "VisitDirectDeps(%s, %s) for dependency %s",
-				module, funcName(visit), dep))
-		}
-	}()
-
-	for _, dep = range module.directDeps {
-		visit(dep.logicModule)
-	}
-}
-
-func (c *Context) visitDirectDepsIf(module *moduleInfo, pred func(Module) bool,
-	visit func(Module)) {
-
-	var dep *moduleInfo
-
-	defer func() {
-		if r := recover(); r != nil {
-			panic(newPanicErrorf(r, "VisitDirectDepsIf(%s, %s, %s) for dependency %s",
-				module, funcName(pred), funcName(visit), dep))
-		}
-	}()
-
-	for _, dep = range module.directDeps {
-		if pred(dep.logicModule) {
-			visit(dep.logicModule)
-		}
-	}
 }
 
 func (c *Context) sortedModuleNames() []string {
@@ -2669,6 +2686,26 @@ func (c *Context) writeGlobalRules(nw *ninjaWriter) error {
 	}
 
 	return nil
+}
+
+type depSorter []depInfo
+
+func (s depSorter) Len() int {
+	return len(s)
+}
+
+func (s depSorter) Less(i, j int) bool {
+	iName := s[i].module.properties.Name
+	jName := s[j].module.properties.Name
+	if iName == jName {
+		iName = s[i].module.variantName
+		jName = s[j].module.variantName
+	}
+	return iName < jName
+}
+
+func (s depSorter) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
 }
 
 type moduleSorter []*moduleInfo
