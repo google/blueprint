@@ -22,732 +22,736 @@ import (
 	"testing"
 )
 
-var appendPropertiesTestCases = []struct {
+type appendPropertyTestCase struct {
 	in1     interface{}
 	in2     interface{}
 	out     interface{}
 	prepend bool
 	filter  ExtendPropertyFilterFunc
 	err     error
-}{
-	// Valid inputs
+}
 
-	{
-		// Append bool
-		in1: &struct{ B1, B2, B3, B4 bool }{
-			B1: true,
-			B2: false,
-			B3: true,
-			B4: false,
+func appendPropertiesTestCases() []appendPropertyTestCase {
+	return []appendPropertyTestCase{
+		// Valid inputs
+
+		{
+			// Append bool
+			in1: &struct{ B1, B2, B3, B4 bool }{
+				B1: true,
+				B2: false,
+				B3: true,
+				B4: false,
+			},
+			in2: &struct{ B1, B2, B3, B4 bool }{
+				B1: true,
+				B2: true,
+				B3: false,
+				B4: false,
+			},
+			out: &struct{ B1, B2, B3, B4 bool }{
+				B1: true,
+				B2: true,
+				B3: true,
+				B4: false,
+			},
 		},
-		in2: &struct{ B1, B2, B3, B4 bool }{
-			B1: true,
-			B2: true,
-			B3: false,
-			B4: false,
+		{
+			// Prepend bool
+			in1: &struct{ B1, B2, B3, B4 bool }{
+				B1: true,
+				B2: false,
+				B3: true,
+				B4: false,
+			},
+			in2: &struct{ B1, B2, B3, B4 bool }{
+				B1: true,
+				B2: true,
+				B3: false,
+				B4: false,
+			},
+			out: &struct{ B1, B2, B3, B4 bool }{
+				B1: true,
+				B2: true,
+				B3: true,
+				B4: false,
+			},
+			prepend: true,
 		},
-		out: &struct{ B1, B2, B3, B4 bool }{
-			B1: true,
-			B2: true,
-			B3: true,
-			B4: false,
-		},
-	},
-	{
-		// Prepend bool
-		in1: &struct{ B1, B2, B3, B4 bool }{
-			B1: true,
-			B2: false,
-			B3: true,
-			B4: false,
-		},
-		in2: &struct{ B1, B2, B3, B4 bool }{
-			B1: true,
-			B2: true,
-			B3: false,
-			B4: false,
-		},
-		out: &struct{ B1, B2, B3, B4 bool }{
-			B1: true,
-			B2: true,
-			B3: true,
-			B4: false,
-		},
-		prepend: true,
-	},
-	{
-		// Append strings
-		in1: &struct{ S string }{
-			S: "string1",
-		},
-		in2: &struct{ S string }{
-			S: "string2",
-		},
-		out: &struct{ S string }{
-			S: "string1string2",
-		},
-	},
-	{
-		// Prepend strings
-		in1: &struct{ S string }{
-			S: "string1",
-		},
-		in2: &struct{ S string }{
-			S: "string2",
-		},
-		out: &struct{ S string }{
-			S: "string2string1",
-		},
-		prepend: true,
-	},
-	{
-		// Append pointer to bool
-		in1: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
-			B1: BoolPtr(true),
-			B2: BoolPtr(false),
-			B3: nil,
-			B4: BoolPtr(true),
-			B5: BoolPtr(false),
-			B6: nil,
-			B7: BoolPtr(true),
-			B8: BoolPtr(false),
-			B9: nil,
-		},
-		in2: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
-			B1: nil,
-			B2: nil,
-			B3: nil,
-			B4: BoolPtr(true),
-			B5: BoolPtr(true),
-			B6: BoolPtr(true),
-			B7: BoolPtr(false),
-			B8: BoolPtr(false),
-			B9: BoolPtr(false),
-		},
-		out: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
-			B1: BoolPtr(true),
-			B2: BoolPtr(false),
-			B3: nil,
-			B4: BoolPtr(true),
-			B5: BoolPtr(true),
-			B6: BoolPtr(true),
-			B7: BoolPtr(false),
-			B8: BoolPtr(false),
-			B9: BoolPtr(false),
-		},
-	},
-	{
-		// Prepend pointer to bool
-		in1: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
-			B1: BoolPtr(true),
-			B2: BoolPtr(false),
-			B3: nil,
-			B4: BoolPtr(true),
-			B5: BoolPtr(false),
-			B6: nil,
-			B7: BoolPtr(true),
-			B8: BoolPtr(false),
-			B9: nil,
-		},
-		in2: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
-			B1: nil,
-			B2: nil,
-			B3: nil,
-			B4: BoolPtr(true),
-			B5: BoolPtr(true),
-			B6: BoolPtr(true),
-			B7: BoolPtr(false),
-			B8: BoolPtr(false),
-			B9: BoolPtr(false),
-		},
-		out: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
-			B1: BoolPtr(true),
-			B2: BoolPtr(false),
-			B3: nil,
-			B4: BoolPtr(true),
-			B5: BoolPtr(false),
-			B6: BoolPtr(true),
-			B7: BoolPtr(true),
-			B8: BoolPtr(false),
-			B9: BoolPtr(false),
-		},
-		prepend: true,
-	},
-	{
-		// Append pointer to strings
-		in1: &struct{ S1, S2, S3, S4 *string }{
-			S1: StringPtr("string1"),
-			S2: StringPtr("string2"),
-		},
-		in2: &struct{ S1, S2, S3, S4 *string }{
-			S1: StringPtr("string3"),
-			S3: StringPtr("string4"),
-		},
-		out: &struct{ S1, S2, S3, S4 *string }{
-			S1: StringPtr("string3"),
-			S2: StringPtr("string2"),
-			S3: StringPtr("string4"),
-			S4: nil,
-		},
-	},
-	{
-		// Prepend pointer to strings
-		in1: &struct{ S1, S2, S3, S4 *string }{
-			S1: StringPtr("string1"),
-			S2: StringPtr("string2"),
-		},
-		in2: &struct{ S1, S2, S3, S4 *string }{
-			S1: StringPtr("string3"),
-			S3: StringPtr("string4"),
-		},
-		out: &struct{ S1, S2, S3, S4 *string }{
-			S1: StringPtr("string1"),
-			S2: StringPtr("string2"),
-			S3: StringPtr("string4"),
-			S4: nil,
-		},
-		prepend: true,
-	},
-	{
-		// Append slice
-		in1: &struct{ S []string }{
-			S: []string{"string1"},
-		},
-		in2: &struct{ S []string }{
-			S: []string{"string2"},
-		},
-		out: &struct{ S []string }{
-			S: []string{"string1", "string2"},
-		},
-	},
-	{
-		// Prepend slice
-		in1: &struct{ S []string }{
-			S: []string{"string1"},
-		},
-		in2: &struct{ S []string }{
-			S: []string{"string2"},
-		},
-		out: &struct{ S []string }{
-			S: []string{"string2", "string1"},
-		},
-		prepend: true,
-	},
-	{
-		// Append empty slice
-		in1: &struct{ S1, S2 []string }{
-			S1: []string{"string1"},
-			S2: []string{},
-		},
-		in2: &struct{ S1, S2 []string }{
-			S1: []string{},
-			S2: []string{"string2"},
-		},
-		out: &struct{ S1, S2 []string }{
-			S1: []string{"string1"},
-			S2: []string{"string2"},
-		},
-	},
-	{
-		// Prepend empty slice
-		in1: &struct{ S1, S2 []string }{
-			S1: []string{"string1"},
-			S2: []string{},
-		},
-		in2: &struct{ S1, S2 []string }{
-			S1: []string{},
-			S2: []string{"string2"},
-		},
-		out: &struct{ S1, S2 []string }{
-			S1: []string{"string1"},
-			S2: []string{"string2"},
-		},
-		prepend: true,
-	},
-	{
-		// Append nil slice
-		in1: &struct{ S1, S2, S3 []string }{
-			S1: []string{"string1"},
-		},
-		in2: &struct{ S1, S2, S3 []string }{
-			S2: []string{"string2"},
-		},
-		out: &struct{ S1, S2, S3 []string }{
-			S1: []string{"string1"},
-			S2: []string{"string2"},
-			S3: nil,
-		},
-	},
-	{
-		// Prepend nil slice
-		in1: &struct{ S1, S2, S3 []string }{
-			S1: []string{"string1"},
-		},
-		in2: &struct{ S1, S2, S3 []string }{
-			S2: []string{"string2"},
-		},
-		out: &struct{ S1, S2, S3 []string }{
-			S1: []string{"string1"},
-			S2: []string{"string2"},
-			S3: nil,
-		},
-		prepend: true,
-	},
-	{
-		// Append pointer
-		in1: &struct{ S *struct{ S string } }{
-			S: &struct{ S string }{
+		{
+			// Append strings
+			in1: &struct{ S string }{
 				S: "string1",
 			},
-		},
-		in2: &struct{ S *struct{ S string } }{
-			S: &struct{ S string }{
+			in2: &struct{ S string }{
 				S: "string2",
 			},
-		},
-		out: &struct{ S *struct{ S string } }{
-			S: &struct{ S string }{
+			out: &struct{ S string }{
 				S: "string1string2",
 			},
 		},
-	},
-	{
-		// Prepend pointer
-		in1: &struct{ S *struct{ S string } }{
-			S: &struct{ S string }{
+		{
+			// Prepend strings
+			in1: &struct{ S string }{
 				S: "string1",
 			},
-		},
-		in2: &struct{ S *struct{ S string } }{
-			S: &struct{ S string }{
+			in2: &struct{ S string }{
 				S: "string2",
 			},
-		},
-		out: &struct{ S *struct{ S string } }{
-			S: &struct{ S string }{
+			out: &struct{ S string }{
 				S: "string2string1",
 			},
+			prepend: true,
 		},
-		prepend: true,
-	},
-	{
-		// Append interface
-		in1: &struct{ S interface{} }{
-			S: &struct{ S string }{
-				S: "string1",
+		{
+			// Append pointer to bool
+			in1: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
+				B1: BoolPtr(true),
+				B2: BoolPtr(false),
+				B3: nil,
+				B4: BoolPtr(true),
+				B5: BoolPtr(false),
+				B6: nil,
+				B7: BoolPtr(true),
+				B8: BoolPtr(false),
+				B9: nil,
+			},
+			in2: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
+				B1: nil,
+				B2: nil,
+				B3: nil,
+				B4: BoolPtr(true),
+				B5: BoolPtr(true),
+				B6: BoolPtr(true),
+				B7: BoolPtr(false),
+				B8: BoolPtr(false),
+				B9: BoolPtr(false),
+			},
+			out: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
+				B1: BoolPtr(true),
+				B2: BoolPtr(false),
+				B3: nil,
+				B4: BoolPtr(true),
+				B5: BoolPtr(true),
+				B6: BoolPtr(true),
+				B7: BoolPtr(false),
+				B8: BoolPtr(false),
+				B9: BoolPtr(false),
 			},
 		},
-		in2: &struct{ S interface{} }{
-			S: &struct{ S string }{
-				S: "string2",
+		{
+			// Prepend pointer to bool
+			in1: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
+				B1: BoolPtr(true),
+				B2: BoolPtr(false),
+				B3: nil,
+				B4: BoolPtr(true),
+				B5: BoolPtr(false),
+				B6: nil,
+				B7: BoolPtr(true),
+				B8: BoolPtr(false),
+				B9: nil,
+			},
+			in2: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
+				B1: nil,
+				B2: nil,
+				B3: nil,
+				B4: BoolPtr(true),
+				B5: BoolPtr(true),
+				B6: BoolPtr(true),
+				B7: BoolPtr(false),
+				B8: BoolPtr(false),
+				B9: BoolPtr(false),
+			},
+			out: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
+				B1: BoolPtr(true),
+				B2: BoolPtr(false),
+				B3: nil,
+				B4: BoolPtr(true),
+				B5: BoolPtr(false),
+				B6: BoolPtr(true),
+				B7: BoolPtr(true),
+				B8: BoolPtr(false),
+				B9: BoolPtr(false),
+			},
+			prepend: true,
+		},
+		{
+			// Append pointer to strings
+			in1: &struct{ S1, S2, S3, S4 *string }{
+				S1: StringPtr("string1"),
+				S2: StringPtr("string2"),
+			},
+			in2: &struct{ S1, S2, S3, S4 *string }{
+				S1: StringPtr("string3"),
+				S3: StringPtr("string4"),
+			},
+			out: &struct{ S1, S2, S3, S4 *string }{
+				S1: StringPtr("string3"),
+				S2: StringPtr("string2"),
+				S3: StringPtr("string4"),
+				S4: nil,
 			},
 		},
-		out: &struct{ S interface{} }{
-			S: &struct{ S string }{
-				S: "string1string2",
+		{
+			// Prepend pointer to strings
+			in1: &struct{ S1, S2, S3, S4 *string }{
+				S1: StringPtr("string1"),
+				S2: StringPtr("string2"),
+			},
+			in2: &struct{ S1, S2, S3, S4 *string }{
+				S1: StringPtr("string3"),
+				S3: StringPtr("string4"),
+			},
+			out: &struct{ S1, S2, S3, S4 *string }{
+				S1: StringPtr("string1"),
+				S2: StringPtr("string2"),
+				S3: StringPtr("string4"),
+				S4: nil,
+			},
+			prepend: true,
+		},
+		{
+			// Append slice
+			in1: &struct{ S []string }{
+				S: []string{"string1"},
+			},
+			in2: &struct{ S []string }{
+				S: []string{"string2"},
+			},
+			out: &struct{ S []string }{
+				S: []string{"string1", "string2"},
 			},
 		},
-	},
-	{
-		// Prepend interface
-		in1: &struct{ S interface{} }{
-			S: &struct{ S string }{
-				S: "string1",
+		{
+			// Prepend slice
+			in1: &struct{ S []string }{
+				S: []string{"string1"},
+			},
+			in2: &struct{ S []string }{
+				S: []string{"string2"},
+			},
+			out: &struct{ S []string }{
+				S: []string{"string2", "string1"},
+			},
+			prepend: true,
+		},
+		{
+			// Append empty slice
+			in1: &struct{ S1, S2 []string }{
+				S1: []string{"string1"},
+				S2: []string{},
+			},
+			in2: &struct{ S1, S2 []string }{
+				S1: []string{},
+				S2: []string{"string2"},
+			},
+			out: &struct{ S1, S2 []string }{
+				S1: []string{"string1"},
+				S2: []string{"string2"},
 			},
 		},
-		in2: &struct{ S interface{} }{
-			S: &struct{ S string }{
-				S: "string2",
+		{
+			// Prepend empty slice
+			in1: &struct{ S1, S2 []string }{
+				S1: []string{"string1"},
+				S2: []string{},
+			},
+			in2: &struct{ S1, S2 []string }{
+				S1: []string{},
+				S2: []string{"string2"},
+			},
+			out: &struct{ S1, S2 []string }{
+				S1: []string{"string1"},
+				S2: []string{"string2"},
+			},
+			prepend: true,
+		},
+		{
+			// Append nil slice
+			in1: &struct{ S1, S2, S3 []string }{
+				S1: []string{"string1"},
+			},
+			in2: &struct{ S1, S2, S3 []string }{
+				S2: []string{"string2"},
+			},
+			out: &struct{ S1, S2, S3 []string }{
+				S1: []string{"string1"},
+				S2: []string{"string2"},
+				S3: nil,
 			},
 		},
-		out: &struct{ S interface{} }{
-			S: &struct{ S string }{
-				S: "string2string1",
+		{
+			// Prepend nil slice
+			in1: &struct{ S1, S2, S3 []string }{
+				S1: []string{"string1"},
 			},
-		},
-		prepend: true,
-	},
-	{
-		// Unexported field
-		in1: &struct{ s string }{
-			s: "string1",
-		},
-		in2: &struct{ s string }{
-			s: "string2",
-		},
-		out: &struct{ s string }{
-			s: "string1",
-		},
-	},
-	{
-		// Empty struct
-		in1: &struct{}{},
-		in2: &struct{}{},
-		out: &struct{}{},
-	},
-	{
-		// Interface nil
-		in1: &struct{ S interface{} }{
-			S: nil,
-		},
-		in2: &struct{ S interface{} }{
-			S: nil,
-		},
-		out: &struct{ S interface{} }{
-			S: nil,
-		},
-	},
-	{
-		// Pointer nil
-		in1: &struct{ S *struct{} }{
-			S: nil,
-		},
-		in2: &struct{ S *struct{} }{
-			S: nil,
-		},
-		out: &struct{ S *struct{} }{
-			S: nil,
-		},
-	},
-	{
-		// Anonymous struct
-		in1: &struct {
-			EmbeddedStruct
-			Nested struct{ EmbeddedStruct }
-		}{
-			EmbeddedStruct: EmbeddedStruct{
-				S: "string1",
+			in2: &struct{ S1, S2, S3 []string }{
+				S2: []string{"string2"},
 			},
-			Nested: struct{ EmbeddedStruct }{
-				EmbeddedStruct: EmbeddedStruct{
+			out: &struct{ S1, S2, S3 []string }{
+				S1: []string{"string1"},
+				S2: []string{"string2"},
+				S3: nil,
+			},
+			prepend: true,
+		},
+		{
+			// Append pointer
+			in1: &struct{ S *struct{ S string } }{
+				S: &struct{ S string }{
+					S: "string1",
+				},
+			},
+			in2: &struct{ S *struct{ S string } }{
+				S: &struct{ S string }{
 					S: "string2",
 				},
 			},
-		},
-		in2: &struct {
-			EmbeddedStruct
-			Nested struct{ EmbeddedStruct }
-		}{
-			EmbeddedStruct: EmbeddedStruct{
-				S: "string3",
-			},
-			Nested: struct{ EmbeddedStruct }{
-				EmbeddedStruct: EmbeddedStruct{
-					S: "string4",
+			out: &struct{ S *struct{ S string } }{
+				S: &struct{ S string }{
+					S: "string1string2",
 				},
 			},
 		},
-		out: &struct {
-			EmbeddedStruct
-			Nested struct{ EmbeddedStruct }
-		}{
-			EmbeddedStruct: EmbeddedStruct{
-				S: "string1string3",
-			},
-			Nested: struct{ EmbeddedStruct }{
-				EmbeddedStruct: EmbeddedStruct{
-					S: "string2string4",
+		{
+			// Prepend pointer
+			in1: &struct{ S *struct{ S string } }{
+				S: &struct{ S string }{
+					S: "string1",
 				},
 			},
-		},
-	},
-	{
-		// Anonymous interface
-		in1: &struct {
-			EmbeddedInterface
-			Nested struct{ EmbeddedInterface }
-		}{
-			EmbeddedInterface: &struct{ S string }{
-				S: "string1",
-			},
-			Nested: struct{ EmbeddedInterface }{
-				EmbeddedInterface: &struct{ S string }{
+			in2: &struct{ S *struct{ S string } }{
+				S: &struct{ S string }{
 					S: "string2",
 				},
 			},
-		},
-		in2: &struct {
-			EmbeddedInterface
-			Nested struct{ EmbeddedInterface }
-		}{
-			EmbeddedInterface: &struct{ S string }{
-				S: "string3",
+			out: &struct{ S *struct{ S string } }{
+				S: &struct{ S string }{
+					S: "string2string1",
+				},
 			},
-			Nested: struct{ EmbeddedInterface }{
-				EmbeddedInterface: &struct{ S string }{
-					S: "string4",
+			prepend: true,
+		},
+		{
+			// Append interface
+			in1: &struct{ S interface{} }{
+				S: &struct{ S string }{
+					S: "string1",
+				},
+			},
+			in2: &struct{ S interface{} }{
+				S: &struct{ S string }{
+					S: "string2",
+				},
+			},
+			out: &struct{ S interface{} }{
+				S: &struct{ S string }{
+					S: "string1string2",
 				},
 			},
 		},
-		out: &struct {
-			EmbeddedInterface
-			Nested struct{ EmbeddedInterface }
-		}{
-			EmbeddedInterface: &struct{ S string }{
-				S: "string1string3",
+		{
+			// Prepend interface
+			in1: &struct{ S interface{} }{
+				S: &struct{ S string }{
+					S: "string1",
+				},
 			},
-			Nested: struct{ EmbeddedInterface }{
-				EmbeddedInterface: &struct{ S string }{
-					S: "string2string4",
+			in2: &struct{ S interface{} }{
+				S: &struct{ S string }{
+					S: "string2",
+				},
+			},
+			out: &struct{ S interface{} }{
+				S: &struct{ S string }{
+					S: "string2string1",
+				},
+			},
+			prepend: true,
+		},
+		{
+			// Unexported field
+			in1: &struct{ s string }{
+				s: "string1",
+			},
+			in2: &struct{ s string }{
+				s: "string2",
+			},
+			out: &struct{ s string }{
+				s: "string1",
+			},
+		},
+		{
+			// Empty struct
+			in1: &struct{}{},
+			in2: &struct{}{},
+			out: &struct{}{},
+		},
+		{
+			// Interface nil
+			in1: &struct{ S interface{} }{
+				S: nil,
+			},
+			in2: &struct{ S interface{} }{
+				S: nil,
+			},
+			out: &struct{ S interface{} }{
+				S: nil,
+			},
+		},
+		{
+			// Pointer nil
+			in1: &struct{ S *struct{} }{
+				S: nil,
+			},
+			in2: &struct{ S *struct{} }{
+				S: nil,
+			},
+			out: &struct{ S *struct{} }{
+				S: nil,
+			},
+		},
+		{
+			// Anonymous struct
+			in1: &struct {
+				EmbeddedStruct
+				Nested struct{ EmbeddedStruct }
+			}{
+				EmbeddedStruct: EmbeddedStruct{
+					S: "string1",
+				},
+				Nested: struct{ EmbeddedStruct }{
+					EmbeddedStruct: EmbeddedStruct{
+						S: "string2",
+					},
+				},
+			},
+			in2: &struct {
+				EmbeddedStruct
+				Nested struct{ EmbeddedStruct }
+			}{
+				EmbeddedStruct: EmbeddedStruct{
+					S: "string3",
+				},
+				Nested: struct{ EmbeddedStruct }{
+					EmbeddedStruct: EmbeddedStruct{
+						S: "string4",
+					},
+				},
+			},
+			out: &struct {
+				EmbeddedStruct
+				Nested struct{ EmbeddedStruct }
+			}{
+				EmbeddedStruct: EmbeddedStruct{
+					S: "string1string3",
+				},
+				Nested: struct{ EmbeddedStruct }{
+					EmbeddedStruct: EmbeddedStruct{
+						S: "string2string4",
+					},
 				},
 			},
 		},
-	},
-
-	// Errors
-
-	{
-		// Non-pointer in1
-		in1: struct{}{},
-		err: errors.New("expected pointer to struct, got struct {}"),
-		out: struct{}{},
-	},
-	{
-		// Non-pointer in2
-		in1: &struct{}{},
-		in2: struct{}{},
-		err: errors.New("expected pointer to struct, got struct {}"),
-		out: &struct{}{},
-	},
-	{
-		// Non-struct in1
-		in1: &[]string{"bad"},
-		err: errors.New("expected pointer to struct, got *[]string"),
-		out: &[]string{"bad"},
-	},
-	{
-		// Non-struct in2
-		in1: &struct{}{},
-		in2: &[]string{"bad"},
-		err: errors.New("expected pointer to struct, got *[]string"),
-		out: &struct{}{},
-	},
-	{
-		// Mismatched types
-		in1: &struct{ A string }{
-			A: "string1",
-		},
-		in2: &struct{ B string }{
-			B: "string2",
-		},
-		out: &struct{ A string }{
-			A: "string1",
-		},
-		err: errors.New("expected matching types for dst and src, got *struct { A string } and *struct { B string }"),
-	},
-	{
-		// Unsupported kind
-		in1: &struct{ I int }{
-			I: 1,
-		},
-		in2: &struct{ I int }{
-			I: 2,
-		},
-		out: &struct{ I int }{
-			I: 1,
-		},
-		err: extendPropertyErrorf("i", "unsupported kind int"),
-	},
-	{
-		// Interface nilitude mismatch
-		in1: &struct{ S interface{} }{
-			S: &struct{ S string }{
-				S: "string1",
+		{
+			// Anonymous interface
+			in1: &struct {
+				EmbeddedInterface
+				Nested struct{ EmbeddedInterface }
+			}{
+				EmbeddedInterface: &struct{ S string }{
+					S: "string1",
+				},
+				Nested: struct{ EmbeddedInterface }{
+					EmbeddedInterface: &struct{ S string }{
+						S: "string2",
+					},
+				},
+			},
+			in2: &struct {
+				EmbeddedInterface
+				Nested struct{ EmbeddedInterface }
+			}{
+				EmbeddedInterface: &struct{ S string }{
+					S: "string3",
+				},
+				Nested: struct{ EmbeddedInterface }{
+					EmbeddedInterface: &struct{ S string }{
+						S: "string4",
+					},
+				},
+			},
+			out: &struct {
+				EmbeddedInterface
+				Nested struct{ EmbeddedInterface }
+			}{
+				EmbeddedInterface: &struct{ S string }{
+					S: "string1string3",
+				},
+				Nested: struct{ EmbeddedInterface }{
+					EmbeddedInterface: &struct{ S string }{
+						S: "string2string4",
+					},
+				},
 			},
 		},
-		in2: &struct{ S interface{} }{
-			S: nil,
+
+		// Errors
+
+		{
+			// Non-pointer in1
+			in1: struct{}{},
+			err: errors.New("expected pointer to struct, got struct {}"),
+			out: struct{}{},
 		},
-		out: &struct{ S interface{} }{
-			S: &struct{ S string }{
-				S: "string1",
-			},
+		{
+			// Non-pointer in2
+			in1: &struct{}{},
+			in2: struct{}{},
+			err: errors.New("expected pointer to struct, got struct {}"),
+			out: &struct{}{},
 		},
-		err: extendPropertyErrorf("s", "nilitude mismatch"),
-	},
-	{
-		// Interface type mismatch
-		in1: &struct{ S interface{} }{
-			S: &struct{ A string }{
+		{
+			// Non-struct in1
+			in1: &[]string{"bad"},
+			err: errors.New("expected pointer to struct, got *[]string"),
+			out: &[]string{"bad"},
+		},
+		{
+			// Non-struct in2
+			in1: &struct{}{},
+			in2: &[]string{"bad"},
+			err: errors.New("expected pointer to struct, got *[]string"),
+			out: &struct{}{},
+		},
+		{
+			// Mismatched types
+			in1: &struct{ A string }{
 				A: "string1",
 			},
-		},
-		in2: &struct{ S interface{} }{
-			S: &struct{ B string }{
+			in2: &struct{ B string }{
 				B: "string2",
 			},
-		},
-		out: &struct{ S interface{} }{
-			S: &struct{ A string }{
+			out: &struct{ A string }{
 				A: "string1",
 			},
+			err: errors.New("expected matching types for dst and src, got *struct { A string } and *struct { B string }"),
 		},
-		err: extendPropertyErrorf("s", "mismatched types struct { A string } and struct { B string }"),
-	},
-	{
-		// Interface not a pointer
-		in1: &struct{ S interface{} }{
-			S: struct{ S string }{
-				S: "string1",
-			},
-		},
-		in2: &struct{ S interface{} }{
-			S: struct{ S string }{
-				S: "string2",
-			},
-		},
-		out: &struct{ S interface{} }{
-			S: struct{ S string }{
-				S: "string1",
-			},
-		},
-		err: extendPropertyErrorf("s", "interface not a pointer"),
-	},
-	{
-		// Pointer nilitude mismatch
-		in1: &struct{ S *struct{ S string } }{
-			S: &struct{ S string }{
-				S: "string1",
-			},
-		},
-		in2: &struct{ S *struct{ S string } }{
-			S: nil,
-		},
-		out: &struct{ S *struct{ S string } }{
-			S: &struct{ S string }{
-				S: "string1",
-			},
-		},
-		err: extendPropertyErrorf("s", "nilitude mismatch"),
-	},
-	{
-		// Pointer not a struct
-		in1: &struct{ S *[]string }{
-			S: &[]string{"string1"},
-		},
-		in2: &struct{ S *[]string }{
-			S: &[]string{"string2"},
-		},
-		out: &struct{ S *[]string }{
-			S: &[]string{"string1"},
-		},
-		err: extendPropertyErrorf("s", "pointer is a slice"),
-	},
-	{
-		// Error in nested struct
-		in1: &struct{ S interface{} }{
-			S: &struct{ I int }{
+		{
+			// Unsupported kind
+			in1: &struct{ I int }{
 				I: 1,
 			},
-		},
-		in2: &struct{ S interface{} }{
-			S: &struct{ I int }{
+			in2: &struct{ I int }{
 				I: 2,
 			},
-		},
-		out: &struct{ S interface{} }{
-			S: &struct{ I int }{
+			out: &struct{ I int }{
 				I: 1,
 			},
+			err: extendPropertyErrorf("i", "unsupported kind int"),
 		},
-		err: extendPropertyErrorf("s.i", "unsupported kind int"),
-	},
+		{
+			// Interface nilitude mismatch
+			in1: &struct{ S interface{} }{
+				S: &struct{ S string }{
+					S: "string1",
+				},
+			},
+			in2: &struct{ S interface{} }{
+				S: nil,
+			},
+			out: &struct{ S interface{} }{
+				S: &struct{ S string }{
+					S: "string1",
+				},
+			},
+			err: extendPropertyErrorf("s", "nilitude mismatch"),
+		},
+		{
+			// Interface type mismatch
+			in1: &struct{ S interface{} }{
+				S: &struct{ A string }{
+					A: "string1",
+				},
+			},
+			in2: &struct{ S interface{} }{
+				S: &struct{ B string }{
+					B: "string2",
+				},
+			},
+			out: &struct{ S interface{} }{
+				S: &struct{ A string }{
+					A: "string1",
+				},
+			},
+			err: extendPropertyErrorf("s", "mismatched types struct { A string } and struct { B string }"),
+		},
+		{
+			// Interface not a pointer
+			in1: &struct{ S interface{} }{
+				S: struct{ S string }{
+					S: "string1",
+				},
+			},
+			in2: &struct{ S interface{} }{
+				S: struct{ S string }{
+					S: "string2",
+				},
+			},
+			out: &struct{ S interface{} }{
+				S: struct{ S string }{
+					S: "string1",
+				},
+			},
+			err: extendPropertyErrorf("s", "interface not a pointer"),
+		},
+		{
+			// Pointer nilitude mismatch
+			in1: &struct{ S *struct{ S string } }{
+				S: &struct{ S string }{
+					S: "string1",
+				},
+			},
+			in2: &struct{ S *struct{ S string } }{
+				S: nil,
+			},
+			out: &struct{ S *struct{ S string } }{
+				S: &struct{ S string }{
+					S: "string1",
+				},
+			},
+			err: extendPropertyErrorf("s", "nilitude mismatch"),
+		},
+		{
+			// Pointer not a struct
+			in1: &struct{ S *[]string }{
+				S: &[]string{"string1"},
+			},
+			in2: &struct{ S *[]string }{
+				S: &[]string{"string2"},
+			},
+			out: &struct{ S *[]string }{
+				S: &[]string{"string1"},
+			},
+			err: extendPropertyErrorf("s", "pointer is a slice"),
+		},
+		{
+			// Error in nested struct
+			in1: &struct{ S interface{} }{
+				S: &struct{ I int }{
+					I: 1,
+				},
+			},
+			in2: &struct{ S interface{} }{
+				S: &struct{ I int }{
+					I: 2,
+				},
+			},
+			out: &struct{ S interface{} }{
+				S: &struct{ I int }{
+					I: 1,
+				},
+			},
+			err: extendPropertyErrorf("s.i", "unsupported kind int"),
+		},
 
-	// Filters
+		// Filters
 
-	{
-		// Filter true
-		in1: &struct{ S string }{
-			S: "string1",
+		{
+			// Filter true
+			in1: &struct{ S string }{
+				S: "string1",
+			},
+			in2: &struct{ S string }{
+				S: "string2",
+			},
+			out: &struct{ S string }{
+				S: "string1string2",
+			},
+			filter: func(property string,
+				dstField, srcField reflect.StructField,
+				dstValue, srcValue interface{}) (bool, error) {
+				return true, nil
+			},
 		},
-		in2: &struct{ S string }{
-			S: "string2",
+		{
+			// Filter false
+			in1: &struct{ S string }{
+				S: "string1",
+			},
+			in2: &struct{ S string }{
+				S: "string2",
+			},
+			out: &struct{ S string }{
+				S: "string1",
+			},
+			filter: func(property string,
+				dstField, srcField reflect.StructField,
+				dstValue, srcValue interface{}) (bool, error) {
+				return false, nil
+			},
 		},
-		out: &struct{ S string }{
-			S: "string1string2",
+		{
+			// Filter check args
+			in1: &struct{ S string }{
+				S: "string1",
+			},
+			in2: &struct{ S string }{
+				S: "string2",
+			},
+			out: &struct{ S string }{
+				S: "string1string2",
+			},
+			filter: func(property string,
+				dstField, srcField reflect.StructField,
+				dstValue, srcValue interface{}) (bool, error) {
+				return property == "s" &&
+					dstField.Name == "S" && srcField.Name == "S" &&
+					dstValue.(string) == "string1" && srcValue.(string) == "string2", nil
+			},
 		},
-		filter: func(property string,
-			dstField, srcField reflect.StructField,
-			dstValue, srcValue interface{}) (bool, error) {
-			return true, nil
+		{
+			// Filter mutated
+			in1: &struct {
+				S string `blueprint:"mutated"`
+			}{
+				S: "string1",
+			},
+			in2: &struct {
+				S string `blueprint:"mutated"`
+			}{
+				S: "string2",
+			},
+			out: &struct {
+				S string `blueprint:"mutated"`
+			}{
+				S: "string1",
+			},
 		},
-	},
-	{
-		// Filter false
-		in1: &struct{ S string }{
-			S: "string1",
+		{
+			// Filter error
+			in1: &struct{ S string }{
+				S: "string1",
+			},
+			in2: &struct{ S string }{
+				S: "string2",
+			},
+			out: &struct{ S string }{
+				S: "string1",
+			},
+			filter: func(property string,
+				dstField, srcField reflect.StructField,
+				dstValue, srcValue interface{}) (bool, error) {
+				return true, fmt.Errorf("filter error")
+			},
+			err: extendPropertyErrorf("s", "filter error"),
 		},
-		in2: &struct{ S string }{
-			S: "string2",
-		},
-		out: &struct{ S string }{
-			S: "string1",
-		},
-		filter: func(property string,
-			dstField, srcField reflect.StructField,
-			dstValue, srcValue interface{}) (bool, error) {
-			return false, nil
-		},
-	},
-	{
-		// Filter check args
-		in1: &struct{ S string }{
-			S: "string1",
-		},
-		in2: &struct{ S string }{
-			S: "string2",
-		},
-		out: &struct{ S string }{
-			S: "string1string2",
-		},
-		filter: func(property string,
-			dstField, srcField reflect.StructField,
-			dstValue, srcValue interface{}) (bool, error) {
-			return property == "s" &&
-				dstField.Name == "S" && srcField.Name == "S" &&
-				dstValue.(string) == "string1" && srcValue.(string) == "string2", nil
-		},
-	},
-	{
-		// Filter mutated
-		in1: &struct {
-			S string `blueprint:"mutated"`
-		}{
-			S: "string1",
-		},
-		in2: &struct {
-			S string `blueprint:"mutated"`
-		}{
-			S: "string2",
-		},
-		out: &struct {
-			S string `blueprint:"mutated"`
-		}{
-			S: "string1",
-		},
-	},
-	{
-		// Filter error
-		in1: &struct{ S string }{
-			S: "string1",
-		},
-		in2: &struct{ S string }{
-			S: "string2",
-		},
-		out: &struct{ S string }{
-			S: "string1",
-		},
-		filter: func(property string,
-			dstField, srcField reflect.StructField,
-			dstValue, srcValue interface{}) (bool, error) {
-			return true, fmt.Errorf("filter error")
-		},
-		err: extendPropertyErrorf("s", "filter error"),
-	},
+	}
 }
 
 func TestAppendProperties(t *testing.T) {
-	for _, testCase := range appendPropertiesTestCases {
+	for _, testCase := range appendPropertiesTestCases() {
 		testString := fmt.Sprintf("%v, %v -> %v", testCase.in1, testCase.in2, testCase.out)
 
 		got := testCase.in1
@@ -766,191 +770,225 @@ func TestAppendProperties(t *testing.T) {
 	}
 }
 
-var appendMatchingPropertiesTestCases = []struct {
+func TestExtendProperties(t *testing.T) {
+	for _, testCase := range appendPropertiesTestCases() {
+		testString := fmt.Sprintf("%v, %v -> %v", testCase.in1, testCase.in2, testCase.out)
+
+		got := testCase.in1
+		var err error
+		var testType string
+
+		order := func(property string,
+			dstField, srcField reflect.StructField,
+			dstValue, srcValue interface{}) (Order, error) {
+			if testCase.prepend {
+				return Prepend, nil
+			} else {
+				return Append, nil
+			}
+		}
+
+		if testCase.prepend {
+			testType = "prepend"
+		} else {
+			testType = "append"
+		}
+
+		err = ExtendProperties(got, testCase.in2, testCase.filter, order)
+
+		check(t, testType, testString, got, err, testCase.out, testCase.err)
+	}
+}
+
+type appendMatchingPropertiesTestCase struct {
 	in1     []interface{}
 	in2     interface{}
 	out     []interface{}
 	prepend bool
 	filter  ExtendPropertyFilterFunc
 	err     error
-}{
-	{
-		// Append strings
-		in1: []interface{}{&struct{ S string }{
-			S: "string1",
-		}},
-		in2: &struct{ S string }{
-			S: "string2",
-		},
-		out: []interface{}{&struct{ S string }{
-			S: "string1string2",
-		}},
-	},
-	{
-		// Prepend strings
-		in1: []interface{}{&struct{ S string }{
-			S: "string1",
-		}},
-		in2: &struct{ S string }{
-			S: "string2",
-		},
-		out: []interface{}{&struct{ S string }{
-			S: "string2string1",
-		}},
-		prepend: true,
-	},
-	{
-		// Append all
-		in1: []interface{}{
-			&struct{ S, A string }{
+}
+
+func appendMatchingPropertiesTestCases() []appendMatchingPropertiesTestCase {
+	return []appendMatchingPropertiesTestCase{
+		{
+			// Append strings
+			in1: []interface{}{&struct{ S string }{
 				S: "string1",
-			},
-			&struct{ S, B string }{
+			}},
+			in2: &struct{ S string }{
 				S: "string2",
 			},
-		},
-		in2: &struct{ S string }{
-			S: "string3",
-		},
-		out: []interface{}{
-			&struct{ S, A string }{
-				S: "string1string3",
-			},
-			&struct{ S, B string }{
-				S: "string2string3",
-			},
-		},
-	},
-	{
-		// Append some
-		in1: []interface{}{
-			&struct{ S, A string }{
-				S: "string1",
-			},
-			&struct{ B string }{},
-		},
-		in2: &struct{ S string }{
-			S: "string2",
-		},
-		out: []interface{}{
-			&struct{ S, A string }{
+			out: []interface{}{&struct{ S string }{
 				S: "string1string2",
-			},
-			&struct{ B string }{},
+			}},
 		},
-	},
-	{
-		// Append mismatched structs
-		in1: []interface{}{&struct{ S, A string }{
-			S: "string1",
-		}},
-		in2: &struct{ S string }{
-			S: "string2",
-		},
-		out: []interface{}{&struct{ S, A string }{
-			S: "string1string2",
-		}},
-	},
-	{
-		// Append mismatched pointer structs
-		in1: []interface{}{&struct{ S *struct{ S, A string } }{
-			S: &struct{ S, A string }{
+		{
+			// Prepend strings
+			in1: []interface{}{&struct{ S string }{
 				S: "string1",
-			},
-		}},
-		in2: &struct{ S *struct{ S string } }{
-			S: &struct{ S string }{
+			}},
+			in2: &struct{ S string }{
 				S: "string2",
 			},
+			out: []interface{}{&struct{ S string }{
+				S: "string2string1",
+			}},
+			prepend: true,
 		},
-		out: []interface{}{&struct{ S *struct{ S, A string } }{
-			S: &struct{ S, A string }{
+		{
+			// Append all
+			in1: []interface{}{
+				&struct{ S, A string }{
+					S: "string1",
+				},
+				&struct{ S, B string }{
+					S: "string2",
+				},
+			},
+			in2: &struct{ S string }{
+				S: "string3",
+			},
+			out: []interface{}{
+				&struct{ S, A string }{
+					S: "string1string3",
+				},
+				&struct{ S, B string }{
+					S: "string2string3",
+				},
+			},
+		},
+		{
+			// Append some
+			in1: []interface{}{
+				&struct{ S, A string }{
+					S: "string1",
+				},
+				&struct{ B string }{},
+			},
+			in2: &struct{ S string }{
+				S: "string2",
+			},
+			out: []interface{}{
+				&struct{ S, A string }{
+					S: "string1string2",
+				},
+				&struct{ B string }{},
+			},
+		},
+		{
+			// Append mismatched structs
+			in1: []interface{}{&struct{ S, A string }{
+				S: "string1",
+			}},
+			in2: &struct{ S string }{
+				S: "string2",
+			},
+			out: []interface{}{&struct{ S, A string }{
 				S: "string1string2",
+			}},
+		},
+		{
+			// Append mismatched pointer structs
+			in1: []interface{}{&struct{ S *struct{ S, A string } }{
+				S: &struct{ S, A string }{
+					S: "string1",
+				},
+			}},
+			in2: &struct{ S *struct{ S string } }{
+				S: &struct{ S string }{
+					S: "string2",
+				},
 			},
-		}},
-	},
+			out: []interface{}{&struct{ S *struct{ S, A string } }{
+				S: &struct{ S, A string }{
+					S: "string1string2",
+				},
+			}},
+		},
 
-	// Errors
+		// Errors
 
-	{
-		// Non-pointer in1
-		in1: []interface{}{struct{}{}},
-		err: errors.New("expected pointer to struct, got struct {}"),
-		out: []interface{}{struct{}{}},
-	},
-	{
-		// Non-pointer in2
-		in1: []interface{}{&struct{}{}},
-		in2: struct{}{},
-		err: errors.New("expected pointer to struct, got struct {}"),
-		out: []interface{}{&struct{}{}},
-	},
-	{
-		// Non-struct in1
-		in1: []interface{}{&[]string{"bad"}},
-		err: errors.New("expected pointer to struct, got *[]string"),
-		out: []interface{}{&[]string{"bad"}},
-	},
-	{
-		// Non-struct in2
-		in1: []interface{}{&struct{}{}},
-		in2: &[]string{"bad"},
-		err: errors.New("expected pointer to struct, got *[]string"),
-		out: []interface{}{&struct{}{}},
-	},
-	{
-		// Append none
-		in1: []interface{}{
-			&struct{ A string }{},
-			&struct{ B string }{},
+		{
+			// Non-pointer in1
+			in1: []interface{}{struct{}{}},
+			err: errors.New("expected pointer to struct, got struct {}"),
+			out: []interface{}{struct{}{}},
 		},
-		in2: &struct{ S string }{
-			S: "string1",
+		{
+			// Non-pointer in2
+			in1: []interface{}{&struct{}{}},
+			in2: struct{}{},
+			err: errors.New("expected pointer to struct, got struct {}"),
+			out: []interface{}{&struct{}{}},
 		},
-		out: []interface{}{
-			&struct{ A string }{},
-			&struct{ B string }{},
+		{
+			// Non-struct in1
+			in1: []interface{}{&[]string{"bad"}},
+			err: errors.New("expected pointer to struct, got *[]string"),
+			out: []interface{}{&[]string{"bad"}},
 		},
-		err: extendPropertyErrorf("s", "failed to find property to extend"),
-	},
-	{
-		// Append mismatched kinds
-		in1: []interface{}{
-			&struct{ S string }{
+		{
+			// Non-struct in2
+			in1: []interface{}{&struct{}{}},
+			in2: &[]string{"bad"},
+			err: errors.New("expected pointer to struct, got *[]string"),
+			out: []interface{}{&struct{}{}},
+		},
+		{
+			// Append none
+			in1: []interface{}{
+				&struct{ A string }{},
+				&struct{ B string }{},
+			},
+			in2: &struct{ S string }{
 				S: "string1",
 			},
-		},
-		in2: &struct{ S []string }{
-			S: []string{"string2"},
-		},
-		out: []interface{}{
-			&struct{ S string }{
-				S: "string1",
+			out: []interface{}{
+				&struct{ A string }{},
+				&struct{ B string }{},
 			},
+			err: extendPropertyErrorf("s", "failed to find property to extend"),
 		},
-		err: extendPropertyErrorf("s", "mismatched types string and []string"),
-	},
-	{
-		// Append mismatched types
-		in1: []interface{}{
-			&struct{ S []int }{
-				S: []int{1},
+		{
+			// Append mismatched kinds
+			in1: []interface{}{
+				&struct{ S string }{
+					S: "string1",
+				},
 			},
-		},
-		in2: &struct{ S []string }{
-			S: []string{"string2"},
-		},
-		out: []interface{}{
-			&struct{ S []int }{
-				S: []int{1},
+			in2: &struct{ S []string }{
+				S: []string{"string2"},
 			},
+			out: []interface{}{
+				&struct{ S string }{
+					S: "string1",
+				},
+			},
+			err: extendPropertyErrorf("s", "mismatched types string and []string"),
 		},
-		err: extendPropertyErrorf("s", "mismatched types []int and []string"),
-	},
+		{
+			// Append mismatched types
+			in1: []interface{}{
+				&struct{ S []int }{
+					S: []int{1},
+				},
+			},
+			in2: &struct{ S []string }{
+				S: []string{"string2"},
+			},
+			out: []interface{}{
+				&struct{ S []int }{
+					S: []int{1},
+				},
+			},
+			err: extendPropertyErrorf("s", "mismatched types []int and []string"),
+		},
+	}
 }
 
 func TestAppendMatchingProperties(t *testing.T) {
-	for _, testCase := range appendMatchingPropertiesTestCases {
+	for _, testCase := range appendMatchingPropertiesTestCases() {
 		testString := fmt.Sprintf("%s, %s -> %s", p(testCase.in1), p(testCase.in2), p(testCase.out))
 
 		got := testCase.in1
@@ -964,6 +1002,36 @@ func TestAppendMatchingProperties(t *testing.T) {
 			testType = "append matching"
 			err = AppendMatchingProperties(got, testCase.in2, testCase.filter)
 		}
+
+		check(t, testType, testString, got, err, testCase.out, testCase.err)
+	}
+}
+
+func TestExtendMatchingProperties(t *testing.T) {
+	for _, testCase := range appendMatchingPropertiesTestCases() {
+		testString := fmt.Sprintf("%s, %s -> %s", p(testCase.in1), p(testCase.in2), p(testCase.out))
+
+		got := testCase.in1
+		var err error
+		var testType string
+
+		order := func(property string,
+			dstField, srcField reflect.StructField,
+			dstValue, srcValue interface{}) (Order, error) {
+			if testCase.prepend {
+				return Prepend, nil
+			} else {
+				return Append, nil
+			}
+		}
+
+		if testCase.prepend {
+			testType = "prepend matching"
+		} else {
+			testType = "append matching"
+		}
+
+		err = ExtendMatchingProperties(got, testCase.in2, testCase.filter, order)
 
 		check(t, testType, testString, got, err, testCase.out, testCase.err)
 	}
