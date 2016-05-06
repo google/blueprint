@@ -34,7 +34,7 @@ import (
 // embedded structs, pointers to structs, and interfaces containing
 // pointers to structs.  Appending the zero value of a property will always be a no-op.
 func AppendProperties(dst interface{}, src interface{}, filter ExtendPropertyFilterFunc) error {
-	return extendProperties(dst, src, filter, false)
+	return extendProperties(dst, src, filter, orderAppend)
 }
 
 // PrependProperties prepends the values of properties in the property struct src to the property
@@ -52,7 +52,7 @@ func AppendProperties(dst interface{}, src interface{}, filter ExtendPropertyFil
 // embedded structs, pointers to structs, and interfaces containing
 // pointers to structs.  Prepending the zero value of a property will always be a no-op.
 func PrependProperties(dst interface{}, src interface{}, filter ExtendPropertyFilterFunc) error {
-	return extendProperties(dst, src, filter, true)
+	return extendProperties(dst, src, filter, orderPrepend)
 }
 
 // AppendMatchingProperties appends the values of properties in the property struct src to the
@@ -73,7 +73,7 @@ func PrependProperties(dst interface{}, src interface{}, filter ExtendPropertyFi
 // pointers to structs.  Appending the zero value of a property will always be a no-op.
 func AppendMatchingProperties(dst []interface{}, src interface{},
 	filter ExtendPropertyFilterFunc) error {
-	return extendMatchingProperties(dst, src, filter, false)
+	return extendMatchingProperties(dst, src, filter, orderAppend)
 }
 
 // PrependMatchingProperties prepends the values of properties in the property struct src to the
@@ -94,12 +94,83 @@ func AppendMatchingProperties(dst []interface{}, src interface{},
 // pointers to structs.  Prepending the zero value of a property will always be a no-op.
 func PrependMatchingProperties(dst []interface{}, src interface{},
 	filter ExtendPropertyFilterFunc) error {
-	return extendMatchingProperties(dst, src, filter, true)
+	return extendMatchingProperties(dst, src, filter, orderPrepend)
 }
+
+// ExtendProperties appends or prepends the values of properties in the property struct src to the
+// property struct dst. dst and src must be the same type, and both must be pointers to structs.
+//
+// The filter function can prevent individual properties from being appended or prepended by
+// returning false, or abort ExtendProperties with an error by returning an error.  Passing nil for
+// filter will append or prepend all properties.
+//
+// The order function is called on each non-filtered property to determine if it should be appended
+// or prepended.
+//
+// An error returned by ExtendProperties that applies to a specific property will be an
+// *ExtendPropertyError, and can have the property name and error extracted from it.
+//
+// The append operation is defined as appending strings and slices of strings normally, OR-ing bool
+// values, replacing non-nil pointers to booleans or strings, and recursing into
+// embedded structs, pointers to structs, and interfaces containing
+// pointers to structs.  Appending or prepending the zero value of a property will always be a
+// no-op.
+func ExtendProperties(dst interface{}, src interface{}, filter ExtendPropertyFilterFunc,
+	order ExtendPropertyOrderFunc) error {
+	return extendProperties(dst, src, filter, order)
+}
+
+// ExtendMatchingProperties appends or prepends the values of properties in the property struct src
+// to the property structs in dst.  dst and src do not have to be the same type, but every property
+// in src must be found in at least one property in dst.  dst must be a slice of pointers to
+// structs, and src must be a pointer to a struct.
+//
+// The filter function can prevent individual properties from being appended or prepended by
+// returning false, or abort ExtendMatchingProperties with an error by returning an error.  Passing
+// nil for filter will append or prepend all properties.
+//
+// The order function is called on each non-filtered property to determine if it should be appended
+// or prepended.
+//
+// An error returned by ExtendMatchingProperties that applies to a specific property will be an
+// *ExtendPropertyError, and can have the property name and error extracted from it.
+//
+// The append operation is defined as appending strings, and slices of strings normally, OR-ing bool
+// values, replacing non-nil pointers to booleans or strings, and recursing into
+// embedded structs, pointers to structs, and interfaces containing
+// pointers to structs.  Appending or prepending the zero value of a property will always be a
+// no-op.
+func ExtendMatchingProperties(dst []interface{}, src interface{},
+	filter ExtendPropertyFilterFunc, order ExtendPropertyOrderFunc) error {
+	return extendMatchingProperties(dst, src, filter, order)
+}
+
+type Order int
+
+const (
+	Append Order = iota
+	Prepend
+)
 
 type ExtendPropertyFilterFunc func(property string,
 	dstField, srcField reflect.StructField,
 	dstValue, srcValue interface{}) (bool, error)
+
+type ExtendPropertyOrderFunc func(property string,
+	dstField, srcField reflect.StructField,
+	dstValue, srcValue interface{}) (Order, error)
+
+func orderAppend(property string,
+	dstField, srcField reflect.StructField,
+	dstValue, srcValue interface{}) (Order, error) {
+	return Append, nil
+}
+
+func orderPrepend(property string,
+	dstField, srcField reflect.StructField,
+	dstValue, srcValue interface{}) (Order, error) {
+	return Prepend, nil
+}
 
 type ExtendPropertyError struct {
 	Err      error
@@ -118,7 +189,7 @@ func extendPropertyErrorf(property string, format string, a ...interface{}) *Ext
 }
 
 func extendProperties(dst interface{}, src interface{}, filter ExtendPropertyFilterFunc,
-	prepend bool) error {
+	order ExtendPropertyOrderFunc) error {
 
 	dstValue, err := getStruct(dst)
 	if err != nil {
@@ -135,11 +206,11 @@ func extendProperties(dst interface{}, src interface{}, filter ExtendPropertyFil
 
 	dstValues := []reflect.Value{dstValue}
 
-	return extendPropertiesRecursive(dstValues, srcValue, "", filter, true, prepend)
+	return extendPropertiesRecursive(dstValues, srcValue, "", filter, true, order)
 }
 
 func extendMatchingProperties(dst []interface{}, src interface{}, filter ExtendPropertyFilterFunc,
-	prepend bool) error {
+	order ExtendPropertyOrderFunc) error {
 
 	dstValues := make([]reflect.Value, len(dst))
 	for i := range dst {
@@ -155,11 +226,12 @@ func extendMatchingProperties(dst []interface{}, src interface{}, filter ExtendP
 		return err
 	}
 
-	return extendPropertiesRecursive(dstValues, srcValue, "", filter, false, prepend)
+	return extendPropertiesRecursive(dstValues, srcValue, "", filter, false, order)
 }
 
 func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value,
-	prefix string, filter ExtendPropertyFilterFunc, sameTypes, prepend bool) error {
+	prefix string, filter ExtendPropertyFilterFunc, sameTypes bool,
+	order ExtendPropertyOrderFunc) error {
 
 	srcType := srcValue.Type()
 	for i := 0; i < srcValue.NumField(); i++ {
@@ -248,7 +320,7 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 
 				// Recursively extend the struct's fields.
 				err := extendPropertiesRecursive([]reflect.Value{dstFieldValue}, srcFieldValue,
-					propertyName+".", filter, sameTypes, prepend)
+					propertyName+".", filter, sameTypes, order)
 				if err != nil {
 					return err
 				}
@@ -275,6 +347,19 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 				if !b {
 					continue
 				}
+			}
+
+			prepend := false
+			if order != nil {
+				b, err := order(propertyName, dstField, srcField,
+					dstFieldValue.Interface(), srcFieldValue.Interface())
+				if err != nil {
+					return &ExtendPropertyError{
+						Property: propertyName,
+						Err:      err,
+					}
+				}
+				prepend = b == Prepend
 			}
 
 			switch srcFieldValue.Kind() {
