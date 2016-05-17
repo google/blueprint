@@ -84,6 +84,16 @@ import (
 // or variants of the current Module must be synchronized by the implementation of
 // GenerateBuildActions.
 type Module interface {
+	// Name returns a string used to uniquely identify each module.  The return
+	// value must be unique across all modules.  It is only called once, during
+	// initial blueprint parsing.  To change the name later a mutator must call
+	// MutatorContext.Rename
+	//
+	// In most cases, Name should return the contents of a "name:" property from
+	// the blueprint file.  An embeddable SimpleName object can be used for this
+	// case.
+	Name() string
+
 	// GenerateBuildActions is called by the Context that created the Module
 	// during its generate phase.  This call should generate all Ninja build
 	// actions (rules, pools, and build statements) needed to build the module.
@@ -168,7 +178,7 @@ func (d *baseModuleContext) moduleInfo() *moduleInfo {
 }
 
 func (d *baseModuleContext) ModuleName() string {
-	return d.module.properties.Name
+	return d.module.Name()
 }
 
 func (d *baseModuleContext) ContainsProperty(name string) bool {
@@ -248,7 +258,7 @@ type moduleContext struct {
 
 func (m *baseModuleContext) OtherModuleName(logicModule Module) string {
 	module := m.context.moduleInfo[logicModule]
-	return module.properties.Name
+	return module.Name()
 }
 
 func (m *baseModuleContext) OtherModuleErrorf(logicModule Module, format string,
@@ -639,4 +649,17 @@ func (mctx *mutatorContext) AddFarVariationDependencies(variations []Variation, 
 
 func (mctx *mutatorContext) AddInterVariantDependency(tag DependencyTag, from, to Module) {
 	mctx.context.addInterVariantDependency(mctx.module, tag, from, to)
+}
+
+// SimpleName is an embeddable object to implement the ModuleContext.Name method using a property
+// called "name".  Modules that embed it must also add SimpleName.Properties to their property
+// structure list.
+type SimpleName struct {
+	Properties struct {
+		Name string
+	}
+}
+
+func (s *SimpleName) Name() string {
+	return s.Properties.Name
 }

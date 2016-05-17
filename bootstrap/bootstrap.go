@@ -192,7 +192,9 @@ func isBootstrapBinaryModule(module blueprint.Module) bool {
 
 // A goPackage is a module for building Go packages.
 type goPackage struct {
+	blueprint.SimpleName
 	properties struct {
+		Deps      []string
 		PkgPath   string
 		Srcs      []string
 		TestSrcs  []string
@@ -224,8 +226,12 @@ func newGoPackageModuleFactory(config *Config) func() (blueprint.Module, []inter
 			config: config,
 		}
 		module.properties.BuildStage = StageMain
-		return module, []interface{}{&module.properties}
+		return module, []interface{}{&module.properties, &module.SimpleName.Properties}
 	}
+}
+
+func (g *goPackage) DynamicDependencies(ctx blueprint.DynamicDependerModuleContext) []string {
+	return g.properties.Deps
 }
 
 func (g *goPackage) GoPkgPath() string {
@@ -314,7 +320,9 @@ func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
 
 // A goBinary is a module for building executable binaries from Go sources.
 type goBinary struct {
+	blueprint.SimpleName
 	properties struct {
+		Deps           []string
 		Srcs           []string
 		TestSrcs       []string
 		PrimaryBuilder bool
@@ -336,8 +344,12 @@ func newGoBinaryModuleFactory(config *Config, buildStage Stage) func() (blueprin
 			config: config,
 		}
 		module.properties.BuildStage = buildStage
-		return module, []interface{}{&module.properties}
+		return module, []interface{}{&module.properties, &module.SimpleName.Properties}
 	}
+}
+
+func (g *goBinary) DynamicDependencies(ctx blueprint.DynamicDependerModuleContext) []string {
+	return g.properties.Deps
 }
 
 func (g *goBinary) GoTestTarget() string {
