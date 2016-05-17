@@ -234,8 +234,7 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 	order ExtendPropertyOrderFunc) error {
 
 	srcType := srcValue.Type()
-	for i := 0; i < srcValue.NumField(); i++ {
-		srcField := srcType.Field(i)
+	for i, srcField := range typeFields(srcType) {
 		if srcField.PkgPath != "" {
 			// The field is not exported so just skip it.
 			continue
@@ -252,11 +251,17 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 			dstType := dstValue.Type()
 			var dstField reflect.StructField
 
+			dstFields := typeFields(dstType)
 			if dstType == srcType {
-				dstField = dstType.Field(i)
+				dstField = dstFields[i]
 			} else {
 				var ok bool
-				dstField, ok = dstType.FieldByName(srcField.Name)
+				for _, field := range dstFields {
+					if field.Name == srcField.Name {
+						dstField = field
+						ok = true
+					}
+				}
 				if !ok {
 					continue
 				}
@@ -335,9 +340,12 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 					srcFieldValue.Kind())
 			}
 
+			dstFieldInterface := dstFieldValue.Interface()
+			srcFieldInterface := srcFieldValue.Interface()
+
 			if filter != nil {
 				b, err := filter(propertyName, dstField, srcField,
-					dstFieldValue.Interface(), srcFieldValue.Interface())
+					dstFieldInterface, srcFieldInterface)
 				if err != nil {
 					return &ExtendPropertyError{
 						Property: propertyName,
@@ -352,7 +360,7 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 			prepend := false
 			if order != nil {
 				b, err := order(propertyName, dstField, srcField,
-					dstFieldValue.Interface(), srcFieldValue.Interface())
+					dstFieldInterface, srcFieldInterface)
 				if err != nil {
 					return &ExtendPropertyError{
 						Property: propertyName,

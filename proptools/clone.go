@@ -17,6 +17,8 @@ package proptools
 import (
 	"fmt"
 	"reflect"
+	"sync"
+	"sync/atomic"
 )
 
 func CloneProperties(structValue reflect.Value) reflect.Value {
@@ -32,8 +34,7 @@ func CopyProperties(dstValue, srcValue reflect.Value) {
 			dstValue.Kind(), srcValue.Kind()))
 	}
 
-	for i := 0; i < srcValue.NumField(); i++ {
-		field := typ.Field(i)
+	for i, field := range typeFields(typ) {
 		if field.PkgPath != "" {
 			// The field is not exported so just skip it.
 			continue
@@ -130,8 +131,7 @@ func CopyProperties(dstValue, srcValue reflect.Value) {
 func ZeroProperties(structValue reflect.Value) {
 	typ := structValue.Type()
 
-	for i := 0; i < structValue.NumField(); i++ {
-		field := typ.Field(i)
+	for i, field := range typeFields(typ) {
 		if field.PkgPath != "" {
 			// The field is not exported so just skip it.
 			continue
@@ -189,8 +189,7 @@ func CloneEmptyProperties(structValue reflect.Value) reflect.Value {
 
 func cloneEmptyProperties(dstValue, srcValue reflect.Value) {
 	typ := srcValue.Type()
-	for i := 0; i < srcValue.NumField(); i++ {
-		field := typ.Field(i)
+	for i, field := range typeFields(typ) {
 		if field.PkgPath != "" {
 			// The field is not exported so just skip it.
 			continue
@@ -249,4 +248,51 @@ func cloneEmptyProperties(dstValue, srcValue reflect.Value) {
 				field.Name, srcFieldValue.Kind()))
 		}
 	}
+}
+
+// reflect.Type.Field allocates a []int{} to hold the index every time it is called, which ends up
+// being a significant portion of the GC pressure.  It can't reuse the same one in case a caller
+// modifies the backing array through the slice.  Since we don't modify it, cache the result
+// locally to reduce allocations.
+type typeFieldMap map[reflect.Type][]reflect.StructField
+
+var (
+	// Stores an atomic pointer to map caching Type to its StructField
+	typeFieldCache atomic.Value
+	// Lock used by slow path updating the cache pointer
+	typeFieldCacheWriterLock sync.Mutex
+)
+
+func init() {
+	typeFieldCache.Store(make(typeFieldMap))
+}
+
+func typeFields(typ reflect.Type) []reflect.StructField {
+	// Fast path
+	cache := typeFieldCache.Load().(typeFieldMap)
+	if typeFields, ok := cache[typ]; ok {
+		return typeFields
+	}
+
+	// Slow path
+	typeFields := make([]reflect.StructField, typ.NumField())
+
+	for i := range typeFields {
+		typeFields[i] = typ.Field(i)
+	}
+
+	typeFieldCacheWriterLock.Lock()
+	defer typeFieldCacheWriterLock.Unlock()
+
+	old := typeFieldCache.Load().(typeFieldMap)
+	cache = make(typeFieldMap)
+	for k, v := range old {
+		cache[k] = v
+	}
+
+	cache[typ] = typeFields
+
+	typeFieldCache.Store(cache)
+
+	return typeFields
 }
