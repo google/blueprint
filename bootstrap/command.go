@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
 	"runtime/trace"
 
@@ -34,8 +35,10 @@ var (
 	depFile    string
 	docFile    string
 	cpuprofile string
+	memprofile string
 	traceFile  string
 	runGoTests bool
+	noGC       bool
 
 	BuildDir string
 	SrcDir   string
@@ -48,6 +51,8 @@ func init() {
 	flag.StringVar(&docFile, "docs", "", "build documentation file to output")
 	flag.StringVar(&cpuprofile, "cpuprofile", "", "write cpu profile to file")
 	flag.StringVar(&traceFile, "trace", "", "write trace to file")
+	flag.StringVar(&memprofile, "memprofile", "", "write memory profile to file")
+	flag.BoolVar(&noGC, "nogc", false, "turn off GC for debugging")
 	flag.BoolVar(&runGoTests, "t", false, "build and run go tests during bootstrap")
 }
 
@@ -57,6 +62,10 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	}
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
+
+	if noGC {
+		debug.SetGCPercent(-1)
+	}
 
 	if cpuprofile != "" {
 		f, err := os.Create(cpuprofile)
@@ -159,6 +168,15 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		if err != nil {
 			fatalf("error removing abandoned files: %s", err)
 		}
+	}
+
+	if memprofile != "" {
+		f, err := os.Create(memprofile)
+		if err != nil {
+			fatalf("error opening memprofile: %s", err)
+		}
+		defer f.Close()
+		pprof.WriteHeapProfile(f)
 	}
 }
 
