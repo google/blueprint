@@ -456,6 +456,7 @@ type mutatorContext struct {
 type baseMutatorContext interface {
 	BaseModuleContext
 
+	OtherModuleExists(name string) bool
 	Module() Module
 }
 
@@ -649,6 +650,10 @@ func (mctx *mutatorContext) AddFarVariationDependencies(variations []Variation, 
 
 func (mctx *mutatorContext) AddInterVariantDependency(tag DependencyTag, from, to Module) {
 	mctx.context.addInterVariantDependency(mctx.module, tag, from, to)
+}
+
+func (mctx *mutatorContext) OtherModuleExists(name string) bool {
+	return mctx.context.moduleNames[name] != nil
 }
 
 // SimpleName is an embeddable object to implement the ModuleContext.Name method using a property
