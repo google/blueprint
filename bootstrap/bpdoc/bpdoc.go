@@ -19,97 +19,97 @@ import (
 	"github.com/google/blueprint/proptools"
 )
 
-type DocCollector struct {
+type Context struct {
 	pkgFiles map[string][]string // Map of package name to source files, provided by constructor
 
-	mutex   sync.Mutex
-	pkgDocs map[string]*doc.Package        // Map of package name to parsed Go AST, protected by mutex
-	docs    map[string]*PropertyStructDocs // Map of type name to docs, protected by mutex
+	mutex sync.Mutex
+	pkgs  map[string]*doc.Package    // Map of package name to parsed Go AST, protected by mutex
+	ps    map[string]*PropertyStruct // Map of type name to property struct, protected by mutex
 }
 
-func NewDocCollector(pkgFiles map[string][]string) *DocCollector {
-	return &DocCollector{
+func NewContext(pkgFiles map[string][]string) *Context {
+	return &Context{
 		pkgFiles: pkgFiles,
-		pkgDocs:  make(map[string]*doc.Package),
-		docs:     make(map[string]*PropertyStructDocs),
+		pkgs:     make(map[string]*doc.Package),
+		ps:       make(map[string]*PropertyStruct),
 	}
 }
 
-// Return the PropertyStructDocs associated with a property struct type.  The type should be in the
+// Return the PropertyStruct associated with a property struct type.  The type should be in the
 // format <package path>.<type name>
-func (dc *DocCollector) Docs(pkg, name string, defaults reflect.Value) (*PropertyStructDocs, error) {
-	docs := dc.getDocs(pkg, name)
+func (c *Context) PropertyStruct(pkgPath, name string, defaults reflect.Value) (*PropertyStruct, error) {
+	ps := c.getPropertyStruct(pkgPath, name)
 
-	if docs == nil {
-		pkgDocs, err := dc.packageDocs(pkg)
+	if ps == nil {
+		pkg, err := c.pkg(pkgPath)
 		if err != nil {
 			return nil, err
 		}
 
-		for _, t := range pkgDocs.Types {
+		for _, t := range pkg.Types {
 			if t.Name == name {
-				docs, err = newDocs(t)
+				ps, err = newPropertyStruct(t)
 				if err != nil {
 					return nil, err
 				}
-				docs = dc.putDocs(pkg, name, docs)
+				ps = c.putPropertyStruct(pkgPath, name, ps)
 			}
 		}
 	}
 
-	if docs == nil {
-		return nil, fmt.Errorf("package %q type %q not found", pkg, name)
+	if ps == nil {
+		return nil, fmt.Errorf("package %q type %q not found", pkgPath, name)
 	}
 
-	docs = docs.Clone()
-	docs.SetDefaults(defaults)
+	ps = ps.Clone()
+	ps.SetDefaults(defaults)
 
-	return docs, nil
+	return ps, nil
 }
 
-func (dc *DocCollector) getDocs(pkg, name string) *PropertyStructDocs {
-	dc.mutex.Lock()
-	defer dc.mutex.Unlock()
+func (c *Context) getPropertyStruct(pkgPath, name string) *PropertyStruct {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
-	name = pkg + "." + name
+	name = pkgPath + "." + name
 
-	return dc.docs[name]
+	return c.ps[name]
 }
 
-func (dc *DocCollector) putDocs(pkg, name string, docs *PropertyStructDocs) *PropertyStructDocs {
-	dc.mutex.Lock()
-	defer dc.mutex.Unlock()
+func (c *Context) putPropertyStruct(pkgPath, name string, ps *PropertyStruct) *PropertyStruct {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
-	name = pkg + "." + name
+	name = pkgPath + "." + name
 
-	if dc.docs[name] != nil {
-		return dc.docs[name]
+	if c.ps[name] != nil {
+		return c.ps[name]
 	} else {
-		dc.docs[name] = docs
-		return docs
+		c.ps[name] = ps
+		return ps
 	}
 }
 
-type PropertyStructDocs struct {
+type PropertyStruct struct {
 	Name       string
 	Text       string
-	Properties []PropertyDocs
+	Properties []Property
 }
 
-type PropertyDocs struct {
+type Property struct {
 	Name       string
 	OtherNames []string
 	Type       string
 	Tag        reflect.StructTag
 	Text       string
 	OtherTexts []string
-	Properties []PropertyDocs
+	Properties []Property
 	Default    string
 }
 
-func (docs *PropertyStructDocs) Clone() *PropertyStructDocs {
-	ret := *docs
-	ret.Properties = append([]PropertyDocs(nil), ret.Properties...)
+func (ps *PropertyStruct) Clone() *PropertyStruct {
+	ret := *ps
+	ret.Properties = append([]Property(nil), ret.Properties...)
 	for i, prop := range ret.Properties {
 		ret.Properties[i] = prop.Clone()
 	}
@@ -117,9 +117,9 @@ func (docs *PropertyStructDocs) Clone() *PropertyStructDocs {
 	return &ret
 }
 
-func (docs *PropertyDocs) Clone() PropertyDocs {
-	ret := *docs
-	ret.Properties = append([]PropertyDocs(nil), ret.Properties...)
+func (p *Property) Clone() Property {
+	ret := *p
+	ret.Properties = append([]Property(nil), ret.Properties...)
 	for i, prop := range ret.Properties {
 		ret.Properties[i] = prop.Clone()
 	}
@@ -127,19 +127,19 @@ func (docs *PropertyDocs) Clone() PropertyDocs {
 	return ret
 }
 
-func (docs *PropertyDocs) Equal(other PropertyDocs) bool {
-	return docs.Name == other.Name && docs.Type == other.Type && docs.Tag == other.Tag &&
-		docs.Text == other.Text && docs.Default == other.Default &&
-		stringArrayEqual(docs.OtherNames, other.OtherNames) &&
-		stringArrayEqual(docs.OtherTexts, other.OtherTexts) &&
-		docs.SameSubProperties(other)
+func (p *Property) Equal(other Property) bool {
+	return p.Name == other.Name && p.Type == other.Type && p.Tag == other.Tag &&
+		p.Text == other.Text && p.Default == other.Default &&
+		stringArrayEqual(p.OtherNames, other.OtherNames) &&
+		stringArrayEqual(p.OtherTexts, other.OtherTexts) &&
+		p.SameSubProperties(other)
 }
 
-func (docs *PropertyStructDocs) SetDefaults(defaults reflect.Value) {
-	setDefaults(docs.Properties, defaults)
+func (ps *PropertyStruct) SetDefaults(defaults reflect.Value) {
+	setDefaults(ps.Properties, defaults)
 }
 
-func setDefaults(properties []PropertyDocs, defaults reflect.Value) {
+func setDefaults(properties []Property, defaults reflect.Value) {
 	for i := range properties {
 		prop := &properties[i]
 		fieldName := proptools.FieldNameForProperty(prop.Name)
@@ -182,13 +182,13 @@ func stringArrayEqual(a, b []string) bool {
 	return true
 }
 
-func (docs *PropertyDocs) SameSubProperties(other PropertyDocs) bool {
-	if len(docs.Properties) != len(other.Properties) {
+func (p *Property) SameSubProperties(other Property) bool {
+	if len(p.Properties) != len(other.Properties) {
 		return false
 	}
 
-	for i := range docs.Properties {
-		if !docs.Properties[i].Equal(other.Properties[i]) {
+	for i := range p.Properties {
+		if !p.Properties[i].Equal(other.Properties[i]) {
 			return false
 		}
 	}
@@ -196,11 +196,11 @@ func (docs *PropertyDocs) SameSubProperties(other PropertyDocs) bool {
 	return true
 }
 
-func (docs *PropertyStructDocs) GetByName(name string) *PropertyDocs {
-	return getByName(name, "", &docs.Properties)
+func (ps *PropertyStruct) GetByName(name string) *Property {
+	return getByName(name, "", &ps.Properties)
 }
 
-func getByName(name string, prefix string, props *[]PropertyDocs) *PropertyDocs {
+func getByName(name string, prefix string, props *[]Property) *Property {
 	for i := range *props {
 		if prefix+(*props)[i].Name == name {
 			return &(*props)[i]
@@ -211,15 +211,15 @@ func getByName(name string, prefix string, props *[]PropertyDocs) *PropertyDocs 
 	return nil
 }
 
-func (prop *PropertyDocs) Nest(nested *PropertyStructDocs) {
-	//prop.Name += "(" + nested.Name + ")"
-	//prop.Text += "(" + nested.Text + ")"
-	prop.Properties = append(prop.Properties, nested.Properties...)
+func (p *Property) Nest(nested *PropertyStruct) {
+	//p.Name += "(" + nested.Name + ")"
+	//p.Text += "(" + nested.Text + ")"
+	p.Properties = append(p.Properties, nested.Properties...)
 }
 
-func newDocs(t *doc.Type) (*PropertyStructDocs, error) {
+func newPropertyStruct(t *doc.Type) (*PropertyStruct, error) {
 	typeSpec := t.Decl.Specs[0].(*ast.TypeSpec)
-	docs := PropertyStructDocs{
+	ps := PropertyStruct{
 		Name: t.Name,
 		Text: t.Doc,
 	}
@@ -230,15 +230,15 @@ func newDocs(t *doc.Type) (*PropertyStructDocs, error) {
 	}
 
 	var err error
-	docs.Properties, err = structProperties(structType)
+	ps.Properties, err = structProperties(structType)
 	if err != nil {
 		return nil, err
 	}
 
-	return &docs, nil
+	return &ps, nil
 }
 
-func structProperties(structType *ast.StructType) (props []PropertyDocs, err error) {
+func structProperties(structType *ast.StructType) (props []Property, err error) {
 	for _, f := range structType.Fields.List {
 		names := f.Names
 		if names == nil {
@@ -250,7 +250,7 @@ func structProperties(structType *ast.StructType) (props []PropertyDocs, err err
 		}
 		for _, n := range names {
 			var name, typ, tag, text string
-			var innerProps []PropertyDocs
+			var innerProps []Property
 			if n != nil {
 				name = proptools.PropertyNameForField(n.Name)
 			}
@@ -279,7 +279,7 @@ func structProperties(structType *ast.StructType) (props []PropertyDocs, err err
 				typ = fmt.Sprintf("%T", f.Type)
 			}
 
-			props = append(props, PropertyDocs{
+			props = append(props, Property{
 				Name:       name,
 				Type:       typ,
 				Tag:        reflect.StructTag(tag),
@@ -292,15 +292,15 @@ func structProperties(structType *ast.StructType) (props []PropertyDocs, err err
 	return props, nil
 }
 
-func (docs *PropertyStructDocs) ExcludeByTag(key, value string) {
-	filterPropsByTag(&docs.Properties, key, value, true)
+func (ps *PropertyStruct) ExcludeByTag(key, value string) {
+	filterPropsByTag(&ps.Properties, key, value, true)
 }
 
-func (docs *PropertyStructDocs) IncludeByTag(key, value string) {
-	filterPropsByTag(&docs.Properties, key, value, false)
+func (ps *PropertyStruct) IncludeByTag(key, value string) {
+	filterPropsByTag(&ps.Properties, key, value, false)
 }
 
-func filterPropsByTag(props *[]PropertyDocs, key, value string, exclude bool) {
+func filterPropsByTag(props *[]Property, key, value string, exclude bool) {
 	// Create a slice that shares the storage of props but has 0 length.  Appending up to
 	// len(props) times to this slice will overwrite the original slice contents
 	filtered := (*props)[:0]
@@ -317,40 +317,40 @@ func filterPropsByTag(props *[]PropertyDocs, key, value string, exclude bool) {
 }
 
 // Package AST generation and storage
-func (dc *DocCollector) packageDocs(pkg string) (*doc.Package, error) {
-	pkgDocs := dc.getPackageDocs(pkg)
-	if pkgDocs == nil {
-		if files, ok := dc.pkgFiles[pkg]; ok {
+func (c *Context) pkg(pkgPath string) (*doc.Package, error) {
+	pkg := c.getPackage(pkgPath)
+	if pkg == nil {
+		if files, ok := c.pkgFiles[pkgPath]; ok {
 			var err error
 			pkgAST, err := NewPackageAST(files)
 			if err != nil {
 				return nil, err
 			}
-			pkgDocs = doc.New(pkgAST, pkg, doc.AllDecls)
-			pkgDocs = dc.putPackageDocs(pkg, pkgDocs)
+			pkg = doc.New(pkgAST, pkgPath, doc.AllDecls)
+			pkg = c.putPackage(pkgPath, pkg)
 		} else {
-			return nil, fmt.Errorf("unknown package %q", pkg)
+			return nil, fmt.Errorf("unknown package %q", pkgPath)
 		}
 	}
-	return pkgDocs, nil
+	return pkg, nil
 }
 
-func (dc *DocCollector) getPackageDocs(pkg string) *doc.Package {
-	dc.mutex.Lock()
-	defer dc.mutex.Unlock()
+func (c *Context) getPackage(pkgPath string) *doc.Package {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
-	return dc.pkgDocs[pkg]
+	return c.pkgs[pkgPath]
 }
 
-func (dc *DocCollector) putPackageDocs(pkg string, pkgDocs *doc.Package) *doc.Package {
-	dc.mutex.Lock()
-	defer dc.mutex.Unlock()
+func (c *Context) putPackage(pkgPath string, pkg *doc.Package) *doc.Package {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
-	if dc.pkgDocs[pkg] != nil {
-		return dc.pkgDocs[pkg]
+	if c.pkgs[pkgPath] != nil {
+		return c.pkgs[pkgPath]
 	} else {
-		dc.pkgDocs[pkg] = pkgDocs
-		return pkgDocs
+		c.pkgs[pkgPath] = pkg
+		return pkg
 	}
 }
 
@@ -373,19 +373,19 @@ func NewPackageAST(files []string) (*ast.Package, error) {
 func Write(filename string, pkgFiles map[string][]string,
 	moduleTypePropertyStructs map[string][]interface{}) error {
 
-	docSet := NewDocCollector(pkgFiles)
+	c := NewContext(pkgFiles)
 
-	var moduleTypeList []*moduleTypeDoc
+	var moduleTypeList []*moduleType
 	for moduleType, propertyStructs := range moduleTypePropertyStructs {
-		mtDoc, err := getModuleTypeDoc(docSet, moduleType, propertyStructs)
+		mt, err := getModuleType(c, moduleType, propertyStructs)
 		if err != nil {
 			return err
 		}
-		removeEmptyPropertyStructs(mtDoc)
-		collapseDuplicatePropertyStructs(mtDoc)
-		collapseNestedPropertyStructs(mtDoc)
-		combineDuplicateProperties(mtDoc)
-		moduleTypeList = append(moduleTypeList, mtDoc)
+		removeEmptyPropertyStructs(mt)
+		collapseDuplicatePropertyStructs(mt)
+		collapseNestedPropertyStructs(mt)
+		combineDuplicateProperties(mt)
+		moduleTypeList = append(moduleTypeList, mt)
 	}
 
 	sort.Sort(moduleTypeByName(moduleTypeList))
@@ -416,11 +416,11 @@ func Write(filename string, pkgFiles map[string][]string,
 	return nil
 }
 
-func getModuleTypeDoc(docSet *DocCollector, moduleType string,
-	propertyStructs []interface{}) (*moduleTypeDoc, error) {
-	mtDoc := &moduleTypeDoc{
-		Name: moduleType,
-		//Text: docSet.ModuleTypeDocs(moduleType),
+func getModuleType(c *Context, moduleTypeName string,
+	propertyStructs []interface{}) (*moduleType, error) {
+	mt := &moduleType{
+		Name: moduleTypeName,
+		//Text: c.ModuleTypeDocs(moduleType),
 	}
 
 	for _, s := range propertyStructs {
@@ -431,27 +431,27 @@ func getModuleTypeDoc(docSet *DocCollector, moduleType string,
 		if t.PkgPath() == "" {
 			continue
 		}
-		psDoc, err := docSet.Docs(t.PkgPath(), t.Name(), v)
+		ps, err := c.PropertyStruct(t.PkgPath(), t.Name(), v)
 		if err != nil {
 			return nil, err
 		}
-		psDoc.ExcludeByTag("blueprint", "mutated")
+		ps.ExcludeByTag("blueprint", "mutated")
 
-		for nested, nestedValue := range nestedPropertyStructs(v) {
+		for nestedName, nestedValue := range nestedPropertyStructs(v) {
 			nestedType := nestedValue.Type()
 
 			// Ignore property structs with unexported or unnamed types
 			if nestedType.PkgPath() == "" {
 				continue
 			}
-			nestedDoc, err := docSet.Docs(nestedType.PkgPath(), nestedType.Name(), nestedValue)
+			nested, err := c.PropertyStruct(nestedType.PkgPath(), nestedType.Name(), nestedValue)
 			if err != nil {
 				return nil, err
 			}
-			nestedDoc.ExcludeByTag("blueprint", "mutated")
-			nestPoint := psDoc.GetByName(nested)
+			nested.ExcludeByTag("blueprint", "mutated")
+			nestPoint := ps.GetByName(nestedName)
 			if nestPoint == nil {
-				return nil, fmt.Errorf("nesting point %q not found", nested)
+				return nil, fmt.Errorf("nesting point %q not found", nestedName)
 			}
 
 			key, value, err := blueprint.HasFilter(nestPoint.Tag)
@@ -459,15 +459,15 @@ func getModuleTypeDoc(docSet *DocCollector, moduleType string,
 				return nil, err
 			}
 			if key != "" {
-				nestedDoc.IncludeByTag(key, value)
+				nested.IncludeByTag(key, value)
 			}
 
-			nestPoint.Nest(nestedDoc)
+			nestPoint.Nest(nested)
 		}
-		mtDoc.PropertyStructs = append(mtDoc.PropertyStructs, psDoc)
+		mt.PropertyStructs = append(mt.PropertyStructs, ps)
 	}
 
-	return mtDoc, nil
+	return mt, nil
 }
 
 func nestedPropertyStructs(s reflect.Value) map[string]reflect.Value {
@@ -520,33 +520,33 @@ func nestedPropertyStructs(s reflect.Value) map[string]reflect.Value {
 }
 
 // Remove any property structs that have no exported fields
-func removeEmptyPropertyStructs(mtDoc *moduleTypeDoc) {
-	for i := 0; i < len(mtDoc.PropertyStructs); i++ {
-		if len(mtDoc.PropertyStructs[i].Properties) == 0 {
-			mtDoc.PropertyStructs = append(mtDoc.PropertyStructs[:i], mtDoc.PropertyStructs[i+1:]...)
+func removeEmptyPropertyStructs(mt *moduleType) {
+	for i := 0; i < len(mt.PropertyStructs); i++ {
+		if len(mt.PropertyStructs[i].Properties) == 0 {
+			mt.PropertyStructs = append(mt.PropertyStructs[:i], mt.PropertyStructs[i+1:]...)
 			i--
 		}
 	}
 }
 
 // Squashes duplicates of the same property struct into single entries
-func collapseDuplicatePropertyStructs(mtDoc *moduleTypeDoc) {
-	var collapsedDocs []*PropertyStructDocs
+func collapseDuplicatePropertyStructs(mt *moduleType) {
+	var collapsed []*PropertyStruct
 
 propertyStructLoop:
-	for _, from := range mtDoc.PropertyStructs {
-		for _, to := range collapsedDocs {
+	for _, from := range mt.PropertyStructs {
+		for _, to := range collapsed {
 			if from.Name == to.Name {
 				collapseDuplicateProperties(&to.Properties, &from.Properties)
 				continue propertyStructLoop
 			}
 		}
-		collapsedDocs = append(collapsedDocs, from)
+		collapsed = append(collapsed, from)
 	}
-	mtDoc.PropertyStructs = collapsedDocs
+	mt.PropertyStructs = collapsed
 }
 
-func collapseDuplicateProperties(to, from *[]PropertyDocs) {
+func collapseDuplicateProperties(to, from *[]Property) {
 propertyLoop:
 	for _, f := range *from {
 		for i := range *to {
@@ -562,14 +562,14 @@ propertyLoop:
 
 // Find all property structs that only contain structs, and move their children up one with
 // a prefixed name
-func collapseNestedPropertyStructs(mtDoc *moduleTypeDoc) {
-	for _, ps := range mtDoc.PropertyStructs {
+func collapseNestedPropertyStructs(mt *moduleType) {
+	for _, ps := range mt.PropertyStructs {
 		collapseNestedProperties(&ps.Properties)
 	}
 }
 
-func collapseNestedProperties(p *[]PropertyDocs) {
-	var n []PropertyDocs
+func collapseNestedProperties(p *[]Property) {
+	var n []Property
 
 	for _, parent := range *p {
 		var containsProperty bool
@@ -594,14 +594,14 @@ func collapseNestedProperties(p *[]PropertyDocs) {
 	*p = n
 }
 
-func combineDuplicateProperties(mtDoc *moduleTypeDoc) {
-	for _, ps := range mtDoc.PropertyStructs {
+func combineDuplicateProperties(mt *moduleType) {
+	for _, ps := range mt.PropertyStructs {
 		combineDuplicateSubProperties(&ps.Properties)
 	}
 }
 
-func combineDuplicateSubProperties(p *[]PropertyDocs) {
-	var n []PropertyDocs
+func combineDuplicateSubProperties(p *[]Property) {
+	var n []Property
 propertyLoop:
 	for _, child := range *p {
 		if len(child.Properties) > 0 {
@@ -621,16 +621,16 @@ propertyLoop:
 	*p = n
 }
 
-type moduleTypeByName []*moduleTypeDoc
+type moduleTypeByName []*moduleType
 
 func (l moduleTypeByName) Len() int           { return len(l) }
 func (l moduleTypeByName) Less(i, j int) bool { return l[i].Name < l[j].Name }
 func (l moduleTypeByName) Swap(i, j int)      { l[i], l[j] = l[j], l[i] }
 
-type moduleTypeDoc struct {
+type moduleType struct {
 	Name            string
 	Text            string
-	PropertyStructs []*PropertyStructDocs
+	PropertyStructs []*PropertyStruct
 }
 
 var (
