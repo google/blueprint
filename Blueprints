@@ -117,13 +117,13 @@ bootstrap_core_go_binary(
     srcs = ["bootstrap/minibp/main.go"],
 )
 
-bootstrap_go_binary(
+blueprint_go_binary(
     name = "bpfmt",
     deps = ["blueprint-parser"],
     srcs = ["bpfmt/bpfmt.go"],
 )
 
-bootstrap_go_binary(
+blueprint_go_binary(
     name = "bpmodify",
     deps = ["blueprint-parser"],
     srcs = ["bpmodify/bpmodify.go"],
