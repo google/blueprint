@@ -44,6 +44,13 @@ type ConfigRemoveAbandonedFiles interface {
 	RemoveAbandonedFiles() bool
 }
 
+type ConfigBlueprintToolLocation interface {
+	// BlueprintToolLocation can return a path name to install blueprint tools
+	// designed for end users (bpfmt, bpmodify, and anything else using
+	// blueprint_go_binary).
+	BlueprintToolLocation() string
+}
+
 type Stage int
 
 const (

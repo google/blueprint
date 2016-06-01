@@ -118,6 +118,12 @@ var (
 	minibpFile = filepath.Join("$BinDir", "minibp")
 
 	docsDir = filepath.Join(bootstrapDir, "docs")
+	toolDir = pctx.VariableFunc("ToolDir", func(config interface{}) (string, error) {
+		if c, ok := config.(ConfigBlueprintToolLocation); ok {
+			return c.BlueprintToolLocation(), nil
+		}
+		return filepath.Join("$buildDir", "bin"), nil
+	})
 
 	bootstrapDir     = filepath.Join("$buildDir", bootstrapSubDir)
 	miniBootstrapDir = filepath.Join("$buildDir", miniBootstrapSubDir)
@@ -129,15 +135,15 @@ type bootstrapGoCore interface {
 }
 
 func propagateStageBootstrap(mctx blueprint.TopDownMutatorContext) {
-	if mod, ok := mctx.Module().(bootstrapGoCore); !ok || mod.BuildStage() != StageBootstrap {
-		return
-	}
+	if mod, ok := mctx.Module().(bootstrapGoCore); ok {
+		stage := mod.BuildStage()
 
-	mctx.VisitDirectDeps(func(mod blueprint.Module) {
-		if m, ok := mod.(bootstrapGoCore); ok {
-			m.SetBuildStage(StageBootstrap)
-		}
-	})
+		mctx.VisitDirectDeps(func(mod blueprint.Module) {
+			if m, ok := mod.(bootstrapGoCore); ok && m.BuildStage() > stage {
+				m.SetBuildStage(stage)
+			}
+		})
+	}
 }
 
 func pluginDeps(ctx blueprint.BottomUpMutatorContext) {
@@ -226,7 +232,7 @@ func newGoPackageModuleFactory(config *Config) func() (blueprint.Module, []inter
 		module := &goPackage{
 			config: config,
 		}
-		module.properties.BuildStage = StagePrimary
+		module.properties.BuildStage = StageMain
 		return module, []interface{}{&module.properties}
 	}
 }
@@ -312,7 +318,7 @@ func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
 
 		buildGoPackage(ctx, g.pkgRoot, g.properties.PkgPath, g.archiveFile,
 			g.properties.Srcs, genSrcs, deps)
-	} else if g.config.stage != StageBootstrap {
+	} else if g.config.stage > g.BuildStage() {
 		if len(g.properties.TestSrcs) > 0 && g.config.runGoTests {
 			phonyGoTarget(ctx, g.testArchiveFile, g.properties.TestSrcs, nil, nil)
 		}
@@ -360,13 +366,20 @@ func (g *goBinary) SetBuildStage(buildStage Stage) {
 	g.properties.BuildStage = buildStage
 }
 
+func (g *goBinary) InstallPath() string {
+	if g.BuildStage() == StageMain {
+		return "$ToolDir"
+	}
+	return "$BinDir"
+}
+
 func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 	var (
 		name        = ctx.ModuleName()
 		objDir      = moduleObjDir(ctx)
 		archiveFile = filepath.Join(objDir, name+".a")
 		aoutFile    = filepath.Join(objDir, "a.out")
-		binaryFile  = filepath.Join("$BinDir", name)
+		binaryFile  = filepath.Join(g.InstallPath(), name)
 		hasPlugins  = false
 		pluginSrc   = ""
 		genSrcs     = []string{}
@@ -427,7 +440,7 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 			Outputs: []string{binaryFile},
 			Inputs:  []string{aoutFile},
 		})
-	} else if g.config.stage != StageBootstrap {
+	} else if g.config.stage > g.BuildStage() {
 		if len(g.properties.TestSrcs) > 0 && g.config.runGoTests {
 			phonyGoTarget(ctx, g.testArchiveFile, g.properties.TestSrcs, nil, nil)
 		}
@@ -637,16 +650,21 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	var rebootstrapDeps []string
 	// primaryRebootstrapDeps contains modules that will be built in StagePrimary
 	var primaryRebootstrapDeps []string
+	// blueprintTools contains blueprint go binaries that will be built in StageMain
+	var blueprintTools []string
 	ctx.VisitAllModulesIf(isBootstrapBinaryModule,
 		func(module blueprint.Module) {
 			binaryModule := module.(*goBinary)
 			binaryModuleName := ctx.ModuleName(binaryModule)
-			binaryModulePath := filepath.Join("$BinDir", binaryModuleName)
+			installPath := filepath.Join(binaryModule.InstallPath(), binaryModuleName)
 
-			if binaryModule.BuildStage() == StageBootstrap {
-				rebootstrapDeps = append(rebootstrapDeps, binaryModulePath)
-			} else {
-				primaryRebootstrapDeps = append(primaryRebootstrapDeps, binaryModulePath)
+			switch binaryModule.BuildStage() {
+			case StageBootstrap:
+				rebootstrapDeps = append(rebootstrapDeps, installPath)
+			case StagePrimary:
+				primaryRebootstrapDeps = append(primaryRebootstrapDeps, installPath)
+			case StageMain:
+				blueprintTools = append(blueprintTools, installPath)
 			}
 			if binaryModule.properties.PrimaryBuilder {
 				primaryBuilders = append(primaryBuilders, binaryModule)
@@ -707,10 +725,13 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			testModule := module.(goTestProducer)
 			target := testModule.GoTestTarget()
 			if target != "" {
-				if testModule.BuildStage() == StageBootstrap {
+				switch testModule.BuildStage() {
+				case StageBootstrap:
 					rebootstrapDeps = append(rebootstrapDeps, target)
-				} else {
+				case StagePrimary:
 					primaryRebootstrapDeps = append(primaryRebootstrapDeps, target)
+				case StageMain:
+					blueprintTools = append(blueprintTools, target)
 				}
 			}
 		})
@@ -961,6 +982,12 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 				Outputs: []string{finalMinibp},
 			})
 		}
+
+		ctx.Build(pctx, blueprint.BuildParams{
+			Rule:    blueprint.Phony,
+			Outputs: []string{"blueprint_tools"},
+			Inputs:  blueprintTools,
+		})
 	}
 
 	ctx.Build(pctx, blueprint.BuildParams{
