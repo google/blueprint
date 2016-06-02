@@ -224,7 +224,7 @@ var validUnpackTestCases = []struct {
 		[]error{
 			&Error{
 				Err: fmt.Errorf("filtered field nested.foo cannot be set in a Blueprint file"),
-				Pos: scanner.Position{"", 27, 4, 8},
+				Pos: mkpos(27, 4, 8),
 			},
 		},
 	},
@@ -397,5 +397,13 @@ func TestUnpackProperties(t *testing.T) {
 			t.Errorf("  expected: %+v", testCase.output)
 			t.Errorf("       got: %+v", output)
 		}
+	}
+}
+
+func mkpos(offset, line, column int) scanner.Position {
+	return scanner.Position{
+		Offset: offset,
+		Line:   line,
+		Column: column,
 	}
 }
