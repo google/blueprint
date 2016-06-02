@@ -263,7 +263,12 @@ func structProperties(structType *ast.StructType) (props []Property, err error) 
 					return nil, err
 				}
 			}
-			switch a := f.Type.(type) {
+
+			t := f.Type
+			if star, ok := t.(*ast.StarExpr); ok {
+				t = star.X
+			}
+			switch a := t.(type) {
 			case *ast.ArrayType:
 				typ = "list of strings"
 			case *ast.InterfaceType:
