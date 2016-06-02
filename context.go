@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -98,6 +97,8 @@ type Context struct {
 
 	// set lazily by sortedModuleNames
 	cachedSortedModuleNames []string
+
+	fs fileSystem
 }
 
 // An Error describes a problem that was encountered that is related to a
@@ -246,6 +247,7 @@ func NewContext() *Context {
 		moduleGroups:     make(map[string]*moduleGroup),
 		moduleInfo:       make(map[Module]*moduleInfo),
 		moduleNinjaNames: make(map[string]*moduleGroup),
+		fs:               fs,
 	}
 
 	ctx.RegisterBottomUpMutator("blueprint_deps", blueprintDepsMutator)
@@ -711,6 +713,14 @@ loop:
 	return
 }
 
+// MockFileSystem causes the Context to replace all reads with accesses to the provided map of
+// filenames to contents stored as a byte slice.
+func (c *Context) MockFileSystem(files map[string][]byte) {
+	c.fs = &mockFS{
+		files: files,
+	}
+}
+
 // parseBlueprintFile parses a single Blueprints file, returning any errors through
 // errsCh, any defined modules through modulesCh, any sub-Blueprints files through
 // blueprintsCh, and any dependencies on Blueprints files or directories through
@@ -719,7 +729,7 @@ func (c *Context) parseBlueprintsFile(filename string, scope *parser.Scope, root
 	errsCh chan<- []error, fileCh chan<- *parser.File, blueprintsCh chan<- stringAndScope,
 	depsCh chan<- string) {
 
-	f, err := os.Open(filename)
+	f, err := c.fs.Open(filename)
 	if err != nil {
 		errsCh <- []error{err}
 		return
@@ -772,15 +782,15 @@ func (c *Context) findBuildBlueprints(dir string, build []string,
 		deps = append(deps, matchedDirs...)
 
 		for _, foundBlueprints := range matches {
-			fileInfo, err := os.Stat(foundBlueprints)
-			if os.IsNotExist(err) {
+			exists, dir, err := c.fs.Exists(foundBlueprints)
+			if err != nil {
+				errs = append(errs, err)
+			} else if !exists {
 				errs = append(errs, &Error{
 					Err: fmt.Errorf("%q not found", foundBlueprints),
 				})
 				continue
-			}
-
-			if fileInfo.IsDir() {
+			} else if dir {
 				errs = append(errs, &Error{
 					Err: fmt.Errorf("%q is a directory", foundBlueprints),
 				})
@@ -819,29 +829,34 @@ func (c *Context) findSubdirBlueprints(dir string, subdirs []string, subdirsPos 
 		deps = append(deps, matchedDirs...)
 
 		for _, foundSubdir := range matches {
-			fileInfo, subdirStatErr := os.Stat(foundSubdir)
+			exists, dir, subdirStatErr := c.fs.Exists(foundSubdir)
 			if subdirStatErr != nil {
 				errs = append(errs, subdirStatErr)
 				continue
 			}
 
 			// Skip files
-			if !fileInfo.IsDir() {
+			if !dir {
 				continue
 			}
 
 			var subBlueprints string
 			if subBlueprintsName != "" {
 				subBlueprints = filepath.Join(foundSubdir, subBlueprintsName)
-				_, err = os.Stat(subBlueprints)
+				exists, _, err = c.fs.Exists(subBlueprints)
 			}
 
-			if os.IsNotExist(err) || subBlueprints == "" {
+			if err == nil && (!exists || subBlueprints == "") {
 				subBlueprints = filepath.Join(foundSubdir, "Blueprints")
-				_, err = os.Stat(subBlueprints)
+				exists, _, err = c.fs.Exists(subBlueprints)
 			}
 
-			if os.IsNotExist(err) {
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+
+			if !exists {
 				// There is no Blueprints file in this subdirectory.  We
 				// need to add the directory to the list of dependencies
 				// so that if someone adds a Blueprints file in the

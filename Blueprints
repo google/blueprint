@@ -8,6 +8,7 @@ bootstrap_go_package(
     pkgPath = "github.com/google/blueprint",
     srcs = [
         "context.go",
+        "fs.go",
         "live_tracker.go",
         "mangle.go",
         "module_ctx.go",
