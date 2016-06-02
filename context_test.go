@@ -109,10 +109,62 @@ func TestContextParse(t *testing.T) {
 //     |===F===|   B, D and E should not be walked.
 func TestWalkDeps(t *testing.T) {
 	ctx := NewContext()
+	ctx.MockFileSystem(map[string][]byte{
+		"Blueprints": []byte(`
+			foo_module {
+			    name: "A",
+			    deps: ["B", "C"],
+			}
+			
+			bar_module {
+			    name: "B",
+			    deps: ["D"],
+			}
+			
+			foo_module {
+			    name: "C",
+			    deps: ["E", "F"],
+			}
+			
+			foo_module {
+			    name: "D",
+			}
+			
+			bar_module {
+			    name: "E",
+			    deps: ["G"],
+			}
+			
+			foo_module {
+			    name: "F",
+			    deps: ["G"],
+			}
+			
+			foo_module {
+			    name: "G",
+			}
+		`),
+	})
+
 	ctx.RegisterModuleType("foo_module", newFooModule)
 	ctx.RegisterModuleType("bar_module", newBarModule)
-	ctx.ParseBlueprintsFiles("context_test_Blueprints")
-	ctx.ResolveDependencies(nil)
+	_, errs := ctx.ParseBlueprintsFiles("Blueprints")
+	if len(errs) > 0 {
+		t.Errorf("unexpected parse errors:")
+		for _, err := range errs {
+			t.Errorf("  %s", err)
+		}
+		t.FailNow()
+	}
+
+	errs = ctx.ResolveDependencies(nil)
+	if len(errs) > 0 {
+		t.Errorf("unexpected dep errors:")
+		for _, err := range errs {
+			t.Errorf("  %s", err)
+		}
+		t.FailNow()
+	}
 
 	var output string
 	topModule := ctx.moduleGroups["A"].modules[0]
