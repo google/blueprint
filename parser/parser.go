@@ -190,7 +190,8 @@ func (p *parser) parseAssignment(name string, namePos scanner.Position,
 	}
 	value := p.parseExpression()
 
-	assignment.Name = Ident{name, namePos}
+	assignment.Name = name
+	assignment.NamePos = namePos
 	assignment.Value = value
 	assignment.OrigValue = value
 	assignment.Pos = pos
@@ -198,13 +199,12 @@ func (p *parser) parseAssignment(name string, namePos scanner.Position,
 
 	if p.scope != nil {
 		if assigner == "+=" {
-			if old, local := p.scope.Get(assignment.Name.Name); old == nil {
-				p.errorf("modified non-existent variable %q with +=", assignment.Name.Name)
+			if old, local := p.scope.Get(assignment.Name); old == nil {
+				p.errorf("modified non-existent variable %q with +=", assignment.Name)
 			} else if !local {
-				p.errorf("modified non-local variable %q with +=", assignment.Name.Name)
+				p.errorf("modified non-local variable %q with +=", assignment.Name)
 			} else if old.Referenced {
-				p.errorf("modified variable %q with += after referencing",
-					assignment.Name.Name)
+				p.errorf("modified variable %q with += after referencing", assignment.Name)
 			} else {
 				val, err := p.evaluateOperator(old.Value, assignment.Value, '+', assignment.Pos)
 				if err != nil {
@@ -244,7 +244,8 @@ func (p *parser) parseModule(typ string, typPos scanner.Position) *Module {
 	}
 
 	return &Module{
-		Type: Ident{typ, typPos},
+		Type:    typ,
+		TypePos: typPos,
 		Map: Map{
 			Properties: properties,
 			LBracePos:  lbracePos,
@@ -293,7 +294,8 @@ func (p *parser) parseProperty(isModule, compat bool) (property *Property) {
 
 	value := p.parseExpression()
 
-	property.Name = Ident{name, namePos}
+	property.Name = name
+	property.NamePos = namePos
 	property.Value = value
 	property.Pos = pos
 
@@ -362,18 +364,18 @@ func (p *parser) addMaps(map1, map2 []*Property, pos scanner.Position) ([]*Prope
 	inBoth := make(map[string]*Property)
 
 	for _, prop1 := range map1 {
-		inMap1[prop1.Name.Name] = prop1
+		inMap1[prop1.Name] = prop1
 	}
 
 	for _, prop2 := range map2 {
-		inMap2[prop2.Name.Name] = prop2
-		if _, ok := inMap1[prop2.Name.Name]; ok {
-			inBoth[prop2.Name.Name] = prop2
+		inMap2[prop2.Name] = prop2
+		if _, ok := inMap1[prop2.Name]; ok {
+			inBoth[prop2.Name] = prop2
 		}
 	}
 
 	for _, prop1 := range map1 {
-		if prop2, ok := inBoth[prop1.Name.Name]; ok {
+		if prop2, ok := inBoth[prop1.Name]; ok {
 			var err error
 			newProp := *prop1
 			newProp.Value, err = p.evaluateOperator(prop1.Value, prop2.Value, '+', pos)
@@ -387,7 +389,7 @@ func (p *parser) addMaps(map1, map2 []*Property, pos scanner.Position) ([]*Prope
 	}
 
 	for _, prop2 := range map2 {
-		if _, ok := inBoth[prop2.Name.Name]; !ok {
+		if _, ok := inBoth[prop2.Name]; !ok {
 			ret = append(ret, prop2)
 		}
 	}
@@ -550,15 +552,15 @@ func NewScope(s *Scope) *Scope {
 }
 
 func (s *Scope) Add(assignment *Assignment) error {
-	if old, ok := s.vars[assignment.Name.Name]; ok {
+	if old, ok := s.vars[assignment.Name]; ok {
 		return fmt.Errorf("variable already set, previous assignment: %s", old)
 	}
 
-	if old, ok := s.inheritedVars[assignment.Name.Name]; ok {
+	if old, ok := s.inheritedVars[assignment.Name]; ok {
 		return fmt.Errorf("variable already set in inherited scope, previous assignment: %s", old)
 	}
 
-	s.vars[assignment.Name.Name] = assignment
+	s.vars[assignment.Name] = assignment
 
 	return nil
 }

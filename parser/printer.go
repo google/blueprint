@@ -87,7 +87,7 @@ func (p *printer) printDef(def Definition) {
 }
 
 func (p *printer) printAssignment(assignment *Assignment) {
-	p.printToken(assignment.Name.Name, assignment.Name.Pos)
+	p.printToken(assignment.Name, assignment.NamePos)
 	p.requestSpace()
 	p.printToken(assignment.Assigner, assignment.Pos)
 	p.requestSpace()
@@ -96,7 +96,7 @@ func (p *printer) printAssignment(assignment *Assignment) {
 }
 
 func (p *printer) printModule(module *Module) {
-	p.printToken(module.Type.Name, module.Type.Pos)
+	p.printToken(module.Type, module.TypePos)
 	p.printMap(&module.Map)
 	p.requestDoubleNewline()
 }
@@ -175,7 +175,7 @@ func (p *printer) printOperator(operator *Operator) {
 }
 
 func (p *printer) printProperty(property *Property) {
-	p.printToken(property.Name.Name, property.Name.Pos)
+	p.printToken(property.Name, property.NamePos)
 	p.printToken(":", property.Pos)
 	p.requestSpace()
 	p.printExpression(property.Value)

@@ -1040,8 +1040,7 @@ func (c *Context) prettyPrintVariant(variant variationMap) string {
 func (c *Context) processModuleDef(moduleDef *parser.Module,
 	relBlueprintsFile string) (*moduleInfo, []error) {
 
-	typeName := moduleDef.Type.Name
-	factory, ok := c.moduleFactories[typeName]
+	factory, ok := c.moduleFactories[moduleDef.Type]
 	if !ok {
 		if c.ignoreUnknownModuleTypes {
 			return nil, nil
@@ -1049,8 +1048,8 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 
 		return nil, []error{
 			&Error{
-				Err: fmt.Errorf("unrecognized module type %q", typeName),
-				Pos: moduleDef.Type.Pos,
+				Err: fmt.Errorf("unrecognized module type %q", moduleDef.Type),
+				Pos: moduleDef.TypePos,
 			},
 		}
 	}
@@ -1059,7 +1058,7 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 
 	module := &moduleInfo{
 		logicModule:       logicModule,
-		typeName:          typeName,
+		typeName:          moduleDef.Type,
 		relBlueprintsFile: relBlueprintsFile,
 	}
 
@@ -1074,7 +1073,7 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 		return nil, errs
 	}
 
-	module.pos = moduleDef.Type.Pos
+	module.pos = moduleDef.TypePos
 	module.propertyPos = make(map[string]scanner.Position)
 	for name, propertyDef := range propertyMap {
 		module.propertyPos[name] = propertyDef.Pos

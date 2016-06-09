@@ -29,7 +29,8 @@ type Definition interface {
 // An Assignment is a variable assignment at the top level of a Blueprints file, scoped to the
 // file and and subdirs.
 type Assignment struct {
-	Name       Ident
+	Name       string
+	NamePos    scanner.Position
 	Value      Expression
 	OrigValue  Expression
 	Pos        scanner.Position
@@ -45,7 +46,8 @@ func (a *Assignment) definitionTag() {}
 
 // A Module is a module definition at the top level of a Blueprints file
 type Module struct {
-	Type Ident
+	Type    string
+	TypePos scanner.Position
 	Map
 }
 
@@ -70,11 +72,15 @@ func (m *Module) String() string {
 
 func (m *Module) definitionTag() {}
 
+func (m *Module) Pos() scanner.Position { return m.TypePos }
+func (m *Module) End() scanner.Position { return m.Map.End() }
+
 // A Property is a name: value pair within a Map, which may be a top level Module.
 type Property struct {
-	Name  Ident
-	Value Expression
-	Pos   scanner.Position
+	Name    string
+	NamePos scanner.Position
+	Pos     scanner.Position
+	Value   Expression
 }
 
 func (p *Property) Copy() *Property {
@@ -85,17 +91,6 @@ func (p *Property) Copy() *Property {
 
 func (p *Property) String() string {
 	return fmt.Sprintf("%s@%s: %s", p.Name, p.Pos, p.Value)
-}
-
-// An Ident is a name identifier, the Type of a Module, the Name of a Property, or the Name of a
-// Variable.
-type Ident struct {
-	Name string
-	Pos  scanner.Position
-}
-
-func (i Ident) String() string {
-	return fmt.Sprintf("%s@%s", i.Name, i.Pos)
 }
 
 // An Expression is a Value in a Property or Assignment.  It can be a literal (String or Bool), a
