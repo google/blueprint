@@ -62,6 +62,49 @@ foo {
 	},
 	{
 		input: `
+		        var = "asdf"
+			foo {
+				stuff: ["asdf"] + var,
+			}`,
+		output: `
+var = "asdf"
+foo {
+    stuff: ["asdf"] + var,
+}
+`,
+	},
+	{
+		input: `
+		        var = "asdf"
+			foo {
+				stuff: [
+				    "asdf"
+				] + var,
+			}`,
+		output: `
+var = "asdf"
+foo {
+    stuff: [
+        "asdf",
+    ] + var,
+}
+`,
+	},
+	{
+		input: `
+		        var = "asdf"
+			foo {
+				stuff: ["asdf"] + var + ["qwert"],
+			}`,
+		output: `
+var = "asdf"
+foo {
+    stuff: ["asdf"] + var + ["qwert"],
+}
+`,
+	},
+	{
+		input: `
 		foo {
 			stuff: {
 				isGood: true,
