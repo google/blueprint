@@ -861,21 +861,22 @@ func getLocalStringListFromScope(scope *parser.Scope, v string) ([]string, scann
 	if assignment, local := scope.Get(v); assignment == nil || !local {
 		return nil, scanner.Position{}, nil
 	} else {
-		switch assignment.Value.Type {
-		case parser.List:
-			ret := make([]string, 0, len(assignment.Value.ListValue))
+		switch value := assignment.Value.Eval().(type) {
+		case *parser.List:
+			ret := make([]string, 0, len(value.Values))
 
-			for _, value := range assignment.Value.ListValue {
-				if value.Type != parser.String {
+			for _, listValue := range value.Values {
+				s, ok := listValue.(*parser.String)
+				if !ok {
 					// The parser should not produce this.
 					panic("non-string value found in list")
 				}
 
-				ret = append(ret, value.StringValue)
+				ret = append(ret, s.Value)
 			}
 
 			return ret, assignment.Pos, nil
-		case parser.Bool, parser.String:
+		case *parser.Bool, *parser.String:
 			return nil, scanner.Position{}, &Error{
 				Err: fmt.Errorf("%q must be a list of strings", v),
 				Pos: assignment.Pos,
@@ -890,10 +891,10 @@ func getStringFromScope(scope *parser.Scope, v string) (string, scanner.Position
 	if assignment, _ := scope.Get(v); assignment == nil {
 		return "", scanner.Position{}, nil
 	} else {
-		switch assignment.Value.Type {
-		case parser.String:
-			return assignment.Value.StringValue, assignment.Pos, nil
-		case parser.Bool, parser.List:
+		switch value := assignment.Value.Eval().(type) {
+		case *parser.String:
+			return value.Value, assignment.Pos, nil
+		case *parser.Bool, *parser.List:
 			return "", scanner.Position{}, &Error{
 				Err: fmt.Errorf("%q must be a string", v),
 				Pos: assignment.Pos,
