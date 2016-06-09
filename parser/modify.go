@@ -14,47 +14,38 @@
 
 package parser
 
-func AddStringToList(value *Value, s string) (modified bool) {
-	if value.Type != List {
-		panic("expected list value, got " + value.Type.String())
-	}
+import "fmt"
 
-	for _, v := range value.ListValue {
-		if v.Type != String {
-			panic("expected string in list, got " + value.Type.String())
+func AddStringToList(list *List, s string) (modified bool) {
+	for _, v := range list.Values {
+		if v.Type() != StringType {
+			panic(fmt.Errorf("expected string in list, got %s", v.Type()))
 		}
 
-		if v.StringValue == s {
+		if sv, ok := v.(*String); ok && sv.Value == s {
 			// string already exists
 			return false
 		}
-
 	}
 
-	value.ListValue = append(value.ListValue, Value{
-		Type:        String,
-		Pos:         value.EndPos,
-		StringValue: s,
+	list.Values = append(list.Values, &String{
+		LiteralPos: list.RBracePos,
+		Value:      s,
 	})
 
 	return true
 }
 
-func RemoveStringFromList(value *Value, s string) (modified bool) {
-	if value.Type != List {
-		panic("expected list value, got " + value.Type.String())
-	}
-
-	for i, v := range value.ListValue {
-		if v.Type != String {
-			panic("expected string in list, got " + value.Type.String())
+func RemoveStringFromList(list *List, s string) (modified bool) {
+	for i, v := range list.Values {
+		if v.Type() != StringType {
+			panic(fmt.Errorf("expected string in list, got %s", v.Type()))
 		}
 
-		if v.StringValue == s {
-			value.ListValue = append(value.ListValue[:i], value.ListValue[i+1:]...)
+		if sv, ok := v.(*String); ok && sv.Value == s {
+			list.Values = append(list.Values[:i], list.Values[i+1:]...)
 			return true
 		}
-
 	}
 
 	return false
