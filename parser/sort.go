@@ -32,40 +32,40 @@ func SortLists(file *File) {
 	sort.Sort(commentsByOffset(file.Comments))
 }
 
-func SortList(file *File, value Value) {
-	for i := 0; i < len(value.ListValue); i++ {
+func SortList(file *File, list *List) {
+	for i := 0; i < len(list.Values); i++ {
 		// Find a set of values on contiguous lines
-		line := value.ListValue[i].Pos.Line
+		line := list.Values[i].Pos().Line
 		var j int
-		for j = i + 1; j < len(value.ListValue); j++ {
-			if value.ListValue[j].Pos.Line > line+1 {
+		for j = i + 1; j < len(list.Values); j++ {
+			if list.Values[j].Pos().Line > line+1 {
 				break
 			}
-			line = value.ListValue[j].Pos.Line
+			line = list.Values[j].Pos().Line
 		}
 
-		nextPos := value.EndPos
-		if j < len(value.ListValue) {
-			nextPos = value.ListValue[j].Pos
+		nextPos := list.End()
+		if j < len(list.Values) {
+			nextPos = list.Values[j].Pos()
 		}
-		sortSubList(value.ListValue[i:j], nextPos, file)
+		sortSubList(list.Values[i:j], nextPos, file)
 		i = j - 1
 	}
 }
 
-func ListIsSorted(value Value) bool {
-	for i := 0; i < len(value.ListValue); i++ {
+func ListIsSorted(list *List) bool {
+	for i := 0; i < len(list.Values); i++ {
 		// Find a set of values on contiguous lines
-		line := value.ListValue[i].Pos.Line
+		line := list.Values[i].Pos().Line
 		var j int
-		for j = i + 1; j < len(value.ListValue); j++ {
-			if value.ListValue[j].Pos.Line > line+1 {
+		for j = i + 1; j < len(list.Values); j++ {
+			if list.Values[j].Pos().Line > line+1 {
 				break
 			}
-			line = value.ListValue[j].Pos.Line
+			line = list.Values[j].Pos().Line
 		}
 
-		if !subListIsSorted(value.ListValue[i:j]) {
+		if !subListIsSorted(list.Values[i:j]) {
 			return false
 		}
 		i = j - 1
@@ -74,55 +74,49 @@ func ListIsSorted(value Value) bool {
 	return true
 }
 
-func sortListsInValue(value Value, file *File) {
-	if value.Variable != "" {
-		return
-	}
-
-	if value.Expression != nil {
-		sortListsInValue(value.Expression.Args[0], file)
-		sortListsInValue(value.Expression.Args[1], file)
-		return
-	}
-
-	if value.Type == Map {
-		for _, p := range value.MapValue {
+func sortListsInValue(value Expression, file *File) {
+	switch v := value.(type) {
+	case *Variable:
+		// Nothing
+	case *Operator:
+		sortListsInValue(v.Args[0], file)
+		sortListsInValue(v.Args[1], file)
+	case *Map:
+		for _, p := range v.Properties {
 			sortListsInValue(p.Value, file)
 		}
-		return
-	} else if value.Type != List {
-		return
+	case *List:
+		SortList(file, v)
 	}
-
-	SortList(file, value)
 }
 
-func sortSubList(values []Value, nextPos scanner.Position, file *File) {
+func sortSubList(values []Expression, nextPos scanner.Position, file *File) {
 	l := make(elemList, len(values))
 	for i, v := range values {
-		if v.Type != String {
+		s, ok := v.(*String)
+		if !ok {
 			panic("list contains non-string element")
 		}
 		n := nextPos
 		if i < len(values)-1 {
-			n = values[i+1].Pos
+			n = values[i+1].Pos()
 		}
-		l[i] = elem{v.StringValue, i, v.Pos, n}
+		l[i] = elem{s.Value, i, v.Pos(), n}
 	}
 
 	sort.Sort(l)
 
-	copyValues := append([]Value{}, values...)
+	copyValues := append([]Expression{}, values...)
 	copyComments := append([]Comment{}, file.Comments...)
 
-	curPos := values[0].Pos
+	curPos := values[0].Pos()
 	for i, e := range l {
 		values[i] = copyValues[e.i]
-		values[i].Pos = curPos
+		values[i].(*String).LiteralPos = curPos
 		for j, c := range copyComments {
-			if c.Pos.Offset > e.pos.Offset && c.Pos.Offset < e.nextPos.Offset {
-				file.Comments[j].Pos.Line = curPos.Line
-				file.Comments[j].Pos.Offset += values[i].Pos.Offset - e.pos.Offset
+			if c.Pos().Offset > e.pos.Offset && c.Pos().Offset < e.nextPos.Offset {
+				file.Comments[j].Slash.Line = curPos.Line
+				file.Comments[j].Slash.Offset += values[i].Pos().Offset - e.pos.Offset
 			}
 		}
 
@@ -131,16 +125,17 @@ func sortSubList(values []Value, nextPos scanner.Position, file *File) {
 	}
 }
 
-func subListIsSorted(values []Value) bool {
+func subListIsSorted(values []Expression) bool {
 	prev := ""
 	for _, v := range values {
-		if v.Type != String {
+		s, ok := v.(*String)
+		if !ok {
 			panic("list contains non-string element")
 		}
-		if prev > v.StringValue {
+		if prev > s.Value {
 			return false
 		}
-		prev = v.StringValue
+		prev = s.Value
 	}
 
 	return true
@@ -174,7 +169,7 @@ func (l commentsByOffset) Len() int {
 }
 
 func (l commentsByOffset) Less(i, j int) bool {
-	return l[i].Pos.Offset < l[j].Pos.Offset
+	return l[i].Pos().Offset < l[j].Pos().Offset
 }
 
 func (l commentsByOffset) Swap(i, j int) {
