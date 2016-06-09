@@ -96,7 +96,7 @@ func NewPackageContext(pkgPath string) PackageContext {
 	checkCalledFromInit()
 
 	if _, present := packageContexts[pkgPath]; present {
-		panic(fmt.Errorf("package %q already has a package context"))
+		panic(fmt.Errorf("package %q already has a package context", pkgPath))
 	}
 
 	pkgName := pkgPathToName(pkgPath)
