@@ -88,7 +88,6 @@ func buildPropertyMap(namePrefix string, propertyDefs []*parser.Property,
 				// We've already added this property.
 				continue
 			}
-
 			errs = append(errs, &Error{
 				Err: fmt.Errorf("property %q already defined", name),
 				Pos: propertyDef.Pos,
@@ -276,47 +275,49 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 }
 
 func unpackBool(boolValue reflect.Value, property *parser.Property) []error {
-	if property.Value.Type != parser.Bool {
+	b, ok := property.Value.Eval().(*parser.Bool)
+	if !ok {
 		return []error{
-			fmt.Errorf("%s: can't assign %s value to %s property %q",
-				property.Value.Pos, property.Value.Type, parser.Bool,
-				property.Name),
+			fmt.Errorf("%s: can't assign %s value to bool property %q",
+				property.Value.Pos, property.Value.Type, property.Name),
 		}
 	}
-	boolValue.SetBool(property.Value.BoolValue)
+	boolValue.SetBool(b.Value)
 	return nil
 }
 
 func unpackString(stringValue reflect.Value,
 	property *parser.Property) []error {
 
-	if property.Value.Type != parser.String {
+	s, ok := property.Value.Eval().(*parser.String)
+	if !ok {
 		return []error{
-			fmt.Errorf("%s: can't assign %s value to %s property %q",
-				property.Value.Pos, property.Value.Type, parser.String,
-				property.Name),
+			fmt.Errorf("%s: can't assign %s value to string property %q",
+				property.Value.Pos, property.Value.Type, property.Name),
 		}
 	}
-	stringValue.SetString(property.Value.StringValue)
+	stringValue.SetString(s.Value)
 	return nil
 }
 
 func unpackSlice(sliceValue reflect.Value, property *parser.Property) []error {
-	if property.Value.Type != parser.List {
+
+	l, ok := property.Value.Eval().(*parser.List)
+	if !ok {
 		return []error{
-			fmt.Errorf("%s: can't assign %s value to %s property %q",
-				property.Value.Pos, property.Value.Type, parser.List,
-				property.Name),
+			fmt.Errorf("%s: can't assign %s value to list property %q",
+				property.Value.Pos, property.Value.Type, property.Name),
 		}
 	}
 
-	list := []string{}
-	for _, value := range property.Value.ListValue {
-		if value.Type != parser.String {
+	list := make([]string, len(l.Values))
+	for i, value := range l.Values {
+		s, ok := value.Eval().(*parser.String)
+		if !ok {
 			// The parser should not produce this.
-			panic("non-string value found in list")
+			panic(fmt.Errorf("non-string value %q found in list", value))
 		}
-		list = append(list, value.StringValue)
+		list[i] = s.Value
 	}
 
 	sliceValue.Set(reflect.ValueOf(list))
@@ -327,15 +328,15 @@ func unpackStruct(namePrefix string, structValue reflect.Value,
 	property *parser.Property, propertyMap map[string]*packedProperty,
 	filterKey, filterValue string) []error {
 
-	if property.Value.Type != parser.Map {
+	m, ok := property.Value.Eval().(*parser.Map)
+	if !ok {
 		return []error{
-			fmt.Errorf("%s: can't assign %s value to %s property %q",
-				property.Value.Pos, property.Value.Type, parser.Map,
-				property.Name),
+			fmt.Errorf("%s: can't assign %s value to map property %q",
+				property.Value.Pos, property.Value.Type, property.Name),
 		}
 	}
 
-	errs := buildPropertyMap(namePrefix, property.Value.MapValue, propertyMap)
+	errs := buildPropertyMap(namePrefix, m.Properties, propertyMap)
 	if len(errs) > 0 {
 		return errs
 	}

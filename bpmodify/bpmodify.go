@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"github.com/google/blueprint/parser"
 	"io"
 	"io/ioutil"
 	"os"
@@ -17,6 +16,8 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode"
+
+	"github.com/google/blueprint/parser"
 )
 
 var (
@@ -123,8 +124,8 @@ func findModules(file *parser.File) (modified bool, errs []error) {
 	for _, def := range file.Defs {
 		if module, ok := def.(*parser.Module); ok {
 			for _, prop := range module.Properties {
-				if prop.Name.Name == "name" && prop.Value.Type == parser.String {
-					if targetedModule(prop.Value.StringValue) {
+				if prop.Name.Name == "name" && prop.Value.Type() == parser.StringType {
+					if targetedModule(prop.Value.Eval().(*parser.String).Value) {
 						m, newErrs := processModule(module, prop.Name.Name, file)
 						errs = append(errs, newErrs...)
 						modified = modified || m
@@ -142,7 +143,7 @@ func processModule(module *parser.Module, moduleName string,
 
 	for _, prop := range module.Properties {
 		if prop.Name.Name == *parameter {
-			modified, errs = processParameter(&prop.Value, *parameter, moduleName, file)
+			modified, errs = processParameter(prop.Value, *parameter, moduleName, file)
 			return
 		}
 	}
@@ -150,37 +151,38 @@ func processModule(module *parser.Module, moduleName string,
 	return false, nil
 }
 
-func processParameter(value *parser.Value, paramName, moduleName string,
+func processParameter(value parser.Expression, paramName, moduleName string,
 	file *parser.File) (modified bool, errs []error) {
-	if value.Type != parser.List {
-		return false, []error{fmt.Errorf("expected parameter %s in module %s to be list, found %s",
-			paramName, moduleName, value.Type.String())}
-	}
-
-	if value.Variable != "" {
+	if _, ok := value.(*parser.Variable); ok {
 		return false, []error{fmt.Errorf("parameter %s in module %s is a variable, unsupported",
 			paramName, moduleName)}
 	}
 
-	if value.Expression != nil {
+	if _, ok := value.(*parser.Operator); ok {
 		return false, []error{fmt.Errorf("parameter %s in module %s is an expression, unsupported",
 			paramName, moduleName)}
 	}
 
-	wasSorted := parser.ListIsSorted(*value)
+	list, ok := value.(*parser.List)
+	if !ok {
+		return false, []error{fmt.Errorf("expected parameter %s in module %s to be list, found %s",
+			paramName, moduleName, value.Type().String())}
+	}
+
+	wasSorted := parser.ListIsSorted(list)
 
 	for _, a := range addIdents.idents {
-		m := parser.AddStringToList(value, a)
+		m := parser.AddStringToList(list, a)
 		modified = modified || m
 	}
 
 	for _, r := range removeIdents.idents {
-		m := parser.RemoveStringFromList(value, r)
+		m := parser.RemoveStringFromList(list, r)
 		modified = modified || m
 	}
 
 	if (wasSorted || *sortLists) && modified {
-		parser.SortList(file, *value)
+		parser.SortList(file, list)
 	}
 
 	return modified, nil

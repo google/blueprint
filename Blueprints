@@ -32,6 +32,7 @@ bootstrap_go_package(
     name = "blueprint-parser",
     pkgPath = "github.com/google/blueprint/parser",
     srcs = [
+        "parser/ast.go",
         "parser/modify.go",
         "parser/parser.go",
         "parser/printer.go",
