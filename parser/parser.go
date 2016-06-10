@@ -41,7 +41,22 @@ type File struct {
 	Name     string
 	Defs     []Definition
 	Comments []Comment
-	Lines    []scanner.Position
+}
+
+func (f *File) Pos() scanner.Position {
+	return scanner.Position{
+		Filename: f.Name,
+		Line:     1,
+		Column:   1,
+		Offset:   0,
+	}
+}
+
+func (f *File) End() scanner.Position {
+	if len(f.Defs) > 0 {
+		return f.Defs[len(f.Defs)-1].End()
+	}
+	return noPos
 }
 
 func parse(p *parser) (file *File, errs []error) {

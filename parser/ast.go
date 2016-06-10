@@ -20,8 +20,16 @@ import (
 	"text/scanner"
 )
 
+type Node interface {
+	// Pos returns the position of the first token in the Expression
+	Pos() scanner.Position
+	// End returns the position of the beginning of the last token in the Expression
+	End() scanner.Position
+}
+
 // Definition is an Assignment or a Module at the top level of a Blueprints file
 type Definition interface {
+	Node
 	String() string
 	definitionTag()
 }
@@ -41,6 +49,9 @@ type Assignment struct {
 func (a *Assignment) String() string {
 	return fmt.Sprintf("%s@%s %s %s (%s) %t", a.Name, a.EqualsPos, a.Assigner, a.Value, a.OrigValue, a.Referenced)
 }
+
+func (a *Assignment) Pos() scanner.Position { return a.NamePos }
+func (a *Assignment) End() scanner.Position { return a.Value.End() }
 
 func (a *Assignment) definitionTag() {}
 
@@ -93,19 +104,19 @@ func (p *Property) String() string {
 	return fmt.Sprintf("%s@%s: %s", p.Name, p.ColonPos, p.Value)
 }
 
+func (p *Property) Pos() scanner.Position { return p.NamePos }
+func (p *Property) End() scanner.Position { return p.Value.End() }
+
 // An Expression is a Value in a Property or Assignment.  It can be a literal (String or Bool), a
 // Map, a List, an Operator that combines two expressions of the same type, or a Variable that
 // references and Assignment.
 type Expression interface {
+	Node
 	// Copy returns a copy of the Expression that will not affect the original if mutated
 	Copy() Expression
 	String() string
 	// Type returns the underlying Type enum of the Expression if it were to be evalutated
 	Type() Type
-	// Pos returns the position of the first token in the Expression
-	Pos() scanner.Position
-	// End returns the position of the beginning of the last token in the Expression
-	End() scanner.Position
 	// Eval returns an expression that is fully evaluated to a simple type (List, Map, String, or
 	// Bool).  It will return the same object for every call to Eval().
 	Eval() Expression
@@ -167,8 +178,8 @@ func (x *Operator) String() string {
 
 type Variable struct {
 	Name    string
-	Value   Expression
 	NamePos scanner.Position
+	Value   Expression
 }
 
 func (x *Variable) Pos() scanner.Position { return x.NamePos }
