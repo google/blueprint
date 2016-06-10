@@ -33,13 +33,13 @@ type Assignment struct {
 	NamePos    scanner.Position
 	Value      Expression
 	OrigValue  Expression
-	Pos        scanner.Position
+	EqualsPos  scanner.Position
 	Assigner   string
 	Referenced bool
 }
 
 func (a *Assignment) String() string {
-	return fmt.Sprintf("%s@%s %s %s (%s) %t", a.Name, a.Pos, a.Assigner, a.Value, a.OrigValue, a.Referenced)
+	return fmt.Sprintf("%s@%s %s %s (%s) %t", a.Name, a.EqualsPos, a.Assigner, a.Value, a.OrigValue, a.Referenced)
 }
 
 func (a *Assignment) definitionTag() {}
@@ -77,10 +77,10 @@ func (m *Module) End() scanner.Position { return m.Map.End() }
 
 // A Property is a name: value pair within a Map, which may be a top level Module.
 type Property struct {
-	Name    string
-	NamePos scanner.Position
-	Pos     scanner.Position
-	Value   Expression
+	Name     string
+	NamePos  scanner.Position
+	ColonPos scanner.Position
+	Value    Expression
 }
 
 func (p *Property) Copy() *Property {
@@ -90,7 +90,7 @@ func (p *Property) Copy() *Property {
 }
 
 func (p *Property) String() string {
-	return fmt.Sprintf("%s@%s: %s", p.Name, p.Pos, p.Value)
+	return fmt.Sprintf("%s@%s: %s", p.Name, p.ColonPos, p.Value)
 }
 
 // An Expression is a Value in a Property or Assignment.  It can be a literal (String or Bool), a

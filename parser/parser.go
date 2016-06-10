@@ -194,7 +194,7 @@ func (p *parser) parseAssignment(name string, namePos scanner.Position,
 	assignment.NamePos = namePos
 	assignment.Value = value
 	assignment.OrigValue = value
-	assignment.Pos = pos
+	assignment.EqualsPos = pos
 	assignment.Assigner = assigner
 
 	if p.scope != nil {
@@ -206,7 +206,7 @@ func (p *parser) parseAssignment(name string, namePos scanner.Position,
 			} else if old.Referenced {
 				p.errorf("modified variable %q with += after referencing", assignment.Name)
 			} else {
-				val, err := p.evaluateOperator(old.Value, assignment.Value, '+', assignment.Pos)
+				val, err := p.evaluateOperator(old.Value, assignment.Value, '+', assignment.EqualsPos)
 				if err != nil {
 					p.error(err)
 				} else {
@@ -297,7 +297,7 @@ func (p *parser) parseProperty(isModule, compat bool) (property *Property) {
 	property.Name = name
 	property.NamePos = namePos
 	property.Value = value
-	property.Pos = pos
+	property.ColonPos = pos
 
 	return
 }

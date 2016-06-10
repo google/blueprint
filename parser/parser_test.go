@@ -64,9 +64,9 @@ var validParseTestCases = []struct {
 					RBracePos: mkpos(27, 4, 3),
 					Properties: []*Property{
 						{
-							Name:    "name",
-							NamePos: mkpos(12, 3, 4),
-							Pos:     mkpos(16, 3, 8),
+							Name:     "name",
+							NamePos:  mkpos(12, 3, 4),
+							ColonPos: mkpos(16, 3, 8),
 							Value: &String{
 								LiteralPos: mkpos(18, 3, 10),
 								Value:      "abc",
@@ -93,9 +93,9 @@ var validParseTestCases = []struct {
 					RBracePos: mkpos(28, 4, 3),
 					Properties: []*Property{
 						{
-							Name:    "isGood",
-							NamePos: mkpos(12, 3, 4),
-							Pos:     mkpos(18, 3, 10),
+							Name:     "isGood",
+							NamePos:  mkpos(12, 3, 4),
+							ColonPos: mkpos(18, 3, 10),
 							Value: &Bool{
 								LiteralPos: mkpos(20, 3, 12),
 								Value:      true,
@@ -123,9 +123,9 @@ var validParseTestCases = []struct {
 					RBracePos: mkpos(67, 5, 3),
 					Properties: []*Property{
 						{
-							Name:    "stuff",
-							NamePos: mkpos(12, 3, 4),
-							Pos:     mkpos(17, 3, 9),
+							Name:     "stuff",
+							NamePos:  mkpos(12, 3, 4),
+							ColonPos: mkpos(17, 3, 9),
 							Value: &List{
 								LBracePos: mkpos(19, 3, 11),
 								RBracePos: mkpos(63, 4, 19),
@@ -177,26 +177,26 @@ var validParseTestCases = []struct {
 					RBracePos: mkpos(62, 7, 3),
 					Properties: []*Property{
 						{
-							Name:    "stuff",
-							NamePos: mkpos(12, 3, 4),
-							Pos:     mkpos(17, 3, 9),
+							Name:     "stuff",
+							NamePos:  mkpos(12, 3, 4),
+							ColonPos: mkpos(17, 3, 9),
 							Value: &Map{
 								LBracePos: mkpos(19, 3, 11),
 								RBracePos: mkpos(58, 6, 4),
 								Properties: []*Property{
 									{
-										Name:    "isGood",
-										NamePos: mkpos(25, 4, 5),
-										Pos:     mkpos(31, 4, 11),
+										Name:     "isGood",
+										NamePos:  mkpos(25, 4, 5),
+										ColonPos: mkpos(31, 4, 11),
 										Value: &Bool{
 											LiteralPos: mkpos(33, 4, 13),
 											Value:      true,
 										},
 									},
 									{
-										Name:    "name",
-										NamePos: mkpos(43, 5, 5),
-										Pos:     mkpos(47, 5, 9),
+										Name:     "name",
+										NamePos:  mkpos(43, 5, 5),
+										ColonPos: mkpos(47, 5, 9),
 										Value: &String{
 											LiteralPos: mkpos(49, 5, 11),
 											Value:      "bar",
@@ -228,9 +228,9 @@ var validParseTestCases = []struct {
 					RBracePos: mkpos(81, 6, 3),
 					Properties: []*Property{
 						{
-							Name:    "isGood",
-							NamePos: mkpos(52, 5, 4),
-							Pos:     mkpos(58, 5, 10),
+							Name:     "isGood",
+							NamePos:  mkpos(52, 5, 4),
+							ColonPos: mkpos(58, 5, 10),
 							Value: &Bool{
 								LiteralPos: mkpos(60, 5, 12),
 								Value:      true,
@@ -278,9 +278,9 @@ var validParseTestCases = []struct {
 					RBracePos: mkpos(27, 4, 3),
 					Properties: []*Property{
 						{
-							Name:    "name",
-							NamePos: mkpos(12, 3, 4),
-							Pos:     mkpos(16, 3, 8),
+							Name:     "name",
+							NamePos:  mkpos(12, 3, 4),
+							ColonPos: mkpos(16, 3, 8),
 							Value: &String{
 								LiteralPos: mkpos(18, 3, 10),
 								Value:      "abc",
@@ -297,9 +297,9 @@ var validParseTestCases = []struct {
 					RBracePos: mkpos(56, 8, 3),
 					Properties: []*Property{
 						{
-							Name:    "name",
-							NamePos: mkpos(41, 7, 4),
-							Pos:     mkpos(45, 7, 8),
+							Name:     "name",
+							NamePos:  mkpos(41, 7, 4),
+							ColonPos: mkpos(45, 7, 8),
 							Value: &String{
 								LiteralPos: mkpos(47, 7, 10),
 								Value:      "def",
@@ -320,9 +320,9 @@ var validParseTestCases = []struct {
 		`,
 		[]Definition{
 			&Assignment{
-				Name:    "foo",
-				NamePos: mkpos(3, 2, 3),
-				Pos:     mkpos(7, 2, 7),
+				Name:      "foo",
+				NamePos:   mkpos(3, 2, 3),
+				EqualsPos: mkpos(7, 2, 7),
 				Value: &String{
 					LiteralPos: mkpos(9, 2, 9),
 					Value:      "stuff",
@@ -335,9 +335,9 @@ var validParseTestCases = []struct {
 				Referenced: true,
 			},
 			&Assignment{
-				Name:    "bar",
-				NamePos: mkpos(19, 3, 3),
-				Pos:     mkpos(23, 3, 7),
+				Name:      "bar",
+				NamePos:   mkpos(19, 3, 3),
+				EqualsPos: mkpos(23, 3, 7),
 				Value: &Variable{
 					Name:    "foo",
 					NamePos: mkpos(25, 3, 9),
@@ -358,9 +358,9 @@ var validParseTestCases = []struct {
 				Referenced: true,
 			},
 			&Assignment{
-				Name:    "baz",
-				NamePos: mkpos(31, 4, 3),
-				Pos:     mkpos(35, 4, 7),
+				Name:      "baz",
+				NamePos:   mkpos(31, 4, 3),
+				EqualsPos: mkpos(35, 4, 7),
 				Value: &Operator{
 					OperatorPos: mkpos(41, 4, 13),
 					Operator:    '+',
@@ -425,9 +425,9 @@ var validParseTestCases = []struct {
 				Referenced: true,
 			},
 			&Assignment{
-				Name:    "boo",
-				NamePos: mkpos(49, 5, 3),
-				Pos:     mkpos(53, 5, 7),
+				Name:      "boo",
+				NamePos:   mkpos(49, 5, 3),
+				EqualsPos: mkpos(53, 5, 7),
 				Value: &Operator{
 					Args: [2]Expression{
 						&Variable{
@@ -517,9 +517,9 @@ var validParseTestCases = []struct {
 				Assigner: "=",
 			},
 			&Assignment{
-				Name:    "boo",
-				NamePos: mkpos(61, 6, 3),
-				Pos:     mkpos(66, 6, 8),
+				Name:      "boo",
+				NamePos:   mkpos(61, 6, 3),
+				EqualsPos: mkpos(66, 6, 8),
 				Value: &Variable{
 					Name:    "foo",
 					NamePos: mkpos(68, 6, 10),

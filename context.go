@@ -875,11 +875,11 @@ func getLocalStringListFromScope(scope *parser.Scope, v string) ([]string, scann
 				ret = append(ret, s.Value)
 			}
 
-			return ret, assignment.Pos, nil
+			return ret, assignment.EqualsPos, nil
 		case *parser.Bool, *parser.String:
 			return nil, scanner.Position{}, &Error{
 				Err: fmt.Errorf("%q must be a list of strings", v),
-				Pos: assignment.Pos,
+				Pos: assignment.EqualsPos,
 			}
 		default:
 			panic(fmt.Errorf("unknown value type: %d", assignment.Value.Type))
@@ -893,11 +893,11 @@ func getStringFromScope(scope *parser.Scope, v string) (string, scanner.Position
 	} else {
 		switch value := assignment.Value.Eval().(type) {
 		case *parser.String:
-			return value.Value, assignment.Pos, nil
+			return value.Value, assignment.EqualsPos, nil
 		case *parser.Bool, *parser.List:
 			return "", scanner.Position{}, &Error{
 				Err: fmt.Errorf("%q must be a string", v),
-				Pos: assignment.Pos,
+				Pos: assignment.EqualsPos,
 			}
 		default:
 			panic(fmt.Errorf("unknown value type: %d", assignment.Value.Type))
@@ -1076,7 +1076,7 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 	module.pos = moduleDef.TypePos
 	module.propertyPos = make(map[string]scanner.Position)
 	for name, propertyDef := range propertyMap {
-		module.propertyPos[name] = propertyDef.Pos
+		module.propertyPos[name] = propertyDef.ColonPos
 	}
 
 	return module, nil
