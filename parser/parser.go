@@ -40,7 +40,7 @@ func (e *ParseError) Error() string {
 type File struct {
 	Name     string
 	Defs     []Definition
-	Comments []Comment
+	Comments []*CommentGroup
 }
 
 func (f *File) Pos() scanner.Position {
@@ -103,7 +103,7 @@ type parser struct {
 	tok      rune
 	errors   []error
 	scope    *Scope
-	comments []Comment
+	comments []*CommentGroup
 	eval     bool
 }
 
@@ -154,10 +154,18 @@ func (p *parser) accept(toks ...rune) bool {
 func (p *parser) next() {
 	if p.tok != scanner.EOF {
 		p.tok = p.scanner.Scan()
-		for p.tok == scanner.Comment {
-			lines := strings.Split(p.scanner.TokenText(), "\n")
-			p.comments = append(p.comments, Comment{lines, p.scanner.Position})
-			p.tok = p.scanner.Scan()
+		if p.tok == scanner.Comment {
+			var comments []*Comment
+			for p.tok == scanner.Comment {
+				lines := strings.Split(p.scanner.TokenText(), "\n")
+				if len(comments) > 0 && p.scanner.Position.Line > comments[len(comments)-1].End().Line+1 {
+					p.comments = append(p.comments, &CommentGroup{Comments: comments})
+					comments = nil
+				}
+				comments = append(comments, &Comment{lines, p.scanner.Position})
+				p.tok = p.scanner.Scan()
+			}
+			p.comments = append(p.comments, &CommentGroup{Comments: comments})
 		}
 	}
 	return

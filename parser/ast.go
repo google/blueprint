@@ -316,6 +316,13 @@ func (x *Bool) Type() Type {
 	return BoolType
 }
 
+type CommentGroup struct {
+	Comments []*Comment
+}
+
+func (x *CommentGroup) Pos() scanner.Position { return x.Comments[0].Pos() }
+func (x *CommentGroup) End() scanner.Position { return x.Comments[len(x.Comments)-1].End() }
+
 type Comment struct {
 	Comment []string
 	Slash   scanner.Position
