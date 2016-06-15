@@ -107,7 +107,16 @@ func sortSubList(values []Expression, nextPos scanner.Position, file *File) {
 	sort.Sort(l)
 
 	copyValues := append([]Expression{}, values...)
-	copyComments := append([]Comment{}, file.Comments...)
+	copyComments := make([]*CommentGroup, len(file.Comments))
+	for i := range file.Comments {
+		cg := *file.Comments[i]
+		cg.Comments = make([]*Comment, len(cg.Comments))
+		for j := range file.Comments[i].Comments {
+			c := *file.Comments[i].Comments[j]
+			cg.Comments[j] = &c
+		}
+		copyComments[i] = &cg
+	}
 
 	curPos := values[0].Pos()
 	for i, e := range l {
@@ -115,8 +124,8 @@ func sortSubList(values []Expression, nextPos scanner.Position, file *File) {
 		values[i].(*String).LiteralPos = curPos
 		for j, c := range copyComments {
 			if c.Pos().Offset > e.pos.Offset && c.Pos().Offset < e.nextPos.Offset {
-				file.Comments[j].Slash.Line = curPos.Line
-				file.Comments[j].Slash.Offset += values[i].Pos().Offset - e.pos.Offset
+				file.Comments[j].Comments[0].Slash.Line = curPos.Line
+				file.Comments[j].Comments[0].Slash.Offset += values[i].Pos().Offset - e.pos.Offset
 			}
 		}
 
@@ -162,7 +171,7 @@ func (l elemList) Less(i, j int) bool {
 	return l[i].s < l[j].s
 }
 
-type commentsByOffset []Comment
+type commentsByOffset []*CommentGroup
 
 func (l commentsByOffset) Len() int {
 	return len(l)
