@@ -26,7 +26,7 @@ var noPos scanner.Position
 
 type printer struct {
 	defs     []Definition
-	comments []Comment
+	comments []*CommentGroup
 
 	curComment int
 
@@ -40,7 +40,7 @@ type printer struct {
 	indentList []int
 	wsBuf      []byte
 
-	skippedComments []Comment
+	skippedComments *CommentGroup
 }
 
 func newPrinter(file *File) *printer {
@@ -87,16 +87,16 @@ func (p *printer) printDef(def Definition) {
 }
 
 func (p *printer) printAssignment(assignment *Assignment) {
-	p.printToken(assignment.Name.Name, assignment.Name.Pos)
+	p.printToken(assignment.Name, assignment.NamePos)
 	p.requestSpace()
-	p.printToken(assignment.Assigner, assignment.Pos)
+	p.printToken(assignment.Assigner, assignment.EqualsPos)
 	p.requestSpace()
 	p.printExpression(assignment.OrigValue)
 	p.requestNewline()
 }
 
 func (p *printer) printModule(module *Module) {
-	p.printToken(module.Type.Name, module.Type.Pos)
+	p.printToken(module.Type, module.TypePos)
 	p.printMap(&module.Map)
 	p.requestDoubleNewline()
 }
@@ -175,8 +175,8 @@ func (p *printer) printOperator(operator *Operator) {
 }
 
 func (p *printer) printProperty(property *Property) {
-	p.printToken(property.Name.Name, property.Name.Pos)
-	p.printToken(":", property.Pos)
+	p.printToken(property.Name, property.NamePos)
+	p.printToken(":", property.ColonPos)
 	p.requestSpace()
 	p.printExpression(property.Value)
 }
@@ -206,12 +206,14 @@ func (p *printer) printToken(s string, pos scanner.Position) {
 
 // Print any in-line (single line /* */) comments that appear _before_ pos
 func (p *printer) printInLineCommentsBefore(pos scanner.Position) {
-	for p.curComment < len(p.comments) && p.comments[p.curComment].Slash.Offset < pos.Offset {
+	for p.curComment < len(p.comments) && p.comments[p.curComment].Pos().Offset < pos.Offset {
 		c := p.comments[p.curComment]
-		if c.Comment[0][0:2] == "//" || len(c.Comment) > 1 {
-			p.skippedComments = append(p.skippedComments, c)
+		if c.Comments[0].Comment[0][0:2] == "//" || len(c.Comments[0].Comment) > 1 {
+			if p.skippedComments != nil {
+				panic("multiple skipped comments")
+			}
+			p.skippedComments = c
 		} else {
-			p.flushSpace()
 			p.printComment(c)
 			p.requestSpace()
 		}
@@ -222,19 +224,13 @@ func (p *printer) printInLineCommentsBefore(pos scanner.Position) {
 // Print any comments, including end of line comments, that appear _before_ the line specified
 // by pos
 func (p *printer) printEndOfLineCommentsBefore(pos scanner.Position) {
-	for _, c := range p.skippedComments {
-		if !p.requestNewlinesForPos(c.Slash) {
-			p.requestSpace()
-		}
-		p.printComment(c)
+	if p.skippedComments != nil {
+		p.printComment(p.skippedComments)
 		p._requestNewline()
+		p.skippedComments = nil
 	}
-	p.skippedComments = []Comment{}
-	for p.curComment < len(p.comments) && p.comments[p.curComment].Slash.Line < pos.Line {
+	for p.curComment < len(p.comments) && p.comments[p.curComment].Pos().Line < pos.Line {
 		c := p.comments[p.curComment]
-		if !p.requestNewlinesForPos(c.Slash) {
-			p.requestSpace()
-		}
 		p.printComment(c)
 		p._requestNewline()
 		p.curComment++
@@ -300,39 +296,38 @@ func (p *printer) flushSpace() {
 }
 
 // Print a single comment, which may be a multi-line comment
-func (p *printer) printComment(comment Comment) {
-	pos := comment.Slash
-	for i, line := range comment.Comment {
-		line = strings.TrimRightFunc(line, unicode.IsSpace)
-		p.flushSpace()
-		if i != 0 {
-			lineIndent := strings.IndexFunc(line, func(r rune) bool { return !unicode.IsSpace(r) })
-			lineIndent = max(lineIndent, p.curIndent())
-			p.pad(lineIndent - p.curIndent())
-			pos.Line++
+func (p *printer) printComment(cg *CommentGroup) {
+	for _, comment := range cg.Comments {
+		if !p.requestNewlinesForPos(comment.Pos()) {
+			p.requestSpace()
 		}
-		p.output = append(p.output, strings.TrimSpace(line)...)
-		if i < len(comment.Comment)-1 {
-			p._requestNewline()
+		for i, line := range comment.Comment {
+			line = strings.TrimRightFunc(line, unicode.IsSpace)
+			p.flushSpace()
+			if i != 0 {
+				lineIndent := strings.IndexFunc(line, func(r rune) bool { return !unicode.IsSpace(r) })
+				lineIndent = max(lineIndent, p.curIndent())
+				p.pad(lineIndent - p.curIndent())
+			}
+			p.output = append(p.output, strings.TrimSpace(line)...)
+			if i < len(comment.Comment)-1 {
+				p._requestNewline()
+			}
 		}
+		p.pos = comment.End()
 	}
-	p.pos = pos
 }
 
 // Print any comments that occur after the last token, and a trailing newline
 func (p *printer) flush() {
-	for _, c := range p.skippedComments {
-		if !p.requestNewlinesForPos(c.Slash) {
+	if p.skippedComments != nil {
+		if !p.requestNewlinesForPos(p.skippedComments.Pos()) {
 			p.requestSpace()
 		}
-		p.printComment(c)
+		p.printComment(p.skippedComments)
 	}
 	for p.curComment < len(p.comments) {
-		c := p.comments[p.curComment]
-		if !p.requestNewlinesForPos(c.Slash) {
-			p.requestSpace()
-		}
-		p.printComment(c)
+		p.printComment(p.comments[p.curComment])
 		p.curComment++
 	}
 	p.output = append(p.output, '\n')

@@ -205,8 +205,8 @@ test /* test */ {
     deps: ["libabc"],
     incs: [],
 } //test
-
 //test
+
 test2 {
 }
 
@@ -253,7 +253,7 @@ test {
 }
 
 // This
-/* Is */
+/* Is *//* A */ // A
 // A
 
 // Multiline
@@ -279,7 +279,7 @@ test {
 }
 
 // This
-/* Is */
+/* Is */ /* A */ // A
 // A
 
 // Multiline

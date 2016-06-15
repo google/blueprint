@@ -124,9 +124,9 @@ func findModules(file *parser.File) (modified bool, errs []error) {
 	for _, def := range file.Defs {
 		if module, ok := def.(*parser.Module); ok {
 			for _, prop := range module.Properties {
-				if prop.Name.Name == "name" && prop.Value.Type() == parser.StringType {
+				if prop.Name == "name" && prop.Value.Type() == parser.StringType {
 					if targetedModule(prop.Value.Eval().(*parser.String).Value) {
-						m, newErrs := processModule(module, prop.Name.Name, file)
+						m, newErrs := processModule(module, prop.Name, file)
 						errs = append(errs, newErrs...)
 						modified = modified || m
 					}
@@ -142,7 +142,7 @@ func processModule(module *parser.Module, moduleName string,
 	file *parser.File) (modified bool, errs []error) {
 
 	for _, prop := range module.Properties {
-		if prop.Name.Name == *parameter {
+		if prop.Name == *parameter {
 			modified, errs = processParameter(prop.Value, *parameter, moduleName, file)
 			return
 		}

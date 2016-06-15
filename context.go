@@ -875,11 +875,11 @@ func getLocalStringListFromScope(scope *parser.Scope, v string) ([]string, scann
 				ret = append(ret, s.Value)
 			}
 
-			return ret, assignment.Pos, nil
+			return ret, assignment.EqualsPos, nil
 		case *parser.Bool, *parser.String:
 			return nil, scanner.Position{}, &Error{
 				Err: fmt.Errorf("%q must be a list of strings", v),
-				Pos: assignment.Pos,
+				Pos: assignment.EqualsPos,
 			}
 		default:
 			panic(fmt.Errorf("unknown value type: %d", assignment.Value.Type))
@@ -893,11 +893,11 @@ func getStringFromScope(scope *parser.Scope, v string) (string, scanner.Position
 	} else {
 		switch value := assignment.Value.Eval().(type) {
 		case *parser.String:
-			return value.Value, assignment.Pos, nil
+			return value.Value, assignment.EqualsPos, nil
 		case *parser.Bool, *parser.List:
 			return "", scanner.Position{}, &Error{
 				Err: fmt.Errorf("%q must be a string", v),
-				Pos: assignment.Pos,
+				Pos: assignment.EqualsPos,
 			}
 		default:
 			panic(fmt.Errorf("unknown value type: %d", assignment.Value.Type))
@@ -1040,8 +1040,7 @@ func (c *Context) prettyPrintVariant(variant variationMap) string {
 func (c *Context) processModuleDef(moduleDef *parser.Module,
 	relBlueprintsFile string) (*moduleInfo, []error) {
 
-	typeName := moduleDef.Type.Name
-	factory, ok := c.moduleFactories[typeName]
+	factory, ok := c.moduleFactories[moduleDef.Type]
 	if !ok {
 		if c.ignoreUnknownModuleTypes {
 			return nil, nil
@@ -1049,8 +1048,8 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 
 		return nil, []error{
 			&Error{
-				Err: fmt.Errorf("unrecognized module type %q", typeName),
-				Pos: moduleDef.Type.Pos,
+				Err: fmt.Errorf("unrecognized module type %q", moduleDef.Type),
+				Pos: moduleDef.TypePos,
 			},
 		}
 	}
@@ -1059,7 +1058,7 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 
 	module := &moduleInfo{
 		logicModule:       logicModule,
-		typeName:          typeName,
+		typeName:          moduleDef.Type,
 		relBlueprintsFile: relBlueprintsFile,
 	}
 
@@ -1074,10 +1073,10 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 		return nil, errs
 	}
 
-	module.pos = moduleDef.Type.Pos
+	module.pos = moduleDef.TypePos
 	module.propertyPos = make(map[string]scanner.Position)
 	for name, propertyDef := range propertyMap {
-		module.propertyPos[name] = propertyDef.Pos
+		module.propertyPos[name] = propertyDef.ColonPos
 	}
 
 	return module, nil
