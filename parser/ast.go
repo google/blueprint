@@ -20,8 +20,16 @@ import (
 	"text/scanner"
 )
 
+type Node interface {
+	// Pos returns the position of the first token in the Expression
+	Pos() scanner.Position
+	// End returns the position of the beginning of the last token in the Expression
+	End() scanner.Position
+}
+
 // Definition is an Assignment or a Module at the top level of a Blueprints file
 type Definition interface {
+	Node
 	String() string
 	definitionTag()
 }
@@ -29,23 +37,28 @@ type Definition interface {
 // An Assignment is a variable assignment at the top level of a Blueprints file, scoped to the
 // file and and subdirs.
 type Assignment struct {
-	Name       Ident
+	Name       string
+	NamePos    scanner.Position
 	Value      Expression
 	OrigValue  Expression
-	Pos        scanner.Position
+	EqualsPos  scanner.Position
 	Assigner   string
 	Referenced bool
 }
 
 func (a *Assignment) String() string {
-	return fmt.Sprintf("%s@%s %s %s (%s) %t", a.Name, a.Pos, a.Assigner, a.Value, a.OrigValue, a.Referenced)
+	return fmt.Sprintf("%s@%s %s %s (%s) %t", a.Name, a.EqualsPos, a.Assigner, a.Value, a.OrigValue, a.Referenced)
 }
+
+func (a *Assignment) Pos() scanner.Position { return a.NamePos }
+func (a *Assignment) End() scanner.Position { return a.Value.End() }
 
 func (a *Assignment) definitionTag() {}
 
 // A Module is a module definition at the top level of a Blueprints file
 type Module struct {
-	Type Ident
+	Type    string
+	TypePos scanner.Position
 	Map
 }
 
@@ -70,11 +83,15 @@ func (m *Module) String() string {
 
 func (m *Module) definitionTag() {}
 
+func (m *Module) Pos() scanner.Position { return m.TypePos }
+func (m *Module) End() scanner.Position { return m.Map.End() }
+
 // A Property is a name: value pair within a Map, which may be a top level Module.
 type Property struct {
-	Name  Ident
-	Value Expression
-	Pos   scanner.Position
+	Name     string
+	NamePos  scanner.Position
+	ColonPos scanner.Position
+	Value    Expression
 }
 
 func (p *Property) Copy() *Property {
@@ -84,33 +101,22 @@ func (p *Property) Copy() *Property {
 }
 
 func (p *Property) String() string {
-	return fmt.Sprintf("%s@%s: %s", p.Name, p.Pos, p.Value)
+	return fmt.Sprintf("%s@%s: %s", p.Name, p.ColonPos, p.Value)
 }
 
-// An Ident is a name identifier, the Type of a Module, the Name of a Property, or the Name of a
-// Variable.
-type Ident struct {
-	Name string
-	Pos  scanner.Position
-}
-
-func (i Ident) String() string {
-	return fmt.Sprintf("%s@%s", i.Name, i.Pos)
-}
+func (p *Property) Pos() scanner.Position { return p.NamePos }
+func (p *Property) End() scanner.Position { return p.Value.End() }
 
 // An Expression is a Value in a Property or Assignment.  It can be a literal (String or Bool), a
 // Map, a List, an Operator that combines two expressions of the same type, or a Variable that
 // references and Assignment.
 type Expression interface {
+	Node
 	// Copy returns a copy of the Expression that will not affect the original if mutated
 	Copy() Expression
 	String() string
 	// Type returns the underlying Type enum of the Expression if it were to be evalutated
 	Type() Type
-	// Pos returns the position of the first token in the Expression
-	Pos() scanner.Position
-	// End returns the position of the beginning of the last token in the Expression
-	End() scanner.Position
 	// Eval returns an expression that is fully evaluated to a simple type (List, Map, String, or
 	// Bool).  It will return the same object for every call to Eval().
 	Eval() Expression
@@ -172,8 +178,8 @@ func (x *Operator) String() string {
 
 type Variable struct {
 	Name    string
-	Value   Expression
 	NamePos scanner.Position
+	Value   Expression
 }
 
 func (x *Variable) Pos() scanner.Position { return x.NamePos }
@@ -309,6 +315,13 @@ func (x *Bool) String() string {
 func (x *Bool) Type() Type {
 	return BoolType
 }
+
+type CommentGroup struct {
+	Comments []*Comment
+}
+
+func (x *CommentGroup) Pos() scanner.Position { return x.Comments[0].Pos() }
+func (x *CommentGroup) End() scanner.Position { return x.Comments[len(x.Comments)-1].End() }
 
 type Comment struct {
 	Comment []string
