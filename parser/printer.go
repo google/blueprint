@@ -40,7 +40,7 @@ type printer struct {
 	indentList []int
 	wsBuf      []byte
 
-	skippedComments *CommentGroup
+	skippedComments []*CommentGroup
 }
 
 func newPrinter(file *File) *printer {
@@ -209,10 +209,7 @@ func (p *printer) printInLineCommentsBefore(pos scanner.Position) {
 	for p.curComment < len(p.comments) && p.comments[p.curComment].Pos().Offset < pos.Offset {
 		c := p.comments[p.curComment]
 		if c.Comments[0].Comment[0][0:2] == "//" || len(c.Comments[0].Comment) > 1 {
-			if p.skippedComments != nil {
-				panic("multiple skipped comments")
-			}
-			p.skippedComments = c
+			p.skippedComments = append(p.skippedComments, c)
 		} else {
 			p.printComment(c)
 			p.requestSpace()
@@ -224,8 +221,10 @@ func (p *printer) printInLineCommentsBefore(pos scanner.Position) {
 // Print any comments, including end of line comments, that appear _before_ the line specified
 // by pos
 func (p *printer) printEndOfLineCommentsBefore(pos scanner.Position) {
-	if p.skippedComments != nil {
-		p.printComment(p.skippedComments)
+	if len(p.skippedComments) > 0 {
+		for _, c := range p.skippedComments {
+			p.printComment(c)
+		}
 		p._requestNewline()
 		p.skippedComments = nil
 	}
@@ -320,11 +319,11 @@ func (p *printer) printComment(cg *CommentGroup) {
 
 // Print any comments that occur after the last token, and a trailing newline
 func (p *printer) flush() {
-	if p.skippedComments != nil {
-		if !p.requestNewlinesForPos(p.skippedComments.Pos()) {
+	for _, c := range p.skippedComments {
+		if !p.requestNewlinesForPos(c.Pos()) {
 			p.requestSpace()
 		}
-		p.printComment(p.skippedComments)
+		p.printComment(c)
 	}
 	for p.curComment < len(p.comments) {
 		p.printComment(p.comments[p.curComment])
