@@ -122,7 +122,7 @@ func (p *printer) printExpression(value Expression) {
 	case *Map:
 		p.printMap(v)
 	default:
-		panic(fmt.Errorf("bad property type: %d", value.Type))
+		panic(fmt.Errorf("bad property type: %s", value.Type()))
 	}
 }
 
