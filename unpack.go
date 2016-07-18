@@ -279,7 +279,7 @@ func unpackBool(boolValue reflect.Value, property *parser.Property) []error {
 	if !ok {
 		return []error{
 			fmt.Errorf("%s: can't assign %s value to bool property %q",
-				property.Value.Pos, property.Value.Type, property.Name),
+				property.Value.Pos(), property.Value.Type(), property.Name),
 		}
 	}
 	boolValue.SetBool(b.Value)
@@ -293,7 +293,7 @@ func unpackString(stringValue reflect.Value,
 	if !ok {
 		return []error{
 			fmt.Errorf("%s: can't assign %s value to string property %q",
-				property.Value.Pos, property.Value.Type, property.Name),
+				property.Value.Pos(), property.Value.Type(), property.Name),
 		}
 	}
 	stringValue.SetString(s.Value)
@@ -306,7 +306,7 @@ func unpackSlice(sliceValue reflect.Value, property *parser.Property) []error {
 	if !ok {
 		return []error{
 			fmt.Errorf("%s: can't assign %s value to list property %q",
-				property.Value.Pos, property.Value.Type, property.Name),
+				property.Value.Pos(), property.Value.Type(), property.Name),
 		}
 	}
 
@@ -332,7 +332,7 @@ func unpackStruct(namePrefix string, structValue reflect.Value,
 	if !ok {
 		return []error{
 			fmt.Errorf("%s: can't assign %s value to map property %q",
-				property.Value.Pos, property.Value.Type, property.Name),
+				property.Value.Pos(), property.Value.Type(), property.Name),
 		}
 	}
 
