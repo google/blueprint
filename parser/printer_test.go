@@ -296,6 +296,22 @@ test {}
 // Comment
 `,
 	},
+	{
+		input: `
+test // test
+
+// test
+{
+}
+`,
+		output: `
+test { // test
+
+// test
+
+}
+`,
+	},
 }
 
 func TestPrinter(t *testing.T) {
