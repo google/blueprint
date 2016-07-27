@@ -414,7 +414,7 @@ type TopDownMutatorContext interface {
 }
 
 type BottomUpMutatorContext interface {
-	baseMutatorContext
+	TopDownMutatorContext
 
 	AddDependency(module Module, tag DependencyTag, name ...string)
 	AddReverseDependency(module Module, tag DependencyTag, name string)
