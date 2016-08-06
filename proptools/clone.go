@@ -43,6 +43,7 @@ func CopyProperties(dstValue, srcValue reflect.Value) {
 		srcFieldValue := srcValue.Field(i)
 		dstFieldValue := dstValue.Field(i)
 		dstFieldInterfaceValue := reflect.Value{}
+		origDstFieldValue := dstFieldValue
 
 		switch srcFieldValue.Kind() {
 		case reflect.Bool, reflect.String, reflect.Int, reflect.Uint:
@@ -93,7 +94,7 @@ func CopyProperties(dstValue, srcValue reflect.Value) {
 			fallthrough
 		case reflect.Ptr:
 			if srcFieldValue.IsNil() {
-				dstFieldValue.Set(srcFieldValue)
+				origDstFieldValue.Set(srcFieldValue)
 				break
 			}
 
@@ -110,13 +111,13 @@ func CopyProperties(dstValue, srcValue reflect.Value) {
 					if dstFieldInterfaceValue.IsValid() {
 						dstFieldInterfaceValue.Set(newValue)
 					} else {
-						dstFieldValue.Set(newValue)
+						origDstFieldValue.Set(newValue)
 					}
 				}
 			case reflect.Bool, reflect.String:
 				newValue := reflect.New(srcFieldValue.Type())
 				newValue.Elem().Set(srcFieldValue)
-				dstFieldValue.Set(newValue)
+				origDstFieldValue.Set(newValue)
 			default:
 				panic(fmt.Errorf("can't clone field %q: points to a %s",
 					field.Name, srcFieldValue.Kind()))
