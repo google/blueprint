@@ -14,7 +14,10 @@
 
 package blueprint
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 type visitModule struct {
 	properties struct {
@@ -49,6 +52,9 @@ func visitDepsMutator(ctx BottomUpMutatorContext) {
 func visitMutator(ctx TopDownMutatorContext) {
 	if m, ok := ctx.Module().(*visitModule); ok {
 		ctx.VisitDepsDepthFirst(func(dep Module) {
+			if ctx.OtherModuleDependencyTag(dep) != visitTagDep {
+				panic(fmt.Errorf("unexpected dependency tag on %q", ctx.OtherModuleName(dep)))
+			}
 			m.properties.VisitDepsDepthFirst = m.properties.VisitDepsDepthFirst + ctx.OtherModuleName(dep)
 		})
 		ctx.VisitDepsDepthFirstIf(func(dep Module) bool {

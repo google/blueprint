@@ -166,17 +166,26 @@ func TestWalkDeps(t *testing.T) {
 		t.FailNow()
 	}
 
-	var output string
+	var outputDown string
+	var outputUp string
 	topModule := ctx.moduleGroups["A"].modules[0]
 	ctx.walkDeps(topModule,
-		func(module, parent Module) bool {
-			if module.(Walker).Walk() {
-				output += ctx.ModuleName(module)
+		func(dep depInfo, parent *moduleInfo) bool {
+			if dep.module.logicModule.(Walker).Walk() {
+				outputDown += ctx.ModuleName(dep.module.logicModule)
 				return true
 			}
 			return false
+		},
+		func(dep depInfo, parent *moduleInfo) {
+			if dep.module.logicModule.(Walker).Walk() {
+				outputUp += ctx.ModuleName(dep.module.logicModule)
+			}
 		})
-	if output != "CFG" {
-		t.Fatalf("unexpected walkDeps behaviour: %s\nshould be: CFG", output)
+	if outputDown != "CFG" {
+		t.Fatalf("unexpected walkDeps behaviour: %s\ndown should be: CFG", outputDown)
+	}
+	if outputUp != "GFC" {
+		t.Fatalf("unexpected walkDeps behaviour: %s\nup should be: GFC", outputUp)
 	}
 }
