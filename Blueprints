@@ -26,6 +26,7 @@ bootstrap_go_package(
         "ninja_writer_test.go",
         "splice_modules_test.go",
         "unpack_test.go",
+	"visit_test.go",
     ],
 )
 
