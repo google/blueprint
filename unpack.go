@@ -139,6 +139,8 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			panic(fmt.Errorf("field %s is not settable", propertyName))
 		}
 
+		origFieldValue := fieldValue
+
 		// To make testing easier we validate the struct field's type regardless
 		// of whether or not the property was specified in the parsed string.
 		switch kind := fieldValue.Kind(); kind {
@@ -163,7 +165,8 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			switch ptrKind := fieldValue.Type().Elem().Kind(); ptrKind {
 			case reflect.Struct:
 				if fieldValue.IsNil() {
-					panic(fmt.Errorf("field %s contains a nil pointer", propertyName))
+					fieldValue = reflect.New(fieldValue.Type().Elem())
+					origFieldValue.Set(fieldValue)
 				}
 				fieldValue = fieldValue.Elem()
 			case reflect.Bool, reflect.String:

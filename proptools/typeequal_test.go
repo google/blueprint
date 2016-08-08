@@ -88,7 +88,7 @@ var typeEqualTestCases = []struct {
 		// Mismatching nilitude embedded  pointer to struct
 		in1: &struct{ S *struct{ S1 string } }{S: &struct{ S1 string }{}},
 		in2: &struct{ S *struct{ S1 string } }{},
-		out: false,
+		out: true,
 	},
 	{
 		// Matching embedded interface to pointer to struct
@@ -116,13 +116,13 @@ var typeEqualTestCases = []struct {
 	},
 	{
 		// Matching pointer to non-struct
-		in1: struct{ S1 *string }{ S1: StringPtr("test1") },
-		in2: struct{ S1 *string }{ S1: StringPtr("test2") },
+		in1: struct{ S1 *string }{S1: StringPtr("test1")},
+		in2: struct{ S1 *string }{S1: StringPtr("test2")},
 		out: true,
 	},
 	{
 		// Matching nilitude pointer to non-struct
-		in1: struct{ S1 *string }{ S1: StringPtr("test1") },
+		in1: struct{ S1 *string }{S1: StringPtr("test1")},
 		in2: struct{ S1 *string }{},
 		out: true,
 	},

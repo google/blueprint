@@ -46,12 +46,14 @@ func typeEqual(v1, v2 reflect.Value) bool {
 		if v1.Type().Elem().Kind() != reflect.Struct {
 			return true
 		}
-		if v1.IsNil() != v2.IsNil() {
-			return false
-		}
-		if v1.IsNil() {
+		if v1.IsNil() && !v2.IsNil() {
+			return concreteType(v2)
+		} else if v2.IsNil() && !v1.IsNil() {
+			return concreteType(v1)
+		} else if v1.IsNil() && v2.IsNil() {
 			return true
 		}
+
 		v1 = v1.Elem()
 		v2 = v2.Elem()
 	}
@@ -67,6 +69,37 @@ func typeEqual(v1, v2 reflect.Value) bool {
 		switch kind := v1.Kind(); kind {
 		case reflect.Interface, reflect.Ptr, reflect.Struct:
 			if !typeEqual(v1, v2) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+// Returns true if v recursively contains no interfaces
+func concreteType(v reflect.Value) bool {
+	if v.Kind() == reflect.Interface {
+		return false
+	}
+
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return true
+		}
+		v = v.Elem()
+	}
+
+	if v.Kind() != reflect.Struct {
+		return true
+	}
+
+	for i := 0; i < v.NumField(); i++ {
+		v := v.Field(i)
+
+		switch kind := v.Kind(); kind {
+		case reflect.Interface, reflect.Ptr, reflect.Struct:
+			if !concreteType(v) {
 				return false
 			}
 		}
