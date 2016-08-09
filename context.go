@@ -1788,11 +1788,24 @@ func (c *Context) runBottomUpMutator(config interface{},
 // a mutator sets a non-property member variable on a module, which works until a later mutator
 // creates variants of that module.
 func (c *Context) cloneModules() {
+	type update struct {
+		orig  Module
+		clone *moduleInfo
+	}
+	ch := make(chan update, 100)
+
 	for _, m := range c.modulesSorted {
-		origLogicModule := m.logicModule
-		m.logicModule, m.moduleProperties = c.cloneLogicModule(m)
-		delete(c.moduleInfo, origLogicModule)
-		c.moduleInfo[m.logicModule] = m
+		go func(m *moduleInfo) {
+			origLogicModule := m.logicModule
+			m.logicModule, m.moduleProperties = c.cloneLogicModule(m)
+			ch <- update{origLogicModule, m}
+		}(m)
+	}
+
+	for i := 0; i < len(c.modulesSorted); i++ {
+		update := <-ch
+		delete(c.moduleInfo, update.orig)
+		c.moduleInfo[update.clone.logicModule] = update.clone
 	}
 }
 
