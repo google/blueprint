@@ -496,12 +496,69 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				},
 			},
 		},
+		{
+			// Nil pointer to a struct
+			in1: &struct {
+				Nested *struct {
+					S string
+				}
+			}{},
+			in2: &struct {
+				Nested *struct {
+					S string
+				}
+			}{
+				Nested: &struct {
+					S string
+				}{
+					S: "string",
+				},
+			},
+			out: &struct {
+				Nested *struct {
+					S string
+				}
+			}{
+				Nested: &struct {
+					S string
+				}{
+					S: "string",
+				},
+			},
+		},
+		{
+			// Nil pointer to a struct in an interface
+			in1: &struct {
+				Nested interface{}
+			}{
+				Nested: (*struct{ S string })(nil),
+			},
+			in2: &struct {
+				Nested interface{}
+			}{
+				Nested: &struct {
+					S string
+				}{
+					S: "string",
+				},
+			},
+			out: &struct {
+				Nested interface{}
+			}{
+				Nested: &struct {
+					S string
+				}{
+					S: "string",
+				},
+			},
+		},
 
 		// Errors
 
 		{
 			// Non-pointer in1
 			in1: struct{}{},
+			in2: &struct{}{},
 			err: errors.New("expected pointer to struct, got struct {}"),
 			out: struct{}{},
 		},
@@ -515,6 +572,7 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 		{
 			// Non-struct in1
 			in1: &[]string{"bad"},
+			in2: &struct{}{},
 			err: errors.New("expected pointer to struct, got *[]string"),
 			out: &[]string{"bad"},
 		},
@@ -605,23 +663,6 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				},
 			},
 			err: extendPropertyErrorf("s", "interface not a pointer"),
-		},
-		{
-			// Pointer nilitude mismatch
-			in1: &struct{ S *struct{ S string } }{
-				S: &struct{ S string }{
-					S: "string1",
-				},
-			},
-			in2: &struct{ S *struct{ S string } }{
-				S: nil,
-			},
-			out: &struct{ S *struct{ S string } }{
-				S: &struct{ S string }{
-					S: "string1",
-				},
-			},
-			err: extendPropertyErrorf("s", "nilitude mismatch"),
 		},
 		{
 			// Pointer not a struct
@@ -912,6 +953,7 @@ func appendMatchingPropertiesTestCases() []appendMatchingPropertiesTestCase {
 		{
 			// Non-pointer in1
 			in1: []interface{}{struct{}{}},
+			in2: &struct{}{},
 			err: errors.New("expected pointer to struct, got struct {}"),
 			out: []interface{}{struct{}{}},
 		},
@@ -925,6 +967,7 @@ func appendMatchingPropertiesTestCases() []appendMatchingPropertiesTestCase {
 		{
 			// Non-struct in1
 			in1: []interface{}{&[]string{"bad"}},
+			in2: &struct{}{},
 			err: errors.New("expected pointer to struct, got *[]string"),
 			out: []interface{}{&[]string{"bad"}},
 		},
