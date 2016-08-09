@@ -139,10 +139,15 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			panic(fmt.Errorf("field %s is not settable", propertyName))
 		}
 
+		// Get the property value if it was specified.
+		packedProperty, propertyIsSet := propertyMap[propertyName]
+
 		origFieldValue := fieldValue
 
 		// To make testing easier we validate the struct field's type regardless
 		// of whether or not the property was specified in the parsed string.
+		// TODO(ccross): we don't validate types inside nil struct pointers
+		// Move type validation to a function that runs on each factory once
 		switch kind := fieldValue.Kind(); kind {
 		case reflect.Bool, reflect.String, reflect.Struct:
 			// Do nothing
@@ -164,7 +169,10 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 		case reflect.Ptr:
 			switch ptrKind := fieldValue.Type().Elem().Kind(); ptrKind {
 			case reflect.Struct:
-				if fieldValue.IsNil() {
+				if fieldValue.IsNil() && (propertyIsSet || field.Anonymous) {
+					// Instantiate nil struct pointers
+					// Set into origFieldValue in case it was an interface, in which case
+					// fieldValue points to the unsettable pointer inside the interface
 					fieldValue = reflect.New(fieldValue.Type().Elem())
 					origFieldValue.Set(fieldValue)
 				}
@@ -190,9 +198,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			continue
 		}
 
-		// Get the property value if it was specified.
-		packedProperty, ok := propertyMap[propertyName]
-		if !ok {
+		if !propertyIsSet {
 			// This property wasn't specified.
 			continue
 		}
