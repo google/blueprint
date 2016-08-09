@@ -155,11 +155,12 @@ type ModuleContext interface {
 var _ BaseModuleContext = (*baseModuleContext)(nil)
 
 type baseModuleContext struct {
-	context  *Context
-	config   interface{}
-	module   *moduleInfo
-	errs     []error
-	visiting depInfo
+	context        *Context
+	config         interface{}
+	module         *moduleInfo
+	errs           []error
+	visitingParent *moduleInfo
+	visitingDep    depInfo
 }
 
 func (d *baseModuleContext) moduleInfo() *moduleInfo {
@@ -255,11 +256,11 @@ func (m *baseModuleContext) OtherModuleErrorf(logicModule Module, format string,
 
 func (m *baseModuleContext) OtherModuleDependencyTag(logicModule Module) DependencyTag {
 	// fast path for calling OtherModuleDependencyTag from inside VisitDirectDeps
-	if logicModule == m.visiting.module.logicModule {
-		return m.visiting.tag
+	if logicModule == m.visitingDep.module.logicModule {
+		return m.visitingDep.tag
 	}
 
-	for _, dep := range m.module.directDeps {
+	for _, dep := range m.visitingParent.directDeps {
 		if dep.module.logicModule == logicModule {
 			return dep.tag
 		}
@@ -272,46 +273,91 @@ func (m *baseModuleContext) VisitDirectDeps(visit func(Module)) {
 	defer func() {
 		if r := recover(); r != nil {
 			panic(newPanicErrorf(r, "VisitDirectDeps(%s, %s) for dependency %s",
-				m.module, funcName(visit), m.visiting.module))
+				m.module, funcName(visit), m.visitingDep.module))
 		}
 	}()
 
+	m.visitingParent = m.module
+
 	for _, dep := range m.module.directDeps {
-		m.visiting = dep
+		m.visitingDep = dep
 		visit(dep.module.logicModule)
 	}
-	m.visiting = depInfo{}
+
+	m.visitingParent = nil
+	m.visitingDep = depInfo{}
 }
 
 func (m *baseModuleContext) VisitDirectDepsIf(pred func(Module) bool, visit func(Module)) {
 	defer func() {
 		if r := recover(); r != nil {
 			panic(newPanicErrorf(r, "VisitDirectDepsIf(%s, %s, %s) for dependency %s",
-				m.module, funcName(pred), funcName(visit), m.visiting.module))
+				m.module, funcName(pred), funcName(visit), m.visitingDep.module))
 		}
 	}()
 
+	m.visitingParent = m.module
+
 	for _, dep := range m.module.directDeps {
-		m.visiting = dep
+		m.visitingDep = dep
 		if pred(dep.module.logicModule) {
 			visit(dep.module.logicModule)
 		}
 	}
-	m.visiting = depInfo{}
+
+	m.visitingParent = nil
+	m.visitingDep = depInfo{}
 }
 
 func (m *baseModuleContext) VisitDepsDepthFirst(visit func(Module)) {
-	m.context.visitDepsDepthFirst(m.module, visit)
+	defer func() {
+		if r := recover(); r != nil {
+			panic(newPanicErrorf(r, "VisitDepsDepthFirst(%s, %s) for dependency %s",
+				m.module, funcName(visit), m.visitingDep.module))
+		}
+	}()
+
+	m.context.walkDeps(m.module, nil, func(dep depInfo, parent *moduleInfo) {
+		m.visitingParent = parent
+		m.visitingDep = dep
+		visit(dep.module.logicModule)
+	})
+
+	m.visitingParent = nil
+	m.visitingDep = depInfo{}
 }
 
 func (m *baseModuleContext) VisitDepsDepthFirstIf(pred func(Module) bool,
 	visit func(Module)) {
 
-	m.context.visitDepsDepthFirstIf(m.module, pred, visit)
+	defer func() {
+		if r := recover(); r != nil {
+			panic(newPanicErrorf(r, "VisitDepsDepthFirstIf(%s, %s, %s) for dependency %s",
+				m.module, funcName(pred), funcName(visit), m.visitingDep.module))
+		}
+	}()
+
+	m.context.walkDeps(m.module, nil, func(dep depInfo, parent *moduleInfo) {
+		if pred(dep.module.logicModule) {
+			m.visitingParent = parent
+			m.visitingDep = dep
+			visit(dep.module.logicModule)
+		}
+	})
+
+	m.visitingParent = nil
+	m.visitingDep = depInfo{}
 }
 
 func (m *baseModuleContext) WalkDeps(visit func(Module, Module) bool) {
-	m.context.walkDeps(m.module, visit)
+	m.context.walkDeps(m.module, func(dep depInfo, parent *moduleInfo) bool {
+		m.visitingParent = parent
+		m.visitingDep = dep
+		return visit(dep.module.logicModule, parent.logicModule)
+	}, nil)
+
+	m.visitingParent = nil
+	m.visitingDep = depInfo{}
 }
 
 func (m *moduleContext) ModuleSubDir() string {
