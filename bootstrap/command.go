@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"runtime/trace"
 
 	"github.com/google/blueprint"
 	"github.com/google/blueprint/deptools"
@@ -36,6 +37,7 @@ var (
 	manifestFile     string
 	docFile          string
 	cpuprofile       string
+	traceFile        string
 	runGoTests       bool
 
 	BuildDir string
@@ -50,6 +52,7 @@ func init() {
 	flag.StringVar(&manifestFile, "m", "", "the bootstrap manifest file")
 	flag.StringVar(&docFile, "docs", "", "build documentation file to output")
 	flag.StringVar(&cpuprofile, "cpuprofile", "", "write cpu profile to file")
+	flag.StringVar(&traceFile, "trace", "", "write trace to file")
 	flag.BoolVar(&runGoTests, "t", false, "build and run go tests during bootstrap")
 }
 
@@ -68,6 +71,16 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		pprof.StartCPUProfile(f)
 		defer f.Close()
 		defer pprof.StopCPUProfile()
+	}
+
+	if traceFile != "" {
+		f, err := os.Create(traceFile)
+		if err != nil {
+			fatalf("error opening trace: %s", err)
+		}
+		trace.Start(f)
+		defer f.Close()
+		defer trace.Stop()
 	}
 
 	if flag.NArg() != 1 {

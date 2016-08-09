@@ -152,15 +152,18 @@ func setDefaults(properties []Property, defaults reflect.Value) {
 			continue
 		}
 
-		if f.Type().Kind() == reflect.Interface {
+		if f.Kind() == reflect.Interface {
 			f = f.Elem()
 		}
 
-		if f.Type().Kind() == reflect.Ptr {
+		if f.Kind() == reflect.Ptr {
+			if f.IsNil() {
+				continue
+			}
 			f = f.Elem()
 		}
 
-		if f.Type().Kind() == reflect.Struct {
+		if f.Kind() == reflect.Struct {
 			setDefaults(prop.Properties, f)
 		} else {
 			prop.Default = fmt.Sprintf("%v", f.Interface())
