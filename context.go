@@ -70,7 +70,7 @@ type Context struct {
 	modulesSorted       []*moduleInfo
 	singletonInfo       []*singletonInfo
 	mutatorInfo         []*mutatorInfo
-	earlyMutatorInfo    []*earlyMutatorInfo
+	earlyMutatorInfo    []*mutatorInfo
 	variantMutatorNames []string
 	moduleNinjaNames    map[string]*moduleGroup
 
@@ -224,12 +224,6 @@ type mutatorInfo struct {
 	topDownMutator  TopDownMutator
 	bottomUpMutator BottomUpMutator
 	name            string
-}
-
-type earlyMutatorInfo struct {
-	// set during RegisterEarlyMutator
-	mutator EarlyMutator
-	name    string
 }
 
 func (e *Error) Error() string {
@@ -436,9 +430,11 @@ func (c *Context) RegisterEarlyMutator(name string, mutator EarlyMutator) {
 		}
 	}
 
-	c.earlyMutatorInfo = append(c.earlyMutatorInfo, &earlyMutatorInfo{
-		mutator: mutator,
-		name:    name,
+	c.earlyMutatorInfo = append(c.earlyMutatorInfo, &mutatorInfo{
+		bottomUpMutator: func(mctx BottomUpMutatorContext) {
+			mutator(mctx)
+		},
+		name: name,
 	})
 
 	c.variantMutatorNames = append(c.variantMutatorNames, name)
@@ -1139,7 +1135,12 @@ func (c *Context) addModule(module *moduleInfo) []error {
 // the modules depended upon are defined and that no circular dependencies
 // exist.
 func (c *Context) ResolveDependencies(config interface{}) []error {
-	errs := c.runMutators(config)
+	errs := c.updateDependencies()
+	if len(errs) > 0 {
+		return errs
+	}
+
+	errs = c.runMutators(config)
 	if len(errs) > 0 {
 		return errs
 	}
@@ -1571,65 +1572,13 @@ func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs [
 	return deps, nil
 }
 
-func (c *Context) runEarlyMutators(config interface{}) (errs []error) {
-	for _, mutator := range c.earlyMutatorInfo {
-		for _, group := range c.moduleGroups {
-			newModules := make([]*moduleInfo, 0, len(group.modules))
-
-			for _, module := range group.modules {
-				mctx := &mutatorContext{
-					baseModuleContext: baseModuleContext{
-						context: c,
-						config:  config,
-						module:  module,
-					},
-					name: mutator.name,
-				}
-				func() {
-					defer func() {
-						if r := recover(); r != nil {
-							in := fmt.Sprintf("early mutator %q for %s", mutator.name, module)
-							if err, ok := r.(panicError); ok {
-								err.addIn(in)
-								mctx.error(err)
-							} else {
-								mctx.error(newPanicErrorf(r, in))
-							}
-						}
-					}()
-					mutator.mutator(mctx)
-				}()
-				if len(mctx.errs) > 0 {
-					errs = append(errs, mctx.errs...)
-					return errs
-				}
-
-				if module.splitModules != nil {
-					newModules = append(newModules, module.splitModules...)
-				} else {
-					newModules = append(newModules, module)
-				}
-			}
-
-			group.modules = newModules
-		}
-	}
-
-	errs = c.updateDependencies()
-	if len(errs) > 0 {
-		return errs
-	}
-
-	return nil
-}
-
 func (c *Context) runMutators(config interface{}) (errs []error) {
-	errs = c.runEarlyMutators(config)
-	if len(errs) > 0 {
-		return errs
-	}
+	var mutators []*mutatorInfo
 
-	for _, mutator := range c.mutatorInfo {
+	mutators = append(mutators, c.earlyMutatorInfo...)
+	mutators = append(mutators, c.mutatorInfo...)
+
+	for _, mutator := range mutators {
 		if mutator.topDownMutator != nil {
 			errs = c.runTopDownMutator(config, mutator.name, mutator.topDownMutator)
 		} else if mutator.bottomUpMutator != nil {
