@@ -429,7 +429,8 @@ func (m *moduleContext) GetMissingDependencies() []string {
 type mutatorContext struct {
 	baseModuleContext
 	name        string
-	reverseDeps map[*moduleInfo][]depInfo
+	reverseDeps []reverseDep
+	newModules  []*moduleInfo
 }
 
 type baseMutatorContext interface {
@@ -460,7 +461,7 @@ type TopDownMutatorContext interface {
 }
 
 type BottomUpMutatorContext interface {
-	TopDownMutatorContext
+	baseMutatorContext
 
 	AddDependency(module Module, tag DependencyTag, name ...string)
 	AddReverseDependency(module Module, tag DependencyTag, name string)
@@ -541,6 +542,11 @@ func (mctx *mutatorContext) createVariations(variationNames []string, local bool
 		}
 	}
 
+	if mctx.newModules != nil {
+		panic("module already has variations from this mutator")
+	}
+	mctx.newModules = modules
+
 	if len(ret) != len(variationNames) {
 		panic("oops!")
 	}
@@ -582,8 +588,10 @@ func (mctx *mutatorContext) AddReverseDependency(module Module, tag DependencyTa
 		return
 	}
 
-	mctx.reverseDeps[destModule] = append(mctx.reverseDeps[destModule],
-		depInfo{mctx.context.moduleInfo[module], tag})
+	mctx.reverseDeps = append(mctx.reverseDeps, reverseDep{
+		destModule,
+		depInfo{mctx.context.moduleInfo[module], tag},
+	})
 }
 
 // AddVariationDependencies adds deps as dependencies of the current module, but uses the variations

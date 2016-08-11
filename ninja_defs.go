@@ -265,7 +265,7 @@ func parseBuildParams(scope scope, params *BuildParams) (*buildDef,
 
 	b := &buildDef{
 		Comment: comment,
-		Rule: rule,
+		Rule:    rule,
 	}
 
 	if !scope.IsRuleVisible(rule) {
