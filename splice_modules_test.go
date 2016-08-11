@@ -30,73 +30,82 @@ var (
 
 var spliceModulesTestCases = []struct {
 	in         []*moduleInfo
-	replace    *moduleInfo
+	at         int
 	with       []*moduleInfo
 	out        []*moduleInfo
+	outAt      int
 	reallocate bool
 }{
 	{
 		// Insert at the beginning
 		in:         []*moduleInfo{testModuleA, testModuleB, testModuleC},
-		replace:    testModuleA,
+		at:         0,
 		with:       []*moduleInfo{testModuleD, testModuleE},
 		out:        []*moduleInfo{testModuleD, testModuleE, testModuleB, testModuleC},
+		outAt:      1,
 		reallocate: true,
 	},
 	{
 		// Insert in the middle
 		in:         []*moduleInfo{testModuleA, testModuleB, testModuleC},
-		replace:    testModuleB,
+		at:         1,
 		with:       []*moduleInfo{testModuleD, testModuleE},
 		out:        []*moduleInfo{testModuleA, testModuleD, testModuleE, testModuleC},
+		outAt:      2,
 		reallocate: true,
 	},
 	{
 		// Insert at the end
 		in:         []*moduleInfo{testModuleA, testModuleB, testModuleC},
-		replace:    testModuleC,
+		at:         2,
 		with:       []*moduleInfo{testModuleD, testModuleE},
 		out:        []*moduleInfo{testModuleA, testModuleB, testModuleD, testModuleE},
+		outAt:      3,
 		reallocate: true,
 	},
 	{
 		// Insert over a single element
 		in:         []*moduleInfo{testModuleA},
-		replace:    testModuleA,
+		at:         0,
 		with:       []*moduleInfo{testModuleD, testModuleE},
 		out:        []*moduleInfo{testModuleD, testModuleE},
+		outAt:      1,
 		reallocate: true,
 	},
 	{
 		// Insert at the beginning without reallocating
 		in:         []*moduleInfo{testModuleA, testModuleB, testModuleC, nil}[0:3],
-		replace:    testModuleA,
+		at:         0,
 		with:       []*moduleInfo{testModuleD, testModuleE},
 		out:        []*moduleInfo{testModuleD, testModuleE, testModuleB, testModuleC},
+		outAt:      1,
 		reallocate: false,
 	},
 	{
 		// Insert in the middle without reallocating
 		in:         []*moduleInfo{testModuleA, testModuleB, testModuleC, nil}[0:3],
-		replace:    testModuleB,
+		at:         1,
 		with:       []*moduleInfo{testModuleD, testModuleE},
 		out:        []*moduleInfo{testModuleA, testModuleD, testModuleE, testModuleC},
+		outAt:      2,
 		reallocate: false,
 	},
 	{
 		// Insert at the end without reallocating
 		in:         []*moduleInfo{testModuleA, testModuleB, testModuleC, nil}[0:3],
-		replace:    testModuleC,
+		at:         2,
 		with:       []*moduleInfo{testModuleD, testModuleE},
 		out:        []*moduleInfo{testModuleA, testModuleB, testModuleD, testModuleE},
+		outAt:      3,
 		reallocate: false,
 	},
 	{
 		// Insert over a single element without reallocating
 		in:         []*moduleInfo{testModuleA, nil}[0:1],
-		replace:    testModuleA,
+		at:         0,
 		with:       []*moduleInfo{testModuleD, testModuleE},
 		out:        []*moduleInfo{testModuleD, testModuleE},
+		outAt:      1,
 		reallocate: false,
 	},
 }
@@ -106,15 +115,21 @@ func TestSpliceModules(t *testing.T) {
 		in := make([]*moduleInfo, len(testCase.in), cap(testCase.in))
 		copy(in, testCase.in)
 		origIn := in
-		got := spliceModules(in, testCase.replace, testCase.with)
+		got, gotAt := spliceModules(in, testCase.at, testCase.with)
 		if !reflect.DeepEqual(got, testCase.out) {
-			t.Errorf("test case: %v, %v -> %v", testCase.in, testCase.replace, testCase.with)
+			t.Errorf("test case: %v, %v -> %v", testCase.in, testCase.at, testCase.with)
 			t.Errorf("incorrect output:")
 			t.Errorf("  expected: %v", testCase.out)
 			t.Errorf("       got: %v", got)
 		}
+		if gotAt != testCase.outAt {
+			t.Errorf("test case: %v, %v -> %v", testCase.in, testCase.at, testCase.with)
+			t.Errorf("incorrect index:")
+			t.Errorf("  expected: %d", testCase.outAt)
+			t.Errorf("       got: %d", gotAt)
+		}
 		if sameArray(origIn, got) != !testCase.reallocate {
-			t.Errorf("test case: %v, %v -> %v", testCase.in, testCase.replace, testCase.with)
+			t.Errorf("test case: %v, %v -> %v", testCase.in, testCase.at, testCase.with)
 			not := ""
 			if !testCase.reallocate {
 				not = " not"
