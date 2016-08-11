@@ -1376,6 +1376,7 @@ func (c *Context) visitAllBottomUp(visit func(group *moduleInfo) bool) {
 // of its dependencies has finished.
 func (c *Context) parallelVisitAllBottomUp(visit func(group *moduleInfo) bool) {
 	doneCh := make(chan *moduleInfo)
+	cancelCh := make(chan bool)
 	count := 0
 	cancel := false
 
@@ -1388,7 +1389,7 @@ func (c *Context) parallelVisitAllBottomUp(visit func(group *moduleInfo) bool) {
 		go func() {
 			ret := visit(module)
 			if ret {
-				cancel = true
+				cancelCh <- true
 			}
 			doneCh <- module
 		}()
@@ -1402,6 +1403,7 @@ func (c *Context) parallelVisitAllBottomUp(visit func(group *moduleInfo) bool) {
 
 	for count > 0 {
 		select {
+		case cancel = <-cancelCh:
 		case doneModule := <-doneCh:
 			if !cancel {
 				for _, parent := range doneModule.reverseDeps {
@@ -1702,7 +1704,7 @@ func (c *Context) runBottomUpMutator(config interface{},
 		}()
 
 		if len(mctx.errs) > 0 {
-			errsCh <- errs
+			errsCh <- mctx.errs
 			return true
 		}
 
