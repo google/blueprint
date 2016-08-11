@@ -15,6 +15,7 @@ before_script:
     - source .travis.fix-fork.sh
 
 script:
+    - ./.travis.gofmt.sh
     - go test ./...
     - mkdir stage
     - cd stage
