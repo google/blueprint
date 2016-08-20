@@ -552,6 +552,22 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				},
 			},
 		},
+		{
+			// Interface src nil
+			in1: &struct{ S interface{} }{
+				S: &struct{ S string }{
+					S: "string1",
+				},
+			},
+			in2: &struct{ S interface{} }{
+				S: nil,
+			},
+			out: &struct{ S interface{} }{
+				S: &struct{ S string }{
+					S: "string1",
+				},
+			},
+		},
 
 		// Errors
 
@@ -612,17 +628,15 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 		{
 			// Interface nilitude mismatch
 			in1: &struct{ S interface{} }{
-				S: &struct{ S string }{
-					S: "string1",
-				},
-			},
-			in2: &struct{ S interface{} }{
 				S: nil,
 			},
-			out: &struct{ S interface{} }{
+			in2: &struct{ S interface{} }{
 				S: &struct{ S string }{
 					S: "string1",
 				},
+			},
+			out: &struct{ S interface{} }{
+				S: nil,
 			},
 			err: extendPropertyErrorf("s", "nilitude mismatch"),
 		},
@@ -946,6 +960,93 @@ func appendMatchingPropertiesTestCases() []appendMatchingPropertiesTestCase {
 					S: "string1string2",
 				},
 			}},
+		},
+		{
+			// Append through mismatched types
+			in1: []interface{}{
+				&struct{ B string }{},
+				&struct{ S interface{} }{
+					S: &struct{ S, A string }{
+						S: "string1",
+					},
+				},
+			},
+			in2: &struct{ S struct{ S string } }{
+				S: struct{ S string }{
+					S: "string2",
+				},
+			},
+			out: []interface{}{
+				&struct{ B string }{},
+				&struct{ S interface{} }{
+					S: &struct{ S, A string }{
+						S: "string1string2",
+					},
+				},
+			},
+		},
+		{
+			// Append through mismatched types and nil
+			in1: []interface{}{
+				&struct{ B string }{},
+				&struct{ S interface{} }{
+					S: (*struct{ S, A string })(nil),
+				},
+			},
+			in2: &struct{ S struct{ S string } }{
+				S: struct{ S string }{
+					S: "string2",
+				},
+			},
+			out: []interface{}{
+				&struct{ B string }{},
+				&struct{ S interface{} }{
+					S: &struct{ S, A string }{
+						S: "string2",
+					},
+				},
+			},
+		},
+		{
+			// Append through multiple matches
+			in1: []interface{}{
+				&struct {
+					S struct{ S, A string }
+				}{
+					S: struct{ S, A string }{
+						S: "string1",
+					},
+				},
+				&struct {
+					S struct{ S, B string }
+				}{
+					S: struct{ S, B string }{
+						S: "string2",
+					},
+				},
+			},
+			in2: &struct{ S struct{ B string } }{
+				S: struct{ B string }{
+					B: "string3",
+				},
+			},
+			out: []interface{}{
+				&struct {
+					S struct{ S, A string }
+				}{
+					S: struct{ S, A string }{
+						S: "string1",
+					},
+				},
+				&struct {
+					S struct{ S, B string }
+				}{
+					S: struct{ S, B string }{
+						S: "string2",
+						B: "string3",
+					},
+				},
+			},
 		},
 
 		// Errors
