@@ -253,7 +253,30 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 		propertyName := prefix + PropertyNameForField(srcField.Name)
 		srcFieldValue := srcValue.Field(i)
 
+		// Step into source interfaces
+		if srcFieldValue.Kind() == reflect.Interface {
+			if srcFieldValue.IsNil() {
+				continue
+			}
+
+			srcFieldValue = srcFieldValue.Elem()
+
+			if srcFieldValue.Kind() != reflect.Ptr {
+				return extendPropertyErrorf(propertyName, "interface not a pointer")
+			}
+		}
+
+		// Step into source pointers to structs
+		if srcFieldValue.Kind() == reflect.Ptr && srcFieldValue.Type().Elem().Kind() == reflect.Struct {
+			if srcFieldValue.IsNil() {
+				continue
+			}
+
+			srcFieldValue = srcFieldValue.Elem()
+		}
+
 		found := false
+		var recurse []reflect.Value
 		for _, dstValue := range dstValues {
 			dstType := dstValue.Type()
 			var dstField reflect.StructField
@@ -279,53 +302,30 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 			dstFieldValue := dstValue.FieldByIndex(dstField.Index)
 			origDstFieldValue := dstFieldValue
 
-			if srcFieldValue.Kind() != dstFieldValue.Kind() {
-				return extendPropertyErrorf(propertyName, "mismatched types %s and %s",
-					dstFieldValue.Type(), srcFieldValue.Type())
-			}
-
-			switch srcFieldValue.Kind() {
-			case reflect.Interface:
-				if dstFieldValue.IsNil() != srcFieldValue.IsNil() {
-					return extendPropertyErrorf(propertyName, "nilitude mismatch")
-				}
+			// Step into destination interfaces
+			if dstFieldValue.Kind() == reflect.Interface {
 				if dstFieldValue.IsNil() {
-					continue
+					return extendPropertyErrorf(propertyName, "nilitude mismatch")
 				}
 
 				dstFieldValue = dstFieldValue.Elem()
-				srcFieldValue = srcFieldValue.Elem()
 
-				if srcFieldValue.Kind() != reflect.Ptr || dstFieldValue.Kind() != reflect.Ptr {
+				if dstFieldValue.Kind() != reflect.Ptr {
 					return extendPropertyErrorf(propertyName, "interface not a pointer")
 				}
+			}
 
-				fallthrough
-			case reflect.Ptr:
-				ptrKind := srcFieldValue.Type().Elem().Kind()
-				if ptrKind == reflect.Bool || ptrKind == reflect.String {
-					if srcFieldValue.Type() != dstFieldValue.Type() {
-						return extendPropertyErrorf(propertyName, "mismatched pointer types %s and %s",
-							dstFieldValue.Type(), srcFieldValue.Type())
-					}
-					break
-				} else if ptrKind != reflect.Struct {
-					return extendPropertyErrorf(propertyName, "pointer is a %s", ptrKind)
-				}
-
-				// Pointer to a struct
-				if srcFieldValue.IsNil() {
-					continue
-				}
+			// Step into destination pointers to structs
+			if dstFieldValue.Kind() == reflect.Ptr && dstFieldValue.Type().Elem().Kind() == reflect.Struct {
 				if dstFieldValue.IsNil() {
-					dstFieldValue = reflect.New(srcFieldValue.Type().Elem())
+					dstFieldValue = reflect.New(dstFieldValue.Type().Elem())
 					origDstFieldValue.Set(dstFieldValue)
 				}
 
 				dstFieldValue = dstFieldValue.Elem()
-				srcFieldValue = srcFieldValue.Elem()
+			}
 
-				fallthrough
+			switch srcFieldValue.Kind() {
 			case reflect.Struct:
 				if sameTypes && dstFieldValue.Type() != srcFieldValue.Type() {
 					return extendPropertyErrorf(propertyName, "mismatched types %s and %s",
@@ -333,16 +333,23 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 				}
 
 				// Recursively extend the struct's fields.
-				err := extendPropertiesRecursive([]reflect.Value{dstFieldValue}, srcFieldValue,
-					propertyName+".", filter, sameTypes, order)
-				if err != nil {
-					return err
-				}
+				recurse = append(recurse, dstFieldValue)
 				continue
 			case reflect.Bool, reflect.String, reflect.Slice:
 				if srcFieldValue.Type() != dstFieldValue.Type() {
 					return extendPropertyErrorf(propertyName, "mismatched types %s and %s",
 						dstFieldValue.Type(), srcFieldValue.Type())
+				}
+			case reflect.Ptr:
+				if srcFieldValue.Type() != dstFieldValue.Type() {
+					return extendPropertyErrorf(propertyName, "mismatched types %s and %s",
+						dstFieldValue.Type(), srcFieldValue.Type())
+				}
+				switch ptrKind := srcFieldValue.Type().Elem().Kind(); ptrKind {
+				case reflect.Bool, reflect.String, reflect.Struct:
+				// Nothing
+				default:
+					return extendPropertyErrorf(propertyName, "pointer is a %s", ptrKind)
 				}
 			default:
 				return extendPropertyErrorf(propertyName, "unsupported kind %s",
@@ -436,7 +443,13 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 				}
 			}
 		}
-		if !found {
+		if len(recurse) > 0 {
+			err := extendPropertiesRecursive(recurse, srcFieldValue,
+				propertyName+".", filter, sameTypes, order)
+			if err != nil {
+				return err
+			}
+		} else if !found {
 			return extendPropertyErrorf(propertyName, "failed to find property to extend")
 		}
 	}
