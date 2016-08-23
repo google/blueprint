@@ -1010,10 +1010,12 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 		newModule.dependencyVariant = origModule.dependencyVariant.clone()
 		newModule.moduleProperties = newProperties
 
-		if newModule.variantName == "" {
-			newModule.variantName = variationName
-		} else {
-			newModule.variantName += "_" + variationName
+		if variationName != "" {
+			if newModule.variantName == "" {
+				newModule.variantName = variationName
+			} else {
+				newModule.variantName += "_" + variationName
+			}
 		}
 
 		newModules = append(newModules, newModule)

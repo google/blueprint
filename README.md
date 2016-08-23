@@ -4,7 +4,7 @@ Blueprint Build System
 
 Blueprint is a meta-build system that reads in Blueprints files that describe
 modules that need to be built, and produces a
-[Ninja](http://martine.github.io/ninja/) manifest describing the commands that
+[Ninja](https://ninja-build.org/) manifest describing the commands that
 need to be run and their dependencies.  Where most build systems use built-in
 rules or a domain-specific language to describe the logic for converting module
 descriptions to build rules, Blueprint delegates this to per-project build
