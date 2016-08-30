@@ -120,13 +120,9 @@ func NewPackageContext(pkgPath string) PackageContext {
 	return p
 }
 
-var Phony Rule = &builtinRule{
-	name_: "phony",
-}
+var Phony Rule = NewBuiltinRule("phony")
 
-var Console Pool = &builtinPool{
-	name_: "console",
-}
+var Console Pool = NewBuiltinPool("console")
 
 var errRuleIsBuiltin = errors.New("the rule is a built-in")
 var errPoolIsBuiltin = errors.New("the pool is a built-in")
@@ -608,6 +604,13 @@ func (p *builtinPool) def(config interface{}) (*poolDef, error) {
 	return nil, errPoolIsBuiltin
 }
 
+// NewBuiltinPool returns a Pool object that refers to a pool name created outside of Blueprint
+func NewBuiltinPool(name string) Pool {
+	return &builtinPool{
+		name_: name,
+	}
+}
+
 func (p *builtinPool) String() string {
 	return "<builtin>:" + p.name_
 }
@@ -865,6 +868,13 @@ func (r *builtinRule) isArg(argName string) bool {
 
 func (r *builtinRule) String() string {
 	return "<builtin>:" + r.name_
+}
+
+// NewBuiltinRule returns a Rule object that refers to a rule that was created outside of Blueprint
+func NewBuiltinRule(name string) Rule {
+	return &builtinRule{
+		name_: name,
+	}
 }
 
 func (p *packageContext) AddNinjaFileDeps(deps ...string) {
