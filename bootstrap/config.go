@@ -14,27 +14,54 @@
 
 package bootstrap
 
+import (
+	"runtime"
+
+	"github.com/google/blueprint"
+)
+
+func bootstrapVariable(name, template string, value func() string) blueprint.Variable {
+	return pctx.VariableFunc(name, func(config interface{}) (string, error) {
+		if c, ok := config.(ConfigInterface); ok && c.GeneratingBootstrapper() {
+			return template, nil
+		}
+		return value(), nil
+	})
+}
+
 var (
 	// These variables are the only configuration needed by the boostrap
-	// modules.  They are always set to the variable name enclosed in "@@" so
-	// that their values can be easily replaced in the generated Ninja file.
-	srcDir            = pctx.StaticVariable("srcDir", "@@SrcDir@@")
-	buildDir          = pctx.StaticVariable("buildDir", "@@BuildDir@@")
-	goRoot            = pctx.StaticVariable("goRoot", "@@GoRoot@@")
-	compileCmd        = pctx.StaticVariable("compileCmd", "@@GoCompile@@")
-	linkCmd           = pctx.StaticVariable("linkCmd", "@@GoLink@@")
-	bootstrapCmd      = pctx.StaticVariable("bootstrapCmd", "@@Bootstrap@@")
-	bootstrapManifest = pctx.StaticVariable("bootstrapManifest",
-		"@@BootstrapManifest@@")
+	// modules.  For the first bootstrap stage, they are set to the
+	// variable name enclosed in "@@" so that their values can be easily
+	// replaced in the generated Ninja file.
+	srcDir = bootstrapVariable("srcDir", "@@SrcDir@@", func() string {
+		return SrcDir
+	})
+	buildDir = bootstrapVariable("buildDir", "@@BuildDir@@", func() string {
+		return BuildDir
+	})
+	goRoot = bootstrapVariable("goRoot", "@@GoRoot@@", func() string {
+		return runtime.GOROOT()
+	})
+	compileCmd = bootstrapVariable("compileCmd", "@@GoCompile@@", func() string {
+		return "$goRoot/pkg/tool/" + runtime.GOOS + "_" + runtime.GOARCH + "/compile"
+	})
+	linkCmd = bootstrapVariable("linkCmd", "@@GoLink@@", func() string {
+		return "$goRoot/pkg/tool/" + runtime.GOOS + "_" + runtime.GOARCH + "/link"
+	})
+	bootstrapCmd = bootstrapVariable("bootstrapCmd", "@@Bootstrap@@", func() string {
+		panic("bootstrapCmd is only available for minibootstrap")
+	})
 )
 
 type ConfigInterface interface {
 	// GeneratingBootstrapper should return true if this build invocation is
-	// creating a build.ninja.in file to be used in a build bootstrapping
-	// sequence.
+	// creating a .minibootstrap/build.ninja file to be used in a build
+	// bootstrapping sequence.
 	GeneratingBootstrapper() bool
 	// GeneratingPrimaryBuilder should return true if this build invocation is
-	// creating a build.ninja.in file to be used to build the primary builder
+	// creating a .bootstrap/build.ninja file to be used to build the
+	// primary builder
 	GeneratingPrimaryBuilder() bool
 }
 

@@ -126,7 +126,7 @@ if [ $REGEN_BOOTSTRAP_MANIFEST = true ]; then
     fi
 fi
 
-mkdir -p $BUILDDIR
+mkdir -p $BUILDDIR/.minibootstrap
 
 sed -e "s|@@SrcDir@@|$SRCDIR|g"                        \
     -e "s|@@BuildDir@@|$BUILDDIR|g"                    \
@@ -135,7 +135,7 @@ sed -e "s|@@SrcDir@@|$SRCDIR|g"                        \
     -e "s|@@GoLink@@|$GOLINK|g"                        \
     -e "s|@@Bootstrap@@|$BOOTSTRAP|g"                  \
     -e "s|@@BootstrapManifest@@|$BOOTSTRAP_MANIFEST|g" \
-    $IN > $BUILDDIR/build.ninja
+    $IN > $BUILDDIR/.minibootstrap/build.ninja
 
 echo "BOOTSTRAP=\"${BOOTSTRAP}\"" > $BUILDDIR/.blueprint.bootstrap
 echo "BOOTSTRAP_MANIFEST=\"${BOOTSTRAP_MANIFEST}\"" >> $BUILDDIR/.blueprint.bootstrap
