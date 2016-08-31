@@ -26,36 +26,41 @@ set -e
 # if the custom build system only wants to install their own wrapper.
 [ -z "$BUILDDIR" ] && BUILDDIR=`dirname "${BASH_SOURCE[0]}"`
 
+# NINJA should be set to the path of the ninja executable. By default, this
+# is just "ninja", and will be looked up in $PATH.
+[ -z "$NINJA" ] && NINJA=ninja
+
+
+if [ ! -f "${BUILDDIR}/.blueprint.bootstrap" ]; then
+    echo "Please run bootstrap.bash (.blueprint.bootstrap missing)" >&2
+    exit 1
+fi
+
 # .blueprint.bootstrap provides saved values from the bootstrap.bash script:
 #
 #   BOOTSTRAP
 #   BOOTSTRAP_MANIFEST
 #
-# If it doesn't exist, we probably just need to re-run bootstrap.bash, which
-# ninja will do when switching stages. So just skip to ninja.
-if [ -f "${BUILDDIR}/.blueprint.bootstrap" ]; then
-    source "${BUILDDIR}/.blueprint.bootstrap"
+source "${BUILDDIR}/.blueprint.bootstrap"
 
-    # Pick the newer of .bootstrap/bootstrap.ninja.in or $BOOTSTRAP_MANIFEST,
-    # and copy it to .bootstrap/build.ninja.in
-    GEN_BOOTSTRAP_MANIFEST="${BUILDDIR}/.bootstrap/bootstrap.ninja.in"
-    if [ -f "${GEN_BOOTSTRAP_MANIFEST}" ]; then
-        if [ "${GEN_BOOTSTRAP_MANIFEST}" -nt "${BOOTSTRAP_MANIFEST}" ]; then
-            BOOTSTRAP_MANIFEST="${GEN_BOOTSTRAP_MANIFEST}"
-        fi
+GEN_BOOTSTRAP_MANIFEST="${BUILDDIR}/.minibootstrap/build.ninja.in"
+if [ -f "${GEN_BOOTSTRAP_MANIFEST}" ]; then
+    if [ "${BOOTSTRAP_MANIFEST}" -nt "${GEN_BOOTSTRAP_MANIFEST}" ]; then
+        "${BOOTSTRAP}" -i "${BOOTSTRAP_MANIFEST}"
     fi
-
-    # Copy the selected manifest to $BUILDDIR/.bootstrap/build.ninja.in
-    mkdir -p "${BUILDDIR}/.bootstrap"
-    cp "${BOOTSTRAP_MANIFEST}" "${BUILDDIR}/.bootstrap/build.ninja.in"
-
-    # Bootstrap it to $BUILDDIR/build.ninja
-    "${BOOTSTRAP}" -i "${BUILDDIR}/.bootstrap/build.ninja.in"
+else
+    "${BOOTSTRAP}" -i "${BOOTSTRAP_MANIFEST}"
 fi
+
+# Build minibp and the primary build.ninja
+"${NINJA}" -w dupbuild=err -f "${BUILDDIR}/.minibootstrap/build.ninja" "${BUILDDIR}/.bootstrap/build.ninja"
+
+# Build the primary builder and the main build.ninja
+"${NINJA}" -w dupbuild=err -f "${BUILDDIR}/.bootstrap/build.ninja" "${BUILDDIR}/build.ninja"
 
 # SKIP_NINJA can be used by wrappers that wish to run ninja themselves.
 if [ -z "$SKIP_NINJA" ]; then
-    ninja -C "${BUILDDIR}" "$@"
+    "${NINJA}" -w dupbuild=err -f "${BUILDDIR}/build.ninja" "$@"
 else
     exit 0
 fi
