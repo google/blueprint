@@ -128,6 +128,15 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 		fieldValue := structValue.Field(i)
 		field := structType.Field(i)
 
+		// In Go 1.7, runtime-created structs are unexported, so it's not
+		// possible to create an exported anonymous field with a generated
+		// type. So workaround this by special-casing "BlueprintEmbed" to
+		// behave like an anonymous field for structure unpacking.
+		if field.Name == "BlueprintEmbed" {
+			field.Name = ""
+			field.Anonymous = true
+		}
+
 		if field.PkgPath != "" {
 			// This is an unexported field, so just skip it.
 			continue
