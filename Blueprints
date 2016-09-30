@@ -69,12 +69,14 @@ bootstrap_go_package(
     pkgPath = "github.com/google/blueprint/proptools",
     srcs = [
         "proptools/clone.go",
+        "proptools/escape.go",
         "proptools/extend.go",
         "proptools/proptools.go",
         "proptools/typeequal.go",
     ],
     testSrcs = [
         "proptools/clone_test.go",
+        "proptools/escape_test.go",
         "proptools/extend_test.go",
         "proptools/typeequal_test.go",
     ],
