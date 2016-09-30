@@ -73,7 +73,7 @@ default $
 # Variant:
 # Type:    bootstrap_go_package
 # Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
-# Defined: Blueprints:83:1
+# Defined: Blueprints:85:1
 
 build $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-bootstrap/pkg/github.com/google/blueprint/bootstrap.a $
@@ -100,7 +100,7 @@ default $
 # Variant:
 # Type:    bootstrap_go_package
 # Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
-# Defined: Blueprints:102:1
+# Defined: Blueprints:104:1
 
 build $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-bootstrap-bpdoc/pkg/github.com/google/blueprint/bootstrap/bpdoc.a $
@@ -173,6 +173,7 @@ default $
 build $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a $
         : g.bootstrap.compile ${g.bootstrap.srcDir}/proptools/clone.go $
+        ${g.bootstrap.srcDir}/proptools/escape.go $
         ${g.bootstrap.srcDir}/proptools/extend.go $
         ${g.bootstrap.srcDir}/proptools/proptools.go $
         ${g.bootstrap.srcDir}/proptools/typeequal.go | $
@@ -186,7 +187,7 @@ default $
 # Variant:
 # Type:    bootstrap_core_go_binary
 # Factory: github.com/google/blueprint/bootstrap.newGoBinaryModuleFactory.func1
-# Defined: Blueprints:135:1
+# Defined: Blueprints:137:1
 
 build ${g.bootstrap.buildDir}/.bootstrap/gotestmain/obj/gotestmain.a: $
         g.bootstrap.compile ${g.bootstrap.srcDir}/gotestmain/gotestmain.go | $
@@ -209,7 +210,7 @@ default ${g.bootstrap.BinDir}/gotestmain
 # Variant:
 # Type:    bootstrap_core_go_binary
 # Factory: github.com/google/blueprint/bootstrap.newGoBinaryModuleFactory.func1
-# Defined: Blueprints:140:1
+# Defined: Blueprints:142:1
 
 build ${g.bootstrap.buildDir}/.bootstrap/gotestrunner/obj/gotestrunner.a: $
         g.bootstrap.compile ${g.bootstrap.srcDir}/gotestrunner/gotestrunner.go $
@@ -232,7 +233,7 @@ default ${g.bootstrap.BinDir}/gotestrunner
 # Variant:
 # Type:    bootstrap_core_go_binary
 # Factory: github.com/google/blueprint/bootstrap.newGoBinaryModuleFactory.func1
-# Defined: Blueprints:114:1
+# Defined: Blueprints:116:1
 
 build ${g.bootstrap.buildDir}/.bootstrap/minibp/obj/minibp.a: $
         g.bootstrap.compile ${g.bootstrap.srcDir}/bootstrap/minibp/main.go | $
