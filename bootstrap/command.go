@@ -174,7 +174,9 @@ func fatalErrors(errs []error) {
 
 	for _, err := range errs {
 		switch err := err.(type) {
-		case *blueprint.Error:
+		case *blueprint.BlueprintError,
+			*blueprint.ModuleError,
+			*blueprint.PropertyError:
 			fmt.Printf("%serror:%s %s\n", red, unred, err.Error())
 		default:
 			fmt.Printf("%sinternal error:%s %s\n", red, unred, err)

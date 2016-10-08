@@ -244,7 +244,7 @@ var validUnpackTestCases = []struct {
 			},
 		},
 		errs: []error{
-			&Error{
+			&BlueprintError{
 				Err: fmt.Errorf("filtered field nested.foo cannot be set in a Blueprint file"),
 				Pos: mkpos(30, 4, 9),
 			},
