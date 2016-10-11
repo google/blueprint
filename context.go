@@ -101,7 +101,9 @@ type Context struct {
 	// set lazily by sortedModuleNames
 	cachedSortedModuleNames []string
 
-	renames []rename // List of pending renames to apply after the mutator pass
+	// List of pending renames and replacements to apply after the mutator pass
+	renames      []rename
+	replacements []replace
 
 	fs fileSystem
 }
@@ -1753,6 +1755,7 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 
 	c.depsModified = 0
 	c.renames = nil
+	c.replacements = nil
 
 	visit := func(module *moduleInfo) bool {
 		if module.splitModules != nil {
@@ -1858,7 +1861,7 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 		c.depsModified++
 	}
 
-	errs = c.handleRenames()
+	errs = c.handleRenamesAndReplacements()
 	if len(errs) > 0 {
 		return errs
 	}
@@ -2152,6 +2155,10 @@ func (c *Context) walkDeps(topModule *moduleInfo,
 	walk(topModule)
 }
 
+type replace struct {
+	from, to *moduleInfo
+}
+
 type rename struct {
 	group *moduleGroup
 	name  string
@@ -2161,7 +2168,30 @@ func (c *Context) rename(group *moduleGroup, name string) {
 	c.renames = append(c.renames, rename{group, name})
 }
 
-func (c *Context) handleRenames() []error {
+func (c *Context) replaceDependencies(module *moduleInfo, name string) {
+	targets := c.modulesFromName(name)
+
+	if targets == nil {
+		panic(fmt.Errorf("ReplaceDependencies called with non-existant name %q", name))
+	}
+
+	var target *moduleInfo
+	for _, m := range targets {
+		if module.variantName == m.variantName {
+			target = m
+			break
+		}
+	}
+
+	if target == nil {
+		panic(fmt.Errorf("ReplaceDependencies could not find identical variant %q for module %q",
+			module.variantName, name))
+	}
+
+	c.replacements = append(c.replacements, replace{target, module})
+}
+
+func (c *Context) handleRenamesAndReplacements() []error {
 	var errs []error
 	for _, rename := range c.renames {
 		group, name := rename.group, rename.name
@@ -2190,6 +2220,17 @@ func (c *Context) handleRenames() []error {
 		group.name = name
 	}
 
+	for _, replace := range c.replacements {
+		for _, m := range replace.from.reverseDeps {
+			for i, d := range m.directDeps {
+				if d.module == replace.from {
+					m.directDeps[i].module = replace.to
+				}
+			}
+		}
+
+		atomic.AddUint32(&c.depsModified, 1)
+	}
 	return errs
 }
 

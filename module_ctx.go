@@ -493,6 +493,7 @@ type BottomUpMutatorContext interface {
 	AddVariationDependencies([]Variation, DependencyTag, ...string)
 	AddFarVariationDependencies([]Variation, DependencyTag, ...string)
 	AddInterVariantDependency(tag DependencyTag, from, to Module)
+	ReplaceDependencies(string)
 }
 
 // A Mutator function is called for each Module, and can use
@@ -651,6 +652,13 @@ func (mctx *mutatorContext) AddFarVariationDependencies(variations []Variation, 
 
 func (mctx *mutatorContext) AddInterVariantDependency(tag DependencyTag, from, to Module) {
 	mctx.context.addInterVariantDependency(mctx.module, tag, from, to)
+}
+
+// ReplaceDependencies replaces all dependencies on the identical variant of the module with the
+// specified name with the current variant of this module.  Replacements don't take effect until
+// after the mutator pass is finished.
+func (mctx *mutatorContext) ReplaceDependencies(name string) {
+	mctx.context.replaceDependencies(mctx.module, name)
 }
 
 func (mctx *mutatorContext) OtherModuleExists(name string) bool {
