@@ -821,6 +821,7 @@ func (c *Context) findBuildBlueprints(dir string, build []string,
 			}
 
 			blueprints = append(blueprints, foundBlueprints)
+			deps = append(deps, foundBlueprints)
 		}
 	}
 
