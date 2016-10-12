@@ -105,9 +105,35 @@ type Context struct {
 
 // An Error describes a problem that was encountered that is related to a
 // particular location in a Blueprints file.
-type Error struct {
+type BlueprintError struct {
 	Err error            // the error that occurred
 	Pos scanner.Position // the relevant Blueprints file location
+}
+
+// A ModuleError describes a problem that was encountered that is related to a
+// particular module in a Blueprints file
+type ModuleError struct {
+	BlueprintError
+	module *moduleInfo
+}
+
+// A PropertyError describes a problem that was encountered that is related to a
+// particular property in a Blueprints file
+type PropertyError struct {
+	ModuleError
+	property string
+}
+
+func (e *BlueprintError) Error() string {
+	return fmt.Sprintf("%s: %s", e.Pos, e.Err)
+}
+
+func (e *ModuleError) Error() string {
+	return fmt.Sprintf("%s: %s: %s", e.Pos, e.module, e.Err)
+}
+
+func (e *PropertyError) Error() string {
+	return fmt.Sprintf("%s: %s: %s: %s", e.Pos, e.module, e.property, e.Err)
 }
 
 type localBuildActions struct {
@@ -227,11 +253,6 @@ type mutatorInfo struct {
 	bottomUpMutator BottomUpMutator
 	name            string
 	parallel        bool
-}
-
-func (e *Error) Error() string {
-
-	return fmt.Sprintf("%s: %s", e.Pos, e.Err)
 }
 
 // NewContext creates a new Context object.  The created context initially has
@@ -514,7 +535,7 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 	if len(errs) > 0 {
 		for i, err := range errs {
 			if parseErr, ok := err.(*parser.ParseError); ok {
-				err = &Error{
+				err = &BlueprintError{
 					Err: parseErr.Err,
 					Pos: parseErr.Pos,
 				}
@@ -787,7 +808,7 @@ func (c *Context) findBuildBlueprints(dir string, build []string,
 		globPattern := filepath.Join(dir, file)
 		matches, matchedDirs, err := pathtools.Glob(globPattern)
 		if err != nil {
-			errs = append(errs, &Error{
+			errs = append(errs, &BlueprintError{
 				Err: fmt.Errorf("%q: %s", globPattern, err.Error()),
 				Pos: buildPos,
 			})
@@ -795,7 +816,7 @@ func (c *Context) findBuildBlueprints(dir string, build []string,
 		}
 
 		if len(matches) == 0 {
-			errs = append(errs, &Error{
+			errs = append(errs, &BlueprintError{
 				Err: fmt.Errorf("%q: not found", globPattern),
 				Pos: buildPos,
 			})
@@ -809,12 +830,12 @@ func (c *Context) findBuildBlueprints(dir string, build []string,
 			if err != nil {
 				errs = append(errs, err)
 			} else if !exists {
-				errs = append(errs, &Error{
+				errs = append(errs, &BlueprintError{
 					Err: fmt.Errorf("%q not found", foundBlueprints),
 				})
 				continue
 			} else if dir {
-				errs = append(errs, &Error{
+				errs = append(errs, &BlueprintError{
 					Err: fmt.Errorf("%q is a directory", foundBlueprints),
 				})
 				continue
@@ -835,7 +856,7 @@ func (c *Context) findSubdirBlueprints(dir string, subdirs []string, subdirsPos 
 		globPattern := filepath.Join(dir, subdir)
 		matches, matchedDirs, err := pathtools.Glob(globPattern)
 		if err != nil {
-			errs = append(errs, &Error{
+			errs = append(errs, &BlueprintError{
 				Err: fmt.Errorf("%q: %s", globPattern, err.Error()),
 				Pos: subdirsPos,
 			})
@@ -843,7 +864,7 @@ func (c *Context) findSubdirBlueprints(dir string, subdirs []string, subdirsPos 
 		}
 
 		if len(matches) == 0 && !optional {
-			errs = append(errs, &Error{
+			errs = append(errs, &BlueprintError{
 				Err: fmt.Errorf("%q: not found", globPattern),
 				Pos: subdirsPos,
 			})
@@ -916,7 +937,7 @@ func getLocalStringListFromScope(scope *parser.Scope, v string) ([]string, scann
 
 			return ret, assignment.EqualsPos, nil
 		case *parser.Bool, *parser.String:
-			return nil, scanner.Position{}, &Error{
+			return nil, scanner.Position{}, &BlueprintError{
 				Err: fmt.Errorf("%q must be a list of strings", v),
 				Pos: assignment.EqualsPos,
 			}
@@ -934,7 +955,7 @@ func getStringFromScope(scope *parser.Scope, v string) (string, scanner.Position
 		case *parser.String:
 			return value.Value, assignment.EqualsPos, nil
 		case *parser.Bool, *parser.List:
-			return "", scanner.Position{}, &Error{
+			return "", scanner.Position{}, &BlueprintError{
 				Err: fmt.Errorf("%q must be a string", v),
 				Pos: assignment.EqualsPos,
 			}
@@ -1050,7 +1071,7 @@ func (c *Context) convertDepsToVariation(module *moduleInfo,
 				}
 			}
 			if newDep == nil {
-				errs = append(errs, &Error{
+				errs = append(errs, &BlueprintError{
 					Err: fmt.Errorf("failed to find variation %q for module %q needed by %q",
 						variationName, dep.module.properties.Name, module.properties.Name),
 					Pos: module.pos,
@@ -1085,7 +1106,7 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 		}
 
 		return nil, []error{
-			&Error{
+			&BlueprintError{
 				Err: fmt.Errorf("unrecognized module type %q", moduleDef.Type),
 				Pos: moduleDef.TypePos,
 			},
@@ -1126,11 +1147,11 @@ func (c *Context) addModule(module *moduleInfo) []error {
 
 	if group, present := c.moduleGroups[name]; present {
 		return []error{
-			&Error{
+			&BlueprintError{
 				Err: fmt.Errorf("module %q already defined", name),
 				Pos: module.pos,
 			},
-			&Error{
+			&BlueprintError{
 				Err: fmt.Errorf("<-- previous definition here"),
 				Pos: group.modules[0].pos,
 			},
@@ -1223,7 +1244,7 @@ func (c *Context) findMatchingVariant(module *moduleInfo, group *moduleGroup) *m
 
 func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName string) []error {
 	if depName == module.properties.Name {
-		return []error{&Error{
+		return []error{&BlueprintError{
 			Err: fmt.Errorf("%q depends on itself", depName),
 			Pos: module.pos,
 		}}
@@ -1235,7 +1256,7 @@ func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName s
 			module.missingDeps = append(module.missingDeps, depName)
 			return nil
 		}
-		return []error{&Error{
+		return []error{&BlueprintError{
 			Err: fmt.Errorf("%q depends on undefined module %q",
 				module.properties.Name, depName),
 			Pos: module.pos,
@@ -1254,7 +1275,7 @@ func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName s
 		return nil
 	}
 
-	return []error{&Error{
+	return []error{&BlueprintError{
 		Err: fmt.Errorf("dependency %q of %q missing variant %q",
 			depGroup.modules[0].properties.Name, module.properties.Name,
 			c.prettyPrintVariant(module.dependencyVariant)),
@@ -1264,7 +1285,7 @@ func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName s
 
 func (c *Context) findReverseDependency(module *moduleInfo, destName string) (*moduleInfo, []error) {
 	if destName == module.properties.Name {
-		return nil, []error{&Error{
+		return nil, []error{&BlueprintError{
 			Err: fmt.Errorf("%q depends on itself", destName),
 			Pos: module.pos,
 		}}
@@ -1272,7 +1293,7 @@ func (c *Context) findReverseDependency(module *moduleInfo, destName string) (*m
 
 	destInfo, ok := c.moduleGroups[destName]
 	if !ok {
-		return nil, []error{&Error{
+		return nil, []error{&BlueprintError{
 			Err: fmt.Errorf("%q has a reverse dependency on undefined module %q",
 				module.properties.Name, destName),
 			Pos: module.pos,
@@ -1283,7 +1304,7 @@ func (c *Context) findReverseDependency(module *moduleInfo, destName string) (*m
 		return m, nil
 	}
 
-	return nil, []error{&Error{
+	return nil, []error{&BlueprintError{
 		Err: fmt.Errorf("reverse dependency %q of %q missing variant %q",
 			destName, module.properties.Name,
 			c.prettyPrintVariant(module.dependencyVariant)),
@@ -1300,7 +1321,7 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 			module.missingDeps = append(module.missingDeps, depName)
 			return nil
 		}
-		return []error{&Error{
+		return []error{&BlueprintError{
 			Err: fmt.Errorf("%q depends on undefined module %q",
 				module.properties.Name, depName),
 			Pos: module.pos,
@@ -1329,7 +1350,7 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 		}
 		if found {
 			if module == m {
-				return []error{&Error{
+				return []error{&BlueprintError{
 					Err: fmt.Errorf("%q depends on itself", depName),
 					Pos: module.pos,
 				}}
@@ -1338,7 +1359,7 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 			// that module is earlier in the module list than this one, since we always
 			// run GenerateBuildActions in order for the variants of a module
 			if depGroup == module.group && beforeInModuleList(module, m, module.group.modules) {
-				return []error{&Error{
+				return []error{&BlueprintError{
 					Err: fmt.Errorf("%q depends on later version of itself", depName),
 					Pos: module.pos,
 				}}
@@ -1349,7 +1370,7 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 		}
 	}
 
-	return []error{&Error{
+	return []error{&BlueprintError{
 		Err: fmt.Errorf("dependency %q of %q missing variant %q",
 			depGroup.modules[0].properties.Name, module.properties.Name,
 			c.prettyPrintVariant(newVariant)),
@@ -1498,7 +1519,7 @@ func (c *Context) updateDependencies() (errs []error) {
 		// for generating the errors.  The cycle list is in
 		// reverse order because all the 'check' calls append
 		// their own module to the list.
-		errs = append(errs, &Error{
+		errs = append(errs, &BlueprintError{
 			Err: fmt.Errorf("encountered dependency cycle:"),
 			Pos: cycle[len(cycle)-1].pos,
 		})
@@ -1507,7 +1528,7 @@ func (c *Context) updateDependencies() (errs []error) {
 		curModule := cycle[0]
 		for i := len(cycle) - 1; i >= 0; i-- {
 			nextModule := cycle[i]
-			errs = append(errs, &Error{
+			errs = append(errs, &BlueprintError{
 				Err: fmt.Errorf("    %q depends on %q",
 					curModule.properties.Name,
 					nextModule.properties.Name),
@@ -1975,7 +1996,7 @@ func (c *Context) generateModuleBuildActions(config interface{},
 		if module.missingDeps != nil && !mctx.handledMissingDeps {
 			var errs []error
 			for _, depName := range module.missingDeps {
-				errs = append(errs, &Error{
+				errs = append(errs, &BlueprintError{
 					Err: fmt.Errorf("%q depends on undefined module %q",
 						module.properties.Name, depName),
 					Pos: module.pos,
@@ -2446,7 +2467,7 @@ func (c *Context) ModuleErrorf(logicModule Module, format string,
 	args ...interface{}) error {
 
 	module := c.moduleInfo[logicModule]
-	return &Error{
+	return &BlueprintError{
 		Err: fmt.Errorf(format, args...),
 		Pos: module.pos,
 	}

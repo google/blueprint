@@ -63,7 +63,7 @@ func unpackProperties(propertyDefs []*parser.Property,
 	for name, packedProperty := range propertyMap {
 		result[name] = packedProperty.property
 		if !packedProperty.unpacked {
-			err := &Error{
+			err := &BlueprintError{
 				Err: fmt.Errorf("unrecognized property %q", name),
 				Pos: packedProperty.property.ColonPos,
 			}
@@ -88,11 +88,11 @@ func buildPropertyMap(namePrefix string, propertyDefs []*parser.Property,
 				// We've already added this property.
 				continue
 			}
-			errs = append(errs, &Error{
+			errs = append(errs, &BlueprintError{
 				Err: fmt.Errorf("property %q already defined", name),
 				Pos: propertyDef.ColonPos,
 			})
-			errs = append(errs, &Error{
+			errs = append(errs, &BlueprintError{
 				Err: fmt.Errorf("<-- previous definition here"),
 				Pos: first.property.ColonPos,
 			})
@@ -216,7 +216,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 
 		if proptools.HasTag(field, "blueprint", "mutated") {
 			errs = append(errs,
-				&Error{
+				&BlueprintError{
 					Err: fmt.Errorf("mutated field %s cannot be set in a Blueprint file", propertyName),
 					Pos: packedProperty.property.ColonPos,
 				})
@@ -228,7 +228,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 
 		if filterKey != "" && !proptools.HasTag(field, filterKey, filterValue) {
 			errs = append(errs,
-				&Error{
+				&BlueprintError{
 					Err: fmt.Errorf("filtered field %s cannot be set in a Blueprint file", propertyName),
 					Pos: packedProperty.property.ColonPos,
 				})
