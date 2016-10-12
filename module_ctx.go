@@ -193,7 +193,7 @@ func (d *baseModuleContext) error(err error) {
 func (d *baseModuleContext) Errorf(pos scanner.Position,
 	format string, args ...interface{}) {
 
-	d.error(&Error{
+	d.error(&BlueprintError{
 		Err: fmt.Errorf(format, args...),
 		Pos: pos,
 	})
@@ -202,9 +202,12 @@ func (d *baseModuleContext) Errorf(pos scanner.Position,
 func (d *baseModuleContext) ModuleErrorf(format string,
 	args ...interface{}) {
 
-	d.error(&Error{
-		Err: fmt.Errorf(format, args...),
-		Pos: d.module.pos,
+	d.error(&ModuleError{
+		BlueprintError: BlueprintError{
+			Err: fmt.Errorf(format, args...),
+			Pos: d.module.pos,
+		},
+		module: d.module,
 	})
 }
 
@@ -217,11 +220,15 @@ func (d *baseModuleContext) PropertyErrorf(property, format string,
 		pos = d.module.pos
 	}
 
-	format = property + ": " + format
-
-	d.error(&Error{
-		Err: fmt.Errorf(format, args...),
-		Pos: pos,
+	d.error(&PropertyError{
+		ModuleError: ModuleError{
+			BlueprintError: BlueprintError{
+				Err: fmt.Errorf(format, args...),
+				Pos: pos,
+			},
+			module: d.module,
+		},
+		property: property,
 	})
 }
 
@@ -248,9 +255,12 @@ func (m *baseModuleContext) OtherModuleErrorf(logicModule Module, format string,
 	args ...interface{}) {
 
 	module := m.context.moduleInfo[logicModule]
-	m.errs = append(m.errs, &Error{
-		Err: fmt.Errorf(format, args...),
-		Pos: module.pos,
+	m.errs = append(m.errs, &ModuleError{
+		BlueprintError: BlueprintError{
+			Err: fmt.Errorf(format, args...),
+			Pos: module.pos,
+		},
+		module: module,
 	})
 }
 
