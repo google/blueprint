@@ -457,6 +457,7 @@ type baseMutatorContext interface {
 	BaseModuleContext
 
 	OtherModuleExists(name string) bool
+	Rename(name string)
 	Module() Module
 }
 
@@ -654,6 +655,12 @@ func (mctx *mutatorContext) AddInterVariantDependency(tag DependencyTag, from, t
 
 func (mctx *mutatorContext) OtherModuleExists(name string) bool {
 	return mctx.context.moduleNames[name] != nil
+}
+
+// Rename all variants of a module.  The new name is not visible to calls to ModuleName,
+// AddDependency or OtherModuleName until after this mutator pass is complete.
+func (mctx *mutatorContext) Rename(name string) {
+	mctx.context.rename(mctx.module.group, name)
 }
 
 // SimpleName is an embeddable object to implement the ModuleContext.Name method using a property

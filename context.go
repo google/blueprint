@@ -101,6 +101,8 @@ type Context struct {
 	// set lazily by sortedModuleNames
 	cachedSortedModuleNames []string
 
+	renames []rename // List of pending renames to apply after the mutator pass
+
 	fs fileSystem
 }
 
@@ -1750,6 +1752,7 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 	done := make(chan bool)
 
 	c.depsModified = 0
+	c.renames = nil
 
 	visit := func(module *moduleInfo) bool {
 		if module.splitModules != nil {
@@ -1853,6 +1856,11 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 		sort.Sort(depSorter(deps))
 		module.directDeps = append(module.directDeps, deps...)
 		c.depsModified++
+	}
+
+	errs = c.handleRenames()
+	if len(errs) > 0 {
+		return errs
 	}
 
 	if c.depsModified > 0 {
@@ -2144,7 +2152,46 @@ func (c *Context) walkDeps(topModule *moduleInfo,
 	walk(topModule)
 }
 
-type innerPanicError error
+type rename struct {
+	group *moduleGroup
+	name  string
+}
+
+func (c *Context) rename(group *moduleGroup, name string) {
+	c.renames = append(c.renames, rename{group, name})
+}
+
+func (c *Context) handleRenames() []error {
+	var errs []error
+	for _, rename := range c.renames {
+		group, name := rename.group, rename.name
+		if name == group.name {
+			continue
+		}
+
+		existing := c.moduleNames[name]
+		if existing != nil {
+			errs = append(errs,
+				&BlueprintError{
+					Err: fmt.Errorf("renaming module %q to %q conflicts with existing module",
+						group.name, name),
+					Pos: group.modules[0].pos,
+				},
+				&BlueprintError{
+					Err: fmt.Errorf("<-- existing module defined here"),
+					Pos: existing.modules[0].pos,
+				},
+			)
+			continue
+		}
+
+		c.moduleNames[name] = group
+		delete(c.moduleNames, group.name)
+		group.name = name
+	}
+
+	return errs
+}
 
 func (c *Context) modulesFromName(name string) []*moduleInfo {
 	if group := c.moduleNames[name]; group != nil {
