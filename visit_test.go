@@ -20,6 +20,7 @@ import (
 )
 
 type visitModule struct {
+	SimpleName
 	properties struct {
 		Visit                 []string
 		VisitDepsDepthFirst   string `blueprint:"mutated"`
@@ -31,7 +32,7 @@ type visitModule struct {
 
 func newVisitModule() (Module, []interface{}) {
 	m := &visitModule{}
-	return m, []interface{}{&m.properties}
+	return m, []interface{}{&m.properties, &m.SimpleName.Properties}
 }
 
 func (f *visitModule) GenerateBuildActions(ModuleContext) {
@@ -140,7 +141,7 @@ func setupVisitTest(t *testing.T) *Context {
 func TestVisit(t *testing.T) {
 	ctx := setupVisitTest(t)
 
-	topModule := ctx.moduleGroups["A"].modules[0].logicModule.(*visitModule)
+	topModule := ctx.modulesFromName("A")[0].logicModule.(*visitModule)
 	assertString(t, topModule.properties.VisitDepsDepthFirst, "EDCB")
 	assertString(t, topModule.properties.VisitDepsDepthFirstIf, "EDC")
 	assertString(t, topModule.properties.VisitDirectDeps, "B")
