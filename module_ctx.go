@@ -84,6 +84,16 @@ import (
 // or variants of the current Module must be synchronized by the implementation of
 // GenerateBuildActions.
 type Module interface {
+	// Name returns a string used to uniquely identify each module.  The return
+	// value must be unique across all modules.  It is only called once, during
+	// initial blueprint parsing.  To change the name later a mutator must call
+	// MutatorContext.Rename
+	//
+	// In most cases, Name should return the contents of a "name:" property from
+	// the blueprint file.  An embeddable SimpleName object can be used for this
+	// case.
+	Name() string
+
 	// GenerateBuildActions is called by the Context that created the Module
 	// during its generate phase.  This call should generate all Ninja build
 	// actions (rules, pools, and build statements) needed to build the module.
@@ -168,7 +178,7 @@ func (d *baseModuleContext) moduleInfo() *moduleInfo {
 }
 
 func (d *baseModuleContext) ModuleName() string {
-	return d.module.properties.Name
+	return d.module.Name()
 }
 
 func (d *baseModuleContext) ContainsProperty(name string) bool {
@@ -248,7 +258,7 @@ type moduleContext struct {
 
 func (m *baseModuleContext) OtherModuleName(logicModule Module) string {
 	module := m.context.moduleInfo[logicModule]
-	return module.properties.Name
+	return module.Name()
 }
 
 func (m *baseModuleContext) OtherModuleErrorf(logicModule Module, format string,
@@ -446,6 +456,8 @@ type mutatorContext struct {
 type baseMutatorContext interface {
 	BaseModuleContext
 
+	OtherModuleExists(name string) bool
+	Rename(name string)
 	Module() Module
 }
 
@@ -481,6 +493,7 @@ type BottomUpMutatorContext interface {
 	AddVariationDependencies([]Variation, DependencyTag, ...string)
 	AddFarVariationDependencies([]Variation, DependencyTag, ...string)
 	AddInterVariantDependency(tag DependencyTag, from, to Module)
+	ReplaceDependencies(string)
 }
 
 // A Mutator function is called for each Module, and can use
@@ -639,4 +652,34 @@ func (mctx *mutatorContext) AddFarVariationDependencies(variations []Variation, 
 
 func (mctx *mutatorContext) AddInterVariantDependency(tag DependencyTag, from, to Module) {
 	mctx.context.addInterVariantDependency(mctx.module, tag, from, to)
+}
+
+// ReplaceDependencies replaces all dependencies on the identical variant of the module with the
+// specified name with the current variant of this module.  Replacements don't take effect until
+// after the mutator pass is finished.
+func (mctx *mutatorContext) ReplaceDependencies(name string) {
+	mctx.context.replaceDependencies(mctx.module, name)
+}
+
+func (mctx *mutatorContext) OtherModuleExists(name string) bool {
+	return mctx.context.moduleNames[name] != nil
+}
+
+// Rename all variants of a module.  The new name is not visible to calls to ModuleName,
+// AddDependency or OtherModuleName until after this mutator pass is complete.
+func (mctx *mutatorContext) Rename(name string) {
+	mctx.context.rename(mctx.module.group, name)
+}
+
+// SimpleName is an embeddable object to implement the ModuleContext.Name method using a property
+// called "name".  Modules that embed it must also add SimpleName.Properties to their property
+// structure list.
+type SimpleName struct {
+	Properties struct {
+		Name string
+	}
+}
+
+func (s *SimpleName) Name() string {
+	return s.Properties.Name
 }
