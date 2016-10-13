@@ -24,17 +24,23 @@ type Walker interface {
 }
 
 type fooModule struct {
+	SimpleName
 	properties struct {
-		Foo string
+		Deps []string
+		Foo  string
 	}
 }
 
 func newFooModule() (Module, []interface{}) {
 	m := &fooModule{}
-	return m, []interface{}{&m.properties}
+	return m, []interface{}{&m.properties, &m.SimpleName.Properties}
 }
 
 func (f *fooModule) GenerateBuildActions(ModuleContext) {
+}
+
+func (f *fooModule) DynamicDependencies(ctx DynamicDependerModuleContext) []string {
+	return f.properties.Deps
 }
 
 func (f *fooModule) Foo() string {
@@ -46,14 +52,20 @@ func (f *fooModule) Walk() bool {
 }
 
 type barModule struct {
+	SimpleName
 	properties struct {
-		Bar bool
+		Deps []string
+		Bar  bool
 	}
 }
 
 func newBarModule() (Module, []interface{}) {
 	m := &barModule{}
-	return m, []interface{}{&m.properties}
+	return m, []interface{}{&m.properties, &m.SimpleName.Properties}
+}
+
+func (b *barModule) DynamicDependencies(ctx DynamicDependerModuleContext) []string {
+	return b.properties.Deps
 }
 
 func (b *barModule) GenerateBuildActions(ModuleContext) {
@@ -74,12 +86,12 @@ func TestContextParse(t *testing.T) {
 
 	r := bytes.NewBufferString(`
 		foo_module {
-			name: "MyFooModule",
+	        name: "MyFooModule",
 			deps: ["MyBarModule"],
 		}
 
 		bar_module {
-			name: "MyBarModule",
+	        name: "MyBarModule",
 		}
 	`)
 
@@ -168,7 +180,7 @@ func TestWalkDeps(t *testing.T) {
 
 	var outputDown string
 	var outputUp string
-	topModule := ctx.moduleGroups["A"].modules[0]
+	topModule := ctx.modulesFromName("A")[0]
 	ctx.walkDeps(topModule,
 		func(dep depInfo, parent *moduleInfo) bool {
 			if dep.module.logicModule.(Walker).Walk() {
