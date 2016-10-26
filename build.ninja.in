@@ -7,7 +7,7 @@
 #
 #     bootstrap [from Go package github.com/google/blueprint/bootstrap]
 #
-ninja_required_version = 1.6.0
+ninja_required_version = 1.7.0
 
 g.bootstrap.buildDir = @@BuildDir@@
 
