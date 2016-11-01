@@ -264,9 +264,9 @@ default ${g.bootstrap.BinDir}/minibp
 # Factory:   github.com/google/blueprint/bootstrap.newSingletonFactory.func1
 
 rule s.bootstrap.primarybp
-    command = ${g.bootstrap.BinDir}/minibp --build-primary ${runTests} -b ${g.bootstrap.buildDir} -d ${outfile}.d -o ${outfile} ${in}
-    depfile = ${outfile}.d
-    description = minibp ${outfile}
+    command = ${g.bootstrap.BinDir}/minibp --build-primary ${runTests} -b ${g.bootstrap.buildDir} -d ${out}.d -o ${out} ${in}
+    depfile = ${out}.d
+    description = minibp ${out}
 
 rule s.bootstrap.minibp
     command = ${g.bootstrap.BinDir}/minibp ${runTests} -b ${g.bootstrap.buildDir} -d ${out}.d -o ${out} ${in}
@@ -278,7 +278,6 @@ build ${g.bootstrap.buildDir}/.bootstrap/build.ninja: s.bootstrap.primarybp $
         ${g.bootstrap.srcDir}/Blueprints | ${g.bootstrap.BinDir}/gotestmain $
         ${g.bootstrap.BinDir}/gotestrunner ${g.bootstrap.BinDir}/minibp $
         ${g.bootstrap.srcDir}/Blueprints
-    outfile = ${g.bootstrap.buildDir}/.bootstrap/build.ninja
 default ${g.bootstrap.buildDir}/.bootstrap/build.ninja
 
 build ${g.bootstrap.buildDir}/.minibootstrap/build.ninja.in: $
