@@ -686,15 +686,13 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		primarybp := ctx.Rule(pctx, "primarybp",
 			blueprint.RuleParams{
 				Command: fmt.Sprintf("%s --build-primary $runTests "+
-					"-b $buildDir -d $outfile.d -o $outfile $in", minibpFile),
-				Description: "minibp $outfile",
-				Depfile:     "$outfile.d",
+					"-b $buildDir -d $out.d -o $out $in", minibpFile),
+				Description: "minibp $out",
+				Depfile:     "$out.d",
 			},
-			"runTests", "outfile")
+			"runTests")
 
-		args := map[string]string{
-			"outfile": primaryBuilderNinjaFile,
-		}
+		args := make(map[string]string)
 
 		if s.config.runGoTests {
 			args["runTests"] = "-t"
@@ -754,21 +752,17 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		bigbp := ctx.Rule(pctx, "bigbp",
 			blueprint.RuleParams{
 				Command: fmt.Sprintf("%s %s "+
-					"-b $buildDir -d $outfile.d -o $outfile $in", primaryBuilderFile,
+					"-b $buildDir -d $out.d -o $out $in", primaryBuilderFile,
 					primaryBuilderExtraFlags),
-				Description: fmt.Sprintf("%s $outfile", primaryBuilderName),
-				Depfile:     "$outfile.d",
-			},
-			"outfile")
+				Description: fmt.Sprintf("%s $out", primaryBuilderName),
+				Depfile:     "$out.d",
+			})
 
 		ctx.Build(pctx, blueprint.BuildParams{
 			Rule:      bigbp,
 			Outputs:   []string{mainNinjaFile},
 			Inputs:    []string{topLevelBlueprints},
 			Implicits: primaryBootstrapDeps,
-			Args: map[string]string{
-				"outfile": mainNinjaFile,
-			},
 		})
 
 		// Generate build system docs for the primary builder.  Generating docs reads the source
