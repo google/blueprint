@@ -96,6 +96,16 @@ var (
 		},
 		"depfile", "generator")
 
+	generateBuildNinja = pctx.StaticRule("build.ninja",
+		blueprint.RuleParams{
+			Command:     "$builder $extra -b $buildDir -d $out.d -o $out $in",
+			CommandDeps: []string{"$builder"},
+			Description: "$builder $out",
+			Depfile:     "$out.d",
+			Restat:      true,
+		},
+		"builder", "extra", "generator")
+
 	// Work around a Ninja issue.  See https://github.com/martine/ninja/pull/634
 	phony = pctx.StaticRule("phony",
 		blueprint.RuleParams{
@@ -611,6 +621,11 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			}
 		})
 
+	var extraTestFlags string
+	if s.config.runGoTests {
+		extraTestFlags = " -t"
+	}
+
 	var primaryBuilderName, primaryBuilderExtraFlags string
 	switch len(primaryBuilders) {
 	case 0:
@@ -618,7 +633,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// as the primary builder.  We can trigger its primary builder mode with
 		// the -p flag.
 		primaryBuilderName = "minibp"
-		primaryBuilderExtraFlags = "-p"
+		primaryBuilderExtraFlags = "-p" + extraTestFlags
 
 	case 1:
 		primaryBuilderName = ctx.ModuleName(primaryBuilders[0])
@@ -633,10 +648,6 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	}
 
 	primaryBuilderFile := filepath.Join("$BinDir", primaryBuilderName)
-
-	if s.config.runGoTests {
-		primaryBuilderExtraFlags += " -t"
-	}
 
 	// Get the filename of the top-level Blueprints file to pass to minibp.
 	topLevelBlueprints := filepath.Join("$srcDir",
@@ -680,56 +691,27 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// cleanup process will remove files from the other builds.
 		ctx.SetNinjaBuildDir(pctx, miniBootstrapDir)
 
-		// Generate the Ninja file to build the primary builder. Save the
-		// timestamps and deps, so that we can come back to this stage if
-		// it needs to be regenerated.
-		primarybp := ctx.Rule(pctx, "primarybp",
-			blueprint.RuleParams{
-				Command: fmt.Sprintf("%s --build-primary $runTests "+
-					"-b $buildDir -d $out.d -o $out $in", minibpFile),
-				Description: "minibp $out",
-				Depfile:     "$out.d",
-			},
-			"runTests")
-
-		args := make(map[string]string)
-
-		if s.config.runGoTests {
-			args["runTests"] = "-t"
-		}
-
+		// Generate the Ninja file to build the primary builder.
 		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:      primarybp,
+			Rule:      generateBuildNinja,
 			Outputs:   []string{primaryBuilderNinjaFile},
 			Inputs:    []string{topLevelBlueprints},
 			Implicits: bootstrapDeps,
-			Args:      args,
+			Args: map[string]string{
+				"builder": minibpFile,
+				"extra":   "--build-primary" + extraTestFlags,
+			},
 		})
 
 		// Rebuild the bootstrap Ninja file using the minibp that we just built.
-		minibp := ctx.Rule(pctx, "minibp",
-			blueprint.RuleParams{
-				Command: fmt.Sprintf("%s $runTests "+
-					"-b $buildDir -d $out.d -o $out $in", minibpFile),
-				CommandDeps: []string{minibpFile},
-				Description: "minibp $out",
-				Depfile:     "$out.d",
-				// So that we don't trigger a restart if this hasn't changed
-				Restat: true,
-			},
-			"runTests")
-
-		args = map[string]string{}
-
-		if s.config.runGoTests {
-			args["runTests"] = "-t"
-		}
-
 		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:    minibp,
+			Rule:    generateBuildNinja,
 			Outputs: []string{bootstrapNinjaFileTemplate},
 			Inputs:  []string{topLevelBlueprints},
-			Args:    args,
+			Args: map[string]string{
+				"builder": minibpFile,
+				"extra":   extraTestFlags,
+			},
 		})
 
 		ctx.Build(pctx, blueprint.BuildParams{
@@ -746,23 +728,29 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// cleanup process will remove files from the other builds.
 		ctx.SetNinjaBuildDir(pctx, bootstrapDir)
 
-		// We generate the depfile here that includes the dependencies for all
-		// the Blueprints files that contribute to generating the big build
-		// manifest (build.ninja file).
-		bigbp := ctx.Rule(pctx, "bigbp",
-			blueprint.RuleParams{
-				Command: fmt.Sprintf("%s %s "+
-					"-b $buildDir -d $out.d -o $out $in", primaryBuilderFile,
-					primaryBuilderExtraFlags),
-				Description: fmt.Sprintf("%s $out", primaryBuilderName),
-				Depfile:     "$out.d",
-			})
-
+		// Add a way to rebuild the primary build.ninja so that globs works
 		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:      bigbp,
+			Rule:      generateBuildNinja,
+			Outputs:   []string{primaryBuilderNinjaFile},
+			Inputs:    []string{topLevelBlueprints},
+			Implicits: bootstrapDeps,
+			Args: map[string]string{
+				"builder":   minibpFile,
+				"extra":     "--build-primary" + extraTestFlags,
+				"generator": "true",
+			},
+		})
+
+		// Build the main build.ninja
+		ctx.Build(pctx, blueprint.BuildParams{
+			Rule:      generateBuildNinja,
 			Outputs:   []string{mainNinjaFile},
 			Inputs:    []string{topLevelBlueprints},
 			Implicits: primaryBootstrapDeps,
+			Args: map[string]string{
+				"builder": primaryBuilderFile,
+				"extra":   primaryBuilderExtraFlags,
+			},
 		})
 
 		// Generate build system docs for the primary builder.  Generating docs reads the source
@@ -785,6 +773,20 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 	case StageMain:
 		ctx.SetNinjaBuildDir(pctx, "${buildDir}")
+
+		// Add a way to rebuild the main build.ninja in case it creates rules that
+		// it will depend on itself. (In Android, globs with soong_glob)
+		ctx.Build(pctx, blueprint.BuildParams{
+			Rule:      generateBuildNinja,
+			Outputs:   []string{mainNinjaFile},
+			Inputs:    []string{topLevelBlueprints},
+			Implicits: primaryBootstrapDeps,
+			Args: map[string]string{
+				"builder":   primaryBuilderFile,
+				"extra":     primaryBuilderExtraFlags,
+				"generator": "true",
+			},
+		})
 
 		if primaryBuilderName == "minibp" {
 			// This is a standalone Blueprint build, so we copy the minibp
