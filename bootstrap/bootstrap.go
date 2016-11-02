@@ -158,20 +158,11 @@ func pluginDeps(ctx blueprint.BottomUpMutatorContext) {
 type goPackageProducer interface {
 	GoPkgRoot() string
 	GoPackageTarget() string
+	GoTestTargets() []string
 }
 
 func isGoPackageProducer(module blueprint.Module) bool {
 	_, ok := module.(goPackageProducer)
-	return ok
-}
-
-type goTestProducer interface {
-	GoTestTarget() string
-	BuildStage() Stage
-}
-
-func isGoTestProducer(module blueprint.Module) bool {
-	_, ok := module.(goTestProducer)
 	return ok
 }
 
@@ -221,8 +212,8 @@ type goPackage struct {
 	// The path of the .a file that is to be built.
 	archiveFile string
 
-	// The path of the test .a file that is to be built.
-	testArchiveFile string
+	// The path of the test result file.
+	testResultFile []string
 
 	// The bootstrap Config
 	config *Config
@@ -256,8 +247,8 @@ func (g *goPackage) GoPackageTarget() string {
 	return g.archiveFile
 }
 
-func (g *goPackage) GoTestTarget() string {
-	return g.testArchiveFile
+func (g *goPackage) GoTestTargets() []string {
+	return g.testResultFile
 }
 
 func (g *goPackage) BuildStage() Stage {
@@ -293,8 +284,9 @@ func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
 	g.pkgRoot = packageRoot(ctx)
 	g.archiveFile = filepath.Join(g.pkgRoot,
 		filepath.FromSlash(g.properties.PkgPath)+".a")
+	var testArchiveFile string
 	if len(g.properties.TestSrcs) > 0 && g.config.runGoTests {
-		g.testArchiveFile = filepath.Join(testRoot(ctx),
+		testArchiveFile = filepath.Join(testRoot(ctx),
 			filepath.FromSlash(g.properties.PkgPath)+".a")
 	}
 
@@ -311,20 +303,18 @@ func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
 	// file to be built, but building a new ninja file requires the builder to
 	// be built.
 	if g.config.stage == g.BuildStage() {
-		var deps []string
-
 		if hasPlugins && !buildGoPluginLoader(ctx, g.properties.PkgPath, pluginSrc, g.config.stage) {
 			return
 		}
 
 		if g.config.runGoTests {
-			deps = buildGoTest(ctx, testRoot(ctx), g.testArchiveFile,
+			g.testResultFile = buildGoTest(ctx, testRoot(ctx), testArchiveFile,
 				g.properties.PkgPath, g.properties.Srcs, genSrcs,
 				g.properties.TestSrcs)
 		}
 
 		buildGoPackage(ctx, g.pkgRoot, g.properties.PkgPath, g.archiveFile,
-			g.properties.Srcs, genSrcs, deps)
+			g.properties.Srcs, genSrcs)
 	}
 }
 
@@ -340,9 +330,6 @@ type goBinary struct {
 		// The stage in which this module should be built
 		BuildStage Stage `blueprint:"mutated"`
 	}
-
-	// The path of the test .a file that is to be built.
-	testArchiveFile string
 
 	// The bootstrap Config
 	config *Config
@@ -362,10 +349,6 @@ func (g *goBinary) DynamicDependencies(ctx blueprint.DynamicDependerModuleContex
 	return g.properties.Deps
 }
 
-func (g *goBinary) GoTestTarget() string {
-	return g.testArchiveFile
-}
-
 func (g *goBinary) BuildStage() Stage {
 	return g.properties.BuildStage
 }
@@ -383,19 +366,16 @@ func (g *goBinary) InstallPath() string {
 
 func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 	var (
-		name        = ctx.ModuleName()
-		objDir      = moduleObjDir(ctx)
-		archiveFile = filepath.Join(objDir, name+".a")
-		aoutFile    = filepath.Join(objDir, "a.out")
-		binaryFile  = filepath.Join(g.InstallPath(), name)
-		hasPlugins  = false
-		pluginSrc   = ""
-		genSrcs     = []string{}
+		name            = ctx.ModuleName()
+		objDir          = moduleObjDir(ctx)
+		archiveFile     = filepath.Join(objDir, name+".a")
+		testArchiveFile = filepath.Join(testRoot(ctx), name+".a")
+		aoutFile        = filepath.Join(objDir, "a.out")
+		binaryFile      = filepath.Join(g.InstallPath(), name)
+		hasPlugins      = false
+		pluginSrc       = ""
+		genSrcs         = []string{}
 	)
-
-	if len(g.properties.TestSrcs) > 0 && g.config.runGoTests {
-		g.testArchiveFile = filepath.Join(testRoot(ctx), name+".a")
-	}
 
 	ctx.VisitDepsDepthFirstIf(isGoPluginFor(name),
 		func(module blueprint.Module) { hasPlugins = true })
@@ -412,11 +392,11 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 		}
 
 		if g.config.runGoTests {
-			deps = buildGoTest(ctx, testRoot(ctx), g.testArchiveFile,
+			deps = buildGoTest(ctx, testRoot(ctx), testArchiveFile,
 				name, g.properties.Srcs, genSrcs, g.properties.TestSrcs)
 		}
 
-		buildGoPackage(ctx, objDir, name, archiveFile, g.properties.Srcs, genSrcs, deps)
+		buildGoPackage(ctx, objDir, name, archiveFile, g.properties.Srcs, genSrcs)
 
 		var libDirFlags []string
 		ctx.VisitDepsDepthFirstIf(isGoPackageProducer,
@@ -424,6 +404,7 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 				dep := module.(goPackageProducer)
 				libDir := dep.GoPkgRoot()
 				libDirFlags = append(libDirFlags, "-L "+libDir)
+				deps = append(deps, dep.GoTestTargets()...)
 			})
 
 		linkArgs := map[string]string{}
@@ -439,9 +420,10 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 		})
 
 		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:    cp,
-			Outputs: []string{binaryFile},
-			Inputs:  []string{aoutFile},
+			Rule:      cp,
+			Outputs:   []string{binaryFile},
+			Inputs:    []string{aoutFile},
+			OrderOnly: deps,
 		})
 	}
 }
@@ -475,7 +457,7 @@ func buildGoPluginLoader(ctx blueprint.ModuleContext, pkgPath, pluginSrc string,
 }
 
 func buildGoPackage(ctx blueprint.ModuleContext, pkgRoot string,
-	pkgPath string, archiveFile string, srcs []string, genSrcs []string, orderDeps []string) {
+	pkgPath string, archiveFile string, srcs []string, genSrcs []string) {
 
 	srcDir := moduleSrcDir(ctx)
 	srcFiles := pathtools.PrefixPaths(srcs, srcDir)
@@ -504,7 +486,6 @@ func buildGoPackage(ctx blueprint.ModuleContext, pkgRoot string,
 		Rule:      compile,
 		Outputs:   []string{archiveFile},
 		Inputs:    srcFiles,
-		OrderOnly: orderDeps,
 		Implicits: deps,
 		Args:      compileArgs,
 	})
@@ -526,7 +507,7 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 	testPassed := filepath.Join(testRoot, "test.passed")
 
 	buildGoPackage(ctx, testRoot, pkgPath, testPkgArchive,
-		append(srcs, testSrcs...), genSrcs, nil)
+		append(srcs, testSrcs...), genSrcs)
 
 	ctx.Build(pctx, blueprint.BuildParams{
 		Rule:    goTestMain,
@@ -538,11 +519,13 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 	})
 
 	libDirFlags := []string{"-L " + testRoot}
+	testDeps := []string{}
 	ctx.VisitDepsDepthFirstIf(isGoPackageProducer,
 		func(module blueprint.Module) {
 			dep := module.(goPackageProducer)
 			libDir := dep.GoPkgRoot()
 			libDirFlags = append(libDirFlags, "-L "+libDir)
+			testDeps = append(testDeps, dep.GoTestTargets()...)
 		})
 
 	ctx.Build(pctx, blueprint.BuildParams{
@@ -566,9 +549,10 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 	})
 
 	ctx.Build(pctx, blueprint.BuildParams{
-		Rule:    test,
-		Outputs: []string{testPassed},
-		Inputs:  []string{testFile},
+		Rule:      test,
+		Outputs:   []string{testPassed},
+		Inputs:    []string{testFile},
+		OrderOnly: testDeps,
 		Args: map[string]string{
 			"pkg":       pkgPath,
 			"pkgSrcDir": filepath.Dir(testFiles[0]),
