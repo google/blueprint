@@ -30,6 +30,12 @@ rule g.bootstrap.bootstrap
     description = bootstrap ${in}
     generator = true
 
+rule g.bootstrap.build.ninja
+    command = ${builder} ${extra} -b ${g.bootstrap.buildDir} -d ${out}.d -o ${out} ${in}
+    depfile = ${out}.d
+    description = ${builder} ${out}
+    restat = true
+
 rule g.bootstrap.compile
     command = GOROOT='${g.bootstrap.goRoot}' ${g.bootstrap.compileCmd} -o ${out} -p ${pkgPath} -complete ${incFlags} -pack ${in}
     description = compile ${out}
@@ -263,26 +269,16 @@ default ${g.bootstrap.BinDir}/minibp
 # Singleton: bootstrap
 # Factory:   github.com/google/blueprint/bootstrap.newSingletonFactory.func1
 
-rule s.bootstrap.primarybp
-    command = ${g.bootstrap.BinDir}/minibp --build-primary ${runTests} -b ${g.bootstrap.buildDir} -d ${out}.d -o ${out} ${in}
-    depfile = ${out}.d
-    description = minibp ${out}
-
-rule s.bootstrap.minibp
-    command = ${g.bootstrap.BinDir}/minibp ${runTests} -b ${g.bootstrap.buildDir} -d ${out}.d -o ${out} ${in}
-    depfile = ${out}.d
-    description = minibp ${out}
-    restat = true
-
-build ${g.bootstrap.buildDir}/.bootstrap/build.ninja: s.bootstrap.primarybp $
-        ${g.bootstrap.srcDir}/Blueprints | ${g.bootstrap.BinDir}/gotestmain $
-        ${g.bootstrap.BinDir}/gotestrunner ${g.bootstrap.BinDir}/minibp $
-        ${g.bootstrap.srcDir}/Blueprints
+build ${g.bootstrap.buildDir}/.bootstrap/build.ninja: g.bootstrap.build.ninja $
+        ${g.bootstrap.srcDir}/Blueprints | ${builder}
+    builder = ${g.bootstrap.BinDir}/minibp
+    extra = --build-primary
 default ${g.bootstrap.buildDir}/.bootstrap/build.ninja
 
 build ${g.bootstrap.buildDir}/.minibootstrap/build.ninja.in: $
-        s.bootstrap.minibp ${g.bootstrap.srcDir}/Blueprints | $
-        ${g.bootstrap.BinDir}/minibp
+        g.bootstrap.build.ninja ${g.bootstrap.srcDir}/Blueprints | ${builder}
+    builder = ${g.bootstrap.BinDir}/minibp
+    extra = 
 default ${g.bootstrap.buildDir}/.minibootstrap/build.ninja.in
 
 build ${g.bootstrap.buildDir}/.minibootstrap/build.ninja: $
