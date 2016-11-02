@@ -270,9 +270,7 @@ default ${g.bootstrap.BinDir}/minibp
 # Factory:   github.com/google/blueprint/bootstrap.newSingletonFactory.func1
 
 build ${g.bootstrap.buildDir}/.bootstrap/build.ninja: g.bootstrap.build.ninja $
-        ${g.bootstrap.srcDir}/Blueprints | ${builder} $
-        ${g.bootstrap.BinDir}/gotestmain ${g.bootstrap.BinDir}/gotestrunner $
-        ${g.bootstrap.BinDir}/minibp ${g.bootstrap.srcDir}/Blueprints
+        ${g.bootstrap.srcDir}/Blueprints | ${builder}
     builder = ${g.bootstrap.BinDir}/minibp
     extra = --build-primary
 default ${g.bootstrap.buildDir}/.bootstrap/build.ninja

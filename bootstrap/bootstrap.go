@@ -596,10 +596,6 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	// creating the binary that we'll use to generate the non-bootstrap
 	// build.ninja file.
 	var primaryBuilders []*goBinary
-	// bootstrapDeps contains modules that will be built in StageBootstrap
-	var bootstrapDeps []string
-	// primaryBootstrapDeps contains modules that will be built in StagePrimary
-	var primaryBootstrapDeps []string
 	// blueprintTools contains blueprint go binaries that will be built in StageMain
 	var blueprintTools []string
 	ctx.VisitAllModulesIf(isBootstrapBinaryModule,
@@ -608,12 +604,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			binaryModuleName := ctx.ModuleName(binaryModule)
 			installPath := filepath.Join(binaryModule.InstallPath(), binaryModuleName)
 
-			switch binaryModule.BuildStage() {
-			case StageBootstrap:
-				bootstrapDeps = append(bootstrapDeps, installPath)
-			case StagePrimary:
-				primaryBootstrapDeps = append(primaryBootstrapDeps, installPath)
-			case StageMain:
+			if binaryModule.BuildStage() == StageMain {
 				blueprintTools = append(blueprintTools, installPath)
 			}
 			if binaryModule.properties.PrimaryBuilder {
@@ -653,34 +644,11 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	topLevelBlueprints := filepath.Join("$srcDir",
 		filepath.Base(s.config.topLevelBlueprintsFile))
 
-	bootstrapDeps = append(bootstrapDeps, topLevelBlueprints)
-
 	mainNinjaFile := filepath.Join("$buildDir", "build.ninja")
 	primaryBuilderNinjaFile := filepath.Join(bootstrapDir, "build.ninja")
 	bootstrapNinjaFileTemplate := filepath.Join(miniBootstrapDir, "build.ninja.in")
 	bootstrapNinjaFile := filepath.Join(miniBootstrapDir, "build.ninja")
 	docsFile := filepath.Join(docsDir, primaryBuilderName+".html")
-
-	primaryBootstrapDeps = append(primaryBootstrapDeps, docsFile)
-
-	// If the tests change, be sure to re-run them. These need to be
-	// dependencies for the ninja file so that it's updated after these
-	// run.
-	ctx.VisitAllModulesIf(isGoTestProducer,
-		func(module blueprint.Module) {
-			testModule := module.(goTestProducer)
-			target := testModule.GoTestTarget()
-			if target != "" {
-				switch testModule.BuildStage() {
-				case StageBootstrap:
-					bootstrapDeps = append(bootstrapDeps, target)
-				case StagePrimary:
-					primaryBootstrapDeps = append(primaryBootstrapDeps, target)
-				case StageMain:
-					blueprintTools = append(blueprintTools, target)
-				}
-			}
-		})
 
 	switch s.config.stage {
 	case StageBootstrap:
@@ -693,10 +661,9 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 		// Generate the Ninja file to build the primary builder.
 		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:      generateBuildNinja,
-			Outputs:   []string{primaryBuilderNinjaFile},
-			Inputs:    []string{topLevelBlueprints},
-			Implicits: bootstrapDeps,
+			Rule:    generateBuildNinja,
+			Outputs: []string{primaryBuilderNinjaFile},
+			Inputs:  []string{topLevelBlueprints},
 			Args: map[string]string{
 				"builder": minibpFile,
 				"extra":   "--build-primary" + extraTestFlags,
@@ -730,10 +697,9 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 		// Add a way to rebuild the primary build.ninja so that globs works
 		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:      generateBuildNinja,
-			Outputs:   []string{primaryBuilderNinjaFile},
-			Inputs:    []string{topLevelBlueprints},
-			Implicits: bootstrapDeps,
+			Rule:    generateBuildNinja,
+			Outputs: []string{primaryBuilderNinjaFile},
+			Inputs:  []string{topLevelBlueprints},
 			Args: map[string]string{
 				"builder":   minibpFile,
 				"extra":     "--build-primary" + extraTestFlags,
@@ -743,10 +709,9 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 		// Build the main build.ninja
 		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:      generateBuildNinja,
-			Outputs:   []string{mainNinjaFile},
-			Inputs:    []string{topLevelBlueprints},
-			Implicits: primaryBootstrapDeps,
+			Rule:    generateBuildNinja,
+			Outputs: []string{mainNinjaFile},
+			Inputs:  []string{topLevelBlueprints},
 			Args: map[string]string{
 				"builder": primaryBuilderFile,
 				"extra":   primaryBuilderExtraFlags,
@@ -777,10 +742,9 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// Add a way to rebuild the main build.ninja in case it creates rules that
 		// it will depend on itself. (In Android, globs with soong_glob)
 		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:      generateBuildNinja,
-			Outputs:   []string{mainNinjaFile},
-			Inputs:    []string{topLevelBlueprints},
-			Implicits: primaryBootstrapDeps,
+			Rule:    generateBuildNinja,
+			Outputs: []string{mainNinjaFile},
+			Inputs:  []string{topLevelBlueprints},
 			Args: map[string]string{
 				"builder":   primaryBuilderFile,
 				"extra":     primaryBuilderExtraFlags,
