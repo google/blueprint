@@ -76,14 +76,15 @@ type RuleParams struct {
 // Ninja build statement.  The Args field contains variable names and values
 // that are set within the build statement's scope in the Ninja file.
 type BuildParams struct {
-	Comment   string            // The comment that will appear above the definition.
-	Rule      Rule              // The rule to invoke.
-	Outputs   []string          // The list of output targets.
-	Inputs    []string          // The list of explicit input dependencies.
-	Implicits []string          // The list of implicit dependencies.
-	OrderOnly []string          // The list of order-only dependencies.
-	Args      map[string]string // The variable/value pairs to set.
-	Optional  bool              // Skip outputting a default statement
+	Comment         string            // The comment that will appear above the definition.
+	Rule            Rule              // The rule to invoke.
+	Outputs         []string          // The list of explicit output targets.
+	ImplicitOutputs []string          // The list of implicit output targets.
+	Inputs          []string          // The list of explicit input dependencies.
+	Implicits       []string          // The list of implicit input dependencies.
+	OrderOnly       []string          // The list of order-only dependencies.
+	Args            map[string]string // The variable/value pairs to set.
+	Optional        bool              // Skip outputting a default statement
 }
 
 // A poolDef describes a pool definition.  It does not include the name of the
@@ -246,15 +247,16 @@ func (r *ruleDef) WriteTo(nw *ninjaWriter, name string,
 
 // A buildDef describes a build target definition.
 type buildDef struct {
-	Comment   string
-	Rule      Rule
-	RuleDef   *ruleDef
-	Outputs   []*ninjaString
-	Inputs    []*ninjaString
-	Implicits []*ninjaString
-	OrderOnly []*ninjaString
-	Args      map[Variable]*ninjaString
-	Optional  bool
+	Comment         string
+	Rule            Rule
+	RuleDef         *ruleDef
+	Outputs         []*ninjaString
+	ImplicitOutputs []*ninjaString
+	Inputs          []*ninjaString
+	Implicits       []*ninjaString
+	OrderOnly       []*ninjaString
+	Args            map[Variable]*ninjaString
+	Optional        bool
 }
 
 func parseBuildParams(scope scope, params *BuildParams) (*buildDef,
@@ -280,6 +282,11 @@ func parseBuildParams(scope scope, params *BuildParams) (*buildDef,
 	b.Outputs, err = parseNinjaStrings(scope, params.Outputs)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing Outputs param: %s", err)
+	}
+
+	b.ImplicitOutputs, err = parseNinjaStrings(scope, params.ImplicitOutputs)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing ImplicitOutputs param: %s", err)
 	}
 
 	b.Inputs, err = parseNinjaStrings(scope, params.Inputs)
@@ -332,6 +339,7 @@ func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*packageContext]string)
 		comment       = b.Comment
 		rule          = b.Rule.fullName(pkgNames)
 		outputs       = valueList(b.Outputs, pkgNames, outputEscaper)
+		implicitOuts  = valueList(b.ImplicitOutputs, pkgNames, outputEscaper)
 		explicitDeps  = valueList(b.Inputs, pkgNames, inputEscaper)
 		implicitDeps  = valueList(b.Implicits, pkgNames, inputEscaper)
 		orderOnlyDeps = valueList(b.OrderOnly, pkgNames, inputEscaper)
@@ -341,7 +349,7 @@ func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*packageContext]string)
 		implicitDeps = append(valueList(b.RuleDef.CommandDeps, pkgNames, inputEscaper), implicitDeps...)
 	}
 
-	err := nw.Build(comment, rule, outputs, explicitDeps, implicitDeps, orderOnlyDeps)
+	err := nw.Build(comment, rule, outputs, implicitOuts, explicitDeps, implicitDeps, orderOnlyDeps)
 	if err != nil {
 		return err
 	}

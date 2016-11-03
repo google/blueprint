@@ -103,8 +103,8 @@ func (n *ninjaWriter) Rule(name string) error {
 	return err
 }
 
-func (n *ninjaWriter) Build(comment string, rule string, outputs, explicitDeps, implicitDeps,
-	orderOnlyDeps []string) error {
+func (n *ninjaWriter) Build(comment string, rule string, outputs, implicitOuts,
+	explicitDeps, implicitDeps, orderOnlyDeps []string) error {
 
 	n.justDidBlankLine = false
 
@@ -124,6 +124,14 @@ func (n *ninjaWriter) Build(comment string, rule string, outputs, explicitDeps, 
 
 	for _, output := range outputs {
 		wrapper.WriteStringWithSpace(output)
+	}
+
+	if len(implicitOuts) > 0 {
+		wrapper.WriteStringWithSpace("|")
+
+		for _, out := range implicitOuts {
+			wrapper.WriteStringWithSpace(out)
+		}
 	}
 
 	wrapper.WriteString(":")
