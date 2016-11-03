@@ -1927,7 +1927,7 @@ func spliceModules(modules []*moduleInfo, i int, newModules []*moduleInfo) ([]*m
 func (c *Context) initSpecialVariables() {
 	c.ninjaBuildDir = nil
 	c.requiredNinjaMajor = 1
-	c.requiredNinjaMinor = 6
+	c.requiredNinjaMinor = 7
 	c.requiredNinjaMicro = 0
 }
 
@@ -2476,7 +2476,7 @@ func (c *Context) AllTargets() (map[string]string, error) {
 	for _, module := range c.moduleInfo {
 		for _, buildDef := range module.actionDefs.buildDefs {
 			ruleName := buildDef.Rule.fullName(c.pkgNames)
-			for _, output := range buildDef.Outputs {
+			for _, output := range append(buildDef.Outputs, buildDef.ImplicitOutputs...) {
 				outputValue, err := output.Eval(c.globalVariables)
 				if err != nil {
 					return nil, err
@@ -2490,7 +2490,7 @@ func (c *Context) AllTargets() (map[string]string, error) {
 	for _, info := range c.singletonInfo {
 		for _, buildDef := range info.actionDefs.buildDefs {
 			ruleName := buildDef.Rule.fullName(c.pkgNames)
-			for _, output := range buildDef.Outputs {
+			for _, output := range append(buildDef.Outputs, buildDef.ImplicitOutputs...) {
 				outputValue, err := output.Eval(c.globalVariables)
 				if err != nil {
 					return nil, err

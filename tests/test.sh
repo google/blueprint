@@ -17,7 +17,7 @@ if [[ -d .bootstrap/blueprint/test ]]; then
 fi
 
 sleep 2
-sed -i 's/${runTests}/-t/' src.build.ninja.in
+sed -i 's/extra =/extra = -t/' src.build.ninja.in
 ./blueprint.bash
 
 if [[ ! -d .bootstrap/blueprint/test ]]; then
