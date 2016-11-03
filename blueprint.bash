@@ -53,10 +53,10 @@ else
 fi
 
 # Build minibp and the primary build.ninja
-"${NINJA}" -w dupbuild=err -f "${BUILDDIR}/.minibootstrap/build.ninja" "${BUILDDIR}/.bootstrap/build.ninja"
+"${NINJA}" -w dupbuild=err -f "${BUILDDIR}/.minibootstrap/build.ninja"
 
 # Build the primary builder and the main build.ninja
-"${NINJA}" -w dupbuild=err -f "${BUILDDIR}/.bootstrap/build.ninja" "${BUILDDIR}/build.ninja"
+"${NINJA}" -w dupbuild=err -f "${BUILDDIR}/.bootstrap/build.ninja"
 
 # SKIP_NINJA can be used by wrappers that wish to run ninja themselves.
 if [ -z "$SKIP_NINJA" ]; then

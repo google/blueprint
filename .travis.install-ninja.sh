@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Version of ninja to build -- can be any git revision
-VERSION="v1.6.0"
+VERSION="v1.7.1"
 
 set -ev
 

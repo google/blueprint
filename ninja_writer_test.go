@@ -49,10 +49,10 @@ var ninjaWriterTestCases = []struct {
 	},
 	{
 		input: func(w *ninjaWriter) {
-			ck(w.Build("foo comment", "foo", []string{"o1", "o2"}, []string{"e1", "e2"},
-				[]string{"i1", "i2"}, []string{"oo1", "oo2"}))
+			ck(w.Build("foo comment", "foo", []string{"o1", "o2"}, []string{"io1", "io2"},
+				[]string{"e1", "e2"}, []string{"i1", "i2"}, []string{"oo1", "oo2"}))
 		},
-		output: "# foo comment\nbuild o1 o2: foo e1 e2 | i1 i2 || oo1 oo2\n",
+		output: "# foo comment\nbuild o1 o2 | io1 io2: foo e1 e2 | i1 i2 || oo1 oo2\n",
 	},
 	{
 		input: func(w *ninjaWriter) {
@@ -88,7 +88,7 @@ var ninjaWriterTestCases = []struct {
 			ck(w.ScopedAssign("command", "echo out: $out in: $in _arg: $_arg"))
 			ck(w.ScopedAssign("pool", "p"))
 			ck(w.BlankLine())
-			ck(w.Build("r comment", "r", []string{"foo.o"}, []string{"foo.in"}, nil, nil))
+			ck(w.Build("r comment", "r", []string{"foo.o"}, nil, []string{"foo.in"}, nil, nil))
 			ck(w.ScopedAssign("_arg", "arg value"))
 		},
 		output: `pool p
