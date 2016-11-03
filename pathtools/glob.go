@@ -16,9 +16,12 @@ package pathtools
 
 import (
 	"errors"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/google/blueprint/deptools"
 )
 
 var GlobMultipleRecursiveErr = errors.New("pattern contains multiple **")
@@ -28,7 +31,12 @@ var GlobLastRecursiveErr = errors.New("pattern ** as last path element")
 // list of directories that were searched to construct the file list.
 // The supported glob patterns are equivalent to filepath.Glob, with an
 // extension that recursive glob (** matching zero or more complete path
-// entries) is supported.
+// entries) is supported. Glob also returns a list of directories that were
+// searched.
+//
+// In general ModuleContext.GlobWithDeps or SingletonContext.GlobWithDeps
+// should be used instead, as they will automatically set up dependencies
+// to rerun the primary builder when the list of matching files changes.
 func Glob(pattern string) (matches, dirs []string, err error) {
 	return GlobWithExcludes(pattern, nil)
 }
@@ -38,6 +46,11 @@ func Glob(pattern string) (matches, dirs []string, err error) {
 // that were searched to construct the file list.  The supported glob and
 // exclude patterns are equivalent to filepath.Glob, with an extension that
 // recursive glob (** matching zero or more complete path entries) is supported.
+// GlobWIthExcludes also returns a list of directories that were searched.
+//
+// In general ModuleContext.GlobWithDeps or SingletonContext.GlobWithDeps
+// should be used instead, as they will automatically set up dependencies
+// to rerun the primary builder when the list of matching files changes.
 func GlobWithExcludes(pattern string, excludes []string) (matches, dirs []string, err error) {
 	if filepath.Base(pattern) == "**" {
 		return nil, nil, GlobLastRecursiveErr
@@ -286,4 +299,99 @@ func GlobPatternList(patterns []string, prefix string) (globedList []string, dep
 		}
 	}
 	return globedList, depDirs, nil
+}
+
+// IsGlob returns true if the pattern contains any glob characters (*, ?, or [).
+func IsGlob(pattern string) bool {
+	return strings.IndexAny(pattern, "*?[") >= 0
+}
+
+// HasGlob returns true if any string in the list contains any glob characters (*, ?, or [).
+func HasGlob(in []string) bool {
+	for _, s := range in {
+		if IsGlob(s) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// GlobWithDepFile finds all files that match glob.  It compares the list of files
+// against the contents of fileListFile, and rewrites fileListFile if it has changed.  It also
+// writes all of the the directories it traversed as a depenencies on fileListFile to depFile.
+//
+// The format of glob is either path/*.ext for a single directory glob, or path/**/*.ext
+// for a recursive glob.
+//
+// Returns a list of file paths, and an error.
+//
+// In general ModuleContext.GlobWithDeps or SingletonContext.GlobWithDeps
+// should be used instead, as they will automatically set up dependencies
+// to rerun the primary builder when the list of matching files changes.
+func GlobWithDepFile(glob, fileListFile, depFile string, excludes []string) (files []string, err error) {
+	files, dirs, err := GlobWithExcludes(glob, excludes)
+	if err != nil {
+		return nil, err
+	}
+
+	fileList := strings.Join(files, "\n") + "\n"
+
+	WriteFileIfChanged(fileListFile, []byte(fileList), 0666)
+	deptools.WriteDepFile(depFile, fileListFile, dirs)
+
+	return
+}
+
+// WriteFileIfChanged wraps ioutil.WriteFile, but only writes the file if
+// the files does not already exist with identical contents.  This can be used
+// along with ninja restat rules to skip rebuilding downstream rules if no
+// changes were made by a rule.
+func WriteFileIfChanged(filename string, data []byte, perm os.FileMode) error {
+	var isChanged bool
+
+	dir := filepath.Dir(filename)
+	err := os.MkdirAll(dir, 0777)
+	if err != nil {
+		return err
+	}
+
+	info, err := os.Stat(filename)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// The file does not exist yet.
+			isChanged = true
+		} else {
+			return err
+		}
+	} else {
+		if info.Size() != int64(len(data)) {
+			isChanged = true
+		} else {
+			oldData, err := ioutil.ReadFile(filename)
+			if err != nil {
+				return err
+			}
+
+			if len(oldData) != len(data) {
+				isChanged = true
+			} else {
+				for i := range data {
+					if oldData[i] != data[i] {
+						isChanged = true
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if isChanged {
+		err = ioutil.WriteFile(filename, data, perm)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

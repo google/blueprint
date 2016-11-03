@@ -1,0 +1,116 @@
+// Copyright 2015 Google Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package blueprint
+
+import (
+	"fmt"
+	"reflect"
+	"sort"
+
+	"github.com/google/blueprint/pathtools"
+)
+
+type GlobPath struct {
+	Pattern  string
+	Excludes []string
+	Files    []string
+	Deps     []string
+	Name     string
+}
+
+func verifyGlob(fileName, pattern string, excludes []string, g GlobPath) {
+	if pattern != g.Pattern {
+		panic(fmt.Errorf("Mismatched patterns %q and %q for glob file %q", pattern, g.Pattern, fileName))
+	}
+	if !reflect.DeepEqual(g.Excludes, excludes) {
+		panic(fmt.Errorf("Mismatched excludes %v and %v for glob file %q", excludes, g.Excludes, fileName))
+	}
+}
+
+func (c *Context) glob(pattern string, excludes []string) ([]string, error) {
+	fileName := globToFileName(pattern, excludes)
+
+	// Try to get existing glob from the stored results
+	c.globLock.Lock()
+	g, exists := c.globs[fileName]
+	c.globLock.Unlock()
+
+	if exists {
+		// Glob has already been done, double check it is identical
+		verifyGlob(fileName, pattern, excludes, g)
+		return g.Files, nil
+	}
+
+	// Get a globbed file list
+	files, deps, err := pathtools.GlobWithExcludes(pattern, excludes)
+	if err != nil {
+		return nil, err
+	}
+
+	// Store the results
+	c.globLock.Lock()
+	if g, exists = c.globs[fileName]; !exists {
+		c.globs[fileName] = GlobPath{pattern, excludes, files, deps, fileName}
+	}
+	c.globLock.Unlock()
+
+	// Getting the list raced with another goroutine, throw away the results and use theirs
+	if exists {
+		verifyGlob(fileName, pattern, excludes, g)
+		return g.Files, nil
+	}
+
+	return files, nil
+}
+
+func (c *Context) Globs() []GlobPath {
+	fileNames := make([]string, 0, len(c.globs))
+	for k := range c.globs {
+		fileNames = append(fileNames, k)
+	}
+	sort.Strings(fileNames)
+
+	globs := make([]GlobPath, len(fileNames))
+	for i, fileName := range fileNames {
+		globs[i] = c.globs[fileName]
+	}
+
+	return globs
+}
+
+func globToString(pattern string) string {
+	ret := ""
+	for _, c := range pattern {
+		switch {
+		case c >= 'a' && c <= 'z',
+			c >= 'A' && c <= 'Z',
+			c >= '0' && c <= '9',
+			c == '_', c == '-', c == '/':
+			ret += string(c)
+		default:
+			ret += "_"
+		}
+	}
+
+	return ret
+}
+
+func globToFileName(pattern string, excludes []string) string {
+	ret := globToString(pattern)
+	for _, e := range excludes {
+		ret += "__" + globToString(e)
+	}
+	return ret + ".glob"
+}
