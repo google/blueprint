@@ -117,6 +117,8 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	ctx.RegisterTopDownMutator("bootstrap_stage", propagateStageBootstrap)
 	ctx.RegisterSingletonType("bootstrap", newSingletonFactory(bootstrapConfig))
 
+	ctx.RegisterSingletonType("glob", globSingletonFactory(ctx))
+
 	deps, errs := ctx.ParseBlueprintsFiles(bootstrapConfig.topLevelBlueprintsFile)
 	if len(errs) > 0 {
 		fatalErrors(errs)

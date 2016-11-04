@@ -53,20 +53,23 @@ rule g.bootstrap.link
 # Variant:
 # Type:    bootstrap_go_package
 # Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
-# Defined: Blueprints:1:1
+# Defined: blueprint/Blueprints:1:1
 
 build $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint/pkg/github.com/google/blueprint.a $
-        : g.bootstrap.compile ${g.bootstrap.srcDir}/context.go $
-        ${g.bootstrap.srcDir}/fs.go ${g.bootstrap.srcDir}/glob.go $
-        ${g.bootstrap.srcDir}/live_tracker.go ${g.bootstrap.srcDir}/mangle.go $
-        ${g.bootstrap.srcDir}/module_ctx.go $
-        ${g.bootstrap.srcDir}/ninja_defs.go $
-        ${g.bootstrap.srcDir}/ninja_strings.go $
-        ${g.bootstrap.srcDir}/ninja_writer.go $
-        ${g.bootstrap.srcDir}/package_ctx.go ${g.bootstrap.srcDir}/scope.go $
-        ${g.bootstrap.srcDir}/singleton_ctx.go ${g.bootstrap.srcDir}/unpack.go $
-        | ${g.bootstrap.compileCmd} $
+        : g.bootstrap.compile ${g.bootstrap.srcDir}/blueprint/context.go $
+        ${g.bootstrap.srcDir}/blueprint/fs.go $
+        ${g.bootstrap.srcDir}/blueprint/glob.go $
+        ${g.bootstrap.srcDir}/blueprint/live_tracker.go $
+        ${g.bootstrap.srcDir}/blueprint/mangle.go $
+        ${g.bootstrap.srcDir}/blueprint/module_ctx.go $
+        ${g.bootstrap.srcDir}/blueprint/ninja_defs.go $
+        ${g.bootstrap.srcDir}/blueprint/ninja_strings.go $
+        ${g.bootstrap.srcDir}/blueprint/ninja_writer.go $
+        ${g.bootstrap.srcDir}/blueprint/package_ctx.go $
+        ${g.bootstrap.srcDir}/blueprint/scope.go $
+        ${g.bootstrap.srcDir}/blueprint/singleton_ctx.go $
+        ${g.bootstrap.srcDir}/blueprint/unpack.go | ${g.bootstrap.compileCmd} $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a $
@@ -81,17 +84,18 @@ default $
 # Variant:
 # Type:    bootstrap_go_package
 # Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
-# Defined: Blueprints:89:1
+# Defined: blueprint/Blueprints:89:1
 
 build $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-bootstrap/pkg/github.com/google/blueprint/bootstrap.a $
-        : g.bootstrap.compile ${g.bootstrap.srcDir}/bootstrap/bootstrap.go $
-        ${g.bootstrap.srcDir}/bootstrap/cleanup.go $
-        ${g.bootstrap.srcDir}/bootstrap/command.go $
-        ${g.bootstrap.srcDir}/bootstrap/config.go $
-        ${g.bootstrap.srcDir}/bootstrap/doc.go $
-        ${g.bootstrap.srcDir}/bootstrap/glob.go $
-        ${g.bootstrap.srcDir}/bootstrap/writedocs.go | $
+        : g.bootstrap.compile $
+        ${g.bootstrap.srcDir}/blueprint/bootstrap/bootstrap.go $
+        ${g.bootstrap.srcDir}/blueprint/bootstrap/cleanup.go $
+        ${g.bootstrap.srcDir}/blueprint/bootstrap/command.go $
+        ${g.bootstrap.srcDir}/blueprint/bootstrap/config.go $
+        ${g.bootstrap.srcDir}/blueprint/bootstrap/doc.go $
+        ${g.bootstrap.srcDir}/blueprint/bootstrap/glob.go $
+        ${g.bootstrap.srcDir}/blueprint/bootstrap/writedocs.go | $
         ${g.bootstrap.compileCmd} $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a $
@@ -109,11 +113,12 @@ default $
 # Variant:
 # Type:    bootstrap_go_package
 # Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
-# Defined: Blueprints:109:1
+# Defined: blueprint/Blueprints:109:1
 
 build $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-bootstrap-bpdoc/pkg/github.com/google/blueprint/bootstrap/bpdoc.a $
-        : g.bootstrap.compile ${g.bootstrap.srcDir}/bootstrap/bpdoc/bpdoc.go | $
+        : g.bootstrap.compile $
+        ${g.bootstrap.srcDir}/blueprint/bootstrap/bpdoc/bpdoc.go | $
         ${g.bootstrap.compileCmd} $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a $
@@ -130,11 +135,12 @@ default $
 # Variant:
 # Type:    bootstrap_go_package
 # Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
-# Defined: Blueprints:50:1
+# Defined: blueprint/Blueprints:50:1
 
 build $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a $
-        : g.bootstrap.compile ${g.bootstrap.srcDir}/deptools/depfile.go | $
+        : g.bootstrap.compile $
+        ${g.bootstrap.srcDir}/blueprint/deptools/depfile.go | $
         ${g.bootstrap.compileCmd}
     pkgPath = github.com/google/blueprint/deptools
 default $
@@ -145,15 +151,16 @@ default $
 # Variant:
 # Type:    bootstrap_go_package
 # Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
-# Defined: Blueprints:34:1
+# Defined: blueprint/Blueprints:34:1
 
 build $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a $
-        : g.bootstrap.compile ${g.bootstrap.srcDir}/parser/ast.go $
-        ${g.bootstrap.srcDir}/parser/modify.go $
-        ${g.bootstrap.srcDir}/parser/parser.go $
-        ${g.bootstrap.srcDir}/parser/printer.go $
-        ${g.bootstrap.srcDir}/parser/sort.go | ${g.bootstrap.compileCmd}
+        : g.bootstrap.compile ${g.bootstrap.srcDir}/blueprint/parser/ast.go $
+        ${g.bootstrap.srcDir}/blueprint/parser/modify.go $
+        ${g.bootstrap.srcDir}/blueprint/parser/parser.go $
+        ${g.bootstrap.srcDir}/blueprint/parser/printer.go $
+        ${g.bootstrap.srcDir}/blueprint/parser/sort.go | $
+        ${g.bootstrap.compileCmd}
     pkgPath = github.com/google/blueprint/parser
 default $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a
@@ -163,12 +170,14 @@ default $
 # Variant:
 # Type:    bootstrap_go_package
 # Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
-# Defined: Blueprints:56:1
+# Defined: blueprint/Blueprints:56:1
 
 build $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a $
-        : g.bootstrap.compile ${g.bootstrap.srcDir}/pathtools/lists.go $
-        ${g.bootstrap.srcDir}/pathtools/glob.go | ${g.bootstrap.compileCmd} $
+        : g.bootstrap.compile $
+        ${g.bootstrap.srcDir}/blueprint/pathtools/lists.go $
+        ${g.bootstrap.srcDir}/blueprint/pathtools/glob.go | $
+        ${g.bootstrap.compileCmd} $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a
     incFlags = -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-deptools/pkg
     pkgPath = github.com/google/blueprint/pathtools
@@ -180,15 +189,16 @@ default $
 # Variant:
 # Type:    bootstrap_go_package
 # Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
-# Defined: Blueprints:71:1
+# Defined: blueprint/Blueprints:71:1
 
 build $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-proptools/pkg/github.com/google/blueprint/proptools.a $
-        : g.bootstrap.compile ${g.bootstrap.srcDir}/proptools/clone.go $
-        ${g.bootstrap.srcDir}/proptools/escape.go $
-        ${g.bootstrap.srcDir}/proptools/extend.go $
-        ${g.bootstrap.srcDir}/proptools/proptools.go $
-        ${g.bootstrap.srcDir}/proptools/typeequal.go | $
+        : g.bootstrap.compile $
+        ${g.bootstrap.srcDir}/blueprint/proptools/clone.go $
+        ${g.bootstrap.srcDir}/blueprint/proptools/escape.go $
+        ${g.bootstrap.srcDir}/blueprint/proptools/extend.go $
+        ${g.bootstrap.srcDir}/blueprint/proptools/proptools.go $
+        ${g.bootstrap.srcDir}/blueprint/proptools/typeequal.go | $
         ${g.bootstrap.compileCmd}
     pkgPath = github.com/google/blueprint/proptools
 default $
@@ -199,10 +209,11 @@ default $
 # Variant:
 # Type:    bootstrap_core_go_binary
 # Factory: github.com/google/blueprint/bootstrap.newGoBinaryModuleFactory.func1
-# Defined: Blueprints:130:1
+# Defined: blueprint/Blueprints:130:1
 
 build ${g.bootstrap.buildDir}/.bootstrap/bpglob/obj/bpglob.a: $
-        g.bootstrap.compile ${g.bootstrap.srcDir}/bootstrap/bpglob/bpglob.go | $
+        g.bootstrap.compile $
+        ${g.bootstrap.srcDir}/blueprint/bootstrap/bpglob/bpglob.go | $
         ${g.bootstrap.compileCmd} $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a
@@ -225,10 +236,11 @@ default ${g.bootstrap.BinDir}/bpglob
 # Variant:
 # Type:    bootstrap_core_go_binary
 # Factory: github.com/google/blueprint/bootstrap.newGoBinaryModuleFactory.func1
-# Defined: Blueprints:148:1
+# Defined: blueprint/Blueprints:148:1
 
 build ${g.bootstrap.buildDir}/.bootstrap/gotestmain/obj/gotestmain.a: $
-        g.bootstrap.compile ${g.bootstrap.srcDir}/gotestmain/gotestmain.go | $
+        g.bootstrap.compile $
+        ${g.bootstrap.srcDir}/blueprint/gotestmain/gotestmain.go | $
         ${g.bootstrap.compileCmd}
     pkgPath = gotestmain
 default ${g.bootstrap.buildDir}/.bootstrap/gotestmain/obj/gotestmain.a
@@ -248,11 +260,12 @@ default ${g.bootstrap.BinDir}/gotestmain
 # Variant:
 # Type:    bootstrap_core_go_binary
 # Factory: github.com/google/blueprint/bootstrap.newGoBinaryModuleFactory.func1
-# Defined: Blueprints:153:1
+# Defined: blueprint/Blueprints:153:1
 
 build ${g.bootstrap.buildDir}/.bootstrap/gotestrunner/obj/gotestrunner.a: $
-        g.bootstrap.compile ${g.bootstrap.srcDir}/gotestrunner/gotestrunner.go $
-        | ${g.bootstrap.compileCmd}
+        g.bootstrap.compile $
+        ${g.bootstrap.srcDir}/blueprint/gotestrunner/gotestrunner.go | $
+        ${g.bootstrap.compileCmd}
     pkgPath = gotestrunner
 default ${g.bootstrap.buildDir}/.bootstrap/gotestrunner/obj/gotestrunner.a
 
@@ -271,10 +284,11 @@ default ${g.bootstrap.BinDir}/gotestrunner
 # Variant:
 # Type:    bootstrap_core_go_binary
 # Factory: github.com/google/blueprint/bootstrap.newGoBinaryModuleFactory.func1
-# Defined: Blueprints:121:1
+# Defined: blueprint/Blueprints:121:1
 
 build ${g.bootstrap.buildDir}/.bootstrap/minibp/obj/minibp.a: $
-        g.bootstrap.compile ${g.bootstrap.srcDir}/bootstrap/minibp/main.go | $
+        g.bootstrap.compile $
+        ${g.bootstrap.srcDir}/blueprint/bootstrap/minibp/main.go | $
         ${g.bootstrap.compileCmd} $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a $
