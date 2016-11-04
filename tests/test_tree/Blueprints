@@ -1,0 +1,3 @@
+// Root Blueprints file for test_tree
+
+subdirs=["*"]
