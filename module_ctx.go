@@ -128,6 +128,12 @@ type BaseModuleContext interface {
 	PropertyErrorf(property, fmt string, args ...interface{})
 	Failed() bool
 
+	// GlobWithDeps returns a list of files that match the specified pattern but do not match any
+	// of the patterns in excludes.  It also adds efficient dependencies to rerun the primary
+	// builder whenever a file matching the pattern as added or removed, without rerunning if a
+	// file that does not match the pattern is added to a searched directory.
+	GlobWithDeps(pattern string, excludes []string) ([]string, error)
+
 	moduleInfo() *moduleInfo
 	error(err error)
 }
@@ -244,6 +250,11 @@ func (d *baseModuleContext) PropertyErrorf(property, format string,
 
 func (d *baseModuleContext) Failed() bool {
 	return len(d.errs) > 0
+}
+
+func (d *baseModuleContext) GlobWithDeps(pattern string,
+	excludes []string) ([]string, error) {
+	return d.context.glob(pattern, excludes)
 }
 
 var _ ModuleContext = (*moduleContext)(nil)

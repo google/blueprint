@@ -9,6 +9,7 @@ bootstrap_go_package(
     srcs = [
         "context.go",
         "fs.go",
+        "glob.go",
         "live_tracker.go",
         "mangle.go",
         "module_ctx.go",
@@ -55,6 +56,9 @@ bootstrap_go_package(
 bootstrap_go_package(
     name = "blueprint-pathtools",
     pkgPath = "github.com/google/blueprint/pathtools",
+    deps = [
+        "blueprint-deptools",
+    ],
     srcs = [
         "pathtools/lists.go",
         "pathtools/glob.go",
@@ -97,6 +101,7 @@ bootstrap_go_package(
         "bootstrap/command.go",
         "bootstrap/config.go",
         "bootstrap/doc.go",
+        "bootstrap/glob.go",
         "bootstrap/writedocs.go",
     ],
 )
@@ -120,6 +125,12 @@ bootstrap_core_go_binary(
         "blueprint-bootstrap",
     ],
     srcs = ["bootstrap/minibp/main.go"],
+)
+
+bootstrap_core_go_binary(
+    name = "bpglob",
+    deps = ["blueprint-pathtools"],
+    srcs = ["bootstrap/bpglob/bpglob.go"],
 )
 
 blueprint_go_binary(
