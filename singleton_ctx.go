@@ -62,6 +62,12 @@ type SingletonContext interface {
 	FinalModule(module Module) Module
 
 	AddNinjaFileDeps(deps ...string)
+
+	// GlobWithDeps returns a list of files that match the specified pattern but do not match any
+	// of the patterns in excludes.  It also adds efficient dependencies to rerun the primary
+	// builder whenever a file matching the pattern as added or removed, without rerunning if a
+	// file that does not match the pattern is added to a searched directory.
+	GlobWithDeps(pattern string, excludes []string) ([]string, error)
 }
 
 var _ SingletonContext = (*singletonContext)(nil)
@@ -227,4 +233,9 @@ func (s *singletonContext) VisitAllModuleVariants(module Module, visit func(Modu
 
 func (s *singletonContext) AddNinjaFileDeps(deps ...string) {
 	s.ninjaFileDeps = append(s.ninjaFileDeps, deps...)
+}
+
+func (s *singletonContext) GlobWithDeps(pattern string,
+	excludes []string) ([]string, error) {
+	return s.context.glob(pattern, excludes)
 }
