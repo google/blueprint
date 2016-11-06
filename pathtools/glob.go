@@ -16,6 +16,7 @@ package pathtools
 
 import (
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -113,7 +114,11 @@ func glob(pattern string, hasRecursive bool) (matches, dirs []string, err error)
 	}
 
 	for _, m := range dirMatches {
-		if info, _ := os.Stat(m); info.IsDir() {
+		info, err := os.Stat(m)
+		if err != nil {
+			return nil, nil, fmt.Errorf("unexpected error after glob: %s", err)
+		}
+		if info.IsDir() {
 			if file == "**" {
 				recurseDirs, err := walkAllDirs(m)
 				if err != nil {
