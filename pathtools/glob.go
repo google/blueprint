@@ -47,7 +47,7 @@ func Glob(pattern string) (matches, dirs []string, err error) {
 // that were searched to construct the file list.  The supported glob and
 // exclude patterns are equivalent to filepath.Glob, with an extension that
 // recursive glob (** matching zero or more complete path entries) is supported.
-// GlobWIthExcludes also returns a list of directories that were searched.
+// GlobWithExcludes also returns a list of directories that were searched.
 //
 // In general ModuleContext.GlobWithDeps or SingletonContext.GlobWithDeps
 // should be used instead, as they will automatically set up dependencies
