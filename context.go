@@ -31,7 +31,6 @@ import (
 	"text/template"
 
 	"github.com/google/blueprint/parser"
-	"github.com/google/blueprint/pathtools"
 	"github.com/google/blueprint/proptools"
 )
 
@@ -822,12 +821,7 @@ func (c *Context) findBuildBlueprints(dir string, build []string,
 		var matches []string
 		var err error
 
-		if pathtools.IsGlob(pattern) {
-			matches, err = c.glob(pattern, nil)
-		} else {
-			// Not a glob, but use filepath.Glob to check if it exists
-			matches, err = filepath.Glob(pattern)
-		}
+		matches, err = c.glob(pattern, nil)
 
 		if err != nil {
 			errs = append(errs, &BlueprintError{
@@ -863,12 +857,7 @@ func (c *Context) findSubdirBlueprints(dir string, subdirs []string, subdirsPos 
 		var matches []string
 		var err error
 
-		if pathtools.IsGlob(pattern) {
-			matches, err = c.glob(pattern, nil)
-		} else {
-			// Not a glob, but use filepath.Glob to check if it exists
-			matches, err = filepath.Glob(pattern)
-		}
+		matches, err = c.glob(pattern, nil)
 
 		if err != nil {
 			errs = append(errs, &BlueprintError{
