@@ -77,6 +77,8 @@ type RuleParams struct {
 // that are set within the build statement's scope in the Ninja file.
 type BuildParams struct {
 	Comment         string            // The comment that will appear above the definition.
+	Depfile         string            // The dependency file name.
+	Deps            Deps              // The format of the dependency file.
 	Rule            Rule              // The rule to invoke.
 	Outputs         []string          // The list of explicit output targets.
 	ImplicitOutputs []string          // The list of implicit output targets.
@@ -229,17 +231,9 @@ func (r *ruleDef) WriteTo(nw *ninjaWriter, name string,
 		}
 	}
 
-	var keys []string
-	for k := range r.Variables {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	for _, name := range keys {
-		err = nw.ScopedAssign(name, r.Variables[name].Value(pkgNames))
-		if err != nil {
-			return err
-		}
+	err = writeVariables(nw, r.Variables, pkgNames)
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -256,6 +250,7 @@ type buildDef struct {
 	Implicits       []*ninjaString
 	OrderOnly       []*ninjaString
 	Args            map[Variable]*ninjaString
+	Variables       map[string]*ninjaString
 	Optional        bool
 }
 
@@ -305,6 +300,24 @@ func parseBuildParams(scope scope, params *BuildParams) (*buildDef,
 	}
 
 	b.Optional = params.Optional
+
+	if params.Depfile != "" || params.Deps != DepsNone {
+		if b.Variables == nil {
+			b.Variables = make(map[string]*ninjaString)
+		}
+	}
+
+	if params.Depfile != "" {
+		value, err := parseNinjaString(scope, params.Depfile)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing Depfile param: %s", err)
+		}
+		b.Variables["depfile"] = value
+	}
+
+	if params.Deps != DepsNone {
+		b.Variables["deps"] = simpleNinjaString(params.Deps.String())
+	}
 
 	argNameScope := rule.scope()
 
@@ -360,6 +373,11 @@ func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*packageContext]string)
 		args[argVar.fullName(pkgNames)] = value.Value(pkgNames)
 	}
 
+	err = writeVariables(nw, b.Variables, pkgNames)
+	if err != nil {
+		return err
+	}
+
 	var keys []string
 	for k := range args {
 		keys = append(keys, k)
@@ -388,4 +406,21 @@ func valueList(list []*ninjaString, pkgNames map[*packageContext]string,
 		result[i] = ninjaStr.ValueWithEscaper(pkgNames, escaper)
 	}
 	return result
+}
+
+func writeVariables(nw *ninjaWriter, variables map[string]*ninjaString,
+	pkgNames map[*packageContext]string) error {
+	var keys []string
+	for k := range variables {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, name := range keys {
+		err := nw.ScopedAssign(name, variables[name].Value(pkgNames))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
