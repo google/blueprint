@@ -101,10 +101,6 @@ type Context struct {
 	// set lazily by sortedModuleNames
 	cachedSortedModuleNames []string
 
-	// List of pending renames and replacements to apply after the mutator pass
-	renames      []rename
-	replacements []replace
-
 	globs    map[string]GlobPath
 	globLock sync.Mutex
 
@@ -1706,16 +1702,22 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 		newModuleInfo[k] = v
 	}
 
+	type globalStateChange struct {
+		reverse []reverseDep
+		rename  []rename
+		replace []replace
+	}
+
 	reverseDeps := make(map[*moduleInfo][]depInfo)
+	var rename []rename
+	var replace []replace
 
 	errsCh := make(chan []error)
-	reverseDepsCh := make(chan []reverseDep)
+	globalStateCh := make(chan globalStateChange)
 	newModulesCh := make(chan []*moduleInfo)
 	done := make(chan bool)
 
 	c.depsModified = 0
-	c.renames = nil
-	c.replacements = nil
 
 	visit := func(module *moduleInfo) bool {
 		if module.splitModules != nil {
@@ -1755,8 +1757,12 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 			newModulesCh <- mctx.newModules
 		}
 
-		if len(mctx.reverseDeps) > 0 {
-			reverseDepsCh <- mctx.reverseDeps
+		if len(mctx.reverseDeps) > 0 || len(mctx.replace) > 0 || len(mctx.rename) > 0 {
+			globalStateCh <- globalStateChange{
+				reverse: mctx.reverseDeps,
+				replace: mctx.replace,
+				rename:  mctx.rename,
+			}
 		}
 
 		return false
@@ -1768,10 +1774,12 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 			select {
 			case newErrs := <-errsCh:
 				errs = append(errs, newErrs...)
-			case newReverseDeps := <-reverseDepsCh:
-				for _, r := range newReverseDeps {
+			case globalStateChange := <-globalStateCh:
+				for _, r := range globalStateChange.reverse {
 					reverseDeps[r.module] = append(reverseDeps[r.module], r.dep)
 				}
+				replace = append(replace, globalStateChange.replace...)
+				rename = append(rename, globalStateChange.rename...)
 			case newModules := <-newModulesCh:
 				for _, m := range newModules {
 					newModuleInfo[m.logicModule] = m
@@ -1821,7 +1829,12 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 		c.depsModified++
 	}
 
-	errs = c.handleRenamesAndReplacements()
+	errs = c.handleRenames(rename)
+	if len(errs) > 0 {
+		return errs
+	}
+
+	errs = c.handleReplacements(replace)
 	if len(errs) > 0 {
 		return errs
 	}
@@ -2124,36 +2137,25 @@ type rename struct {
 	name  string
 }
 
-func (c *Context) rename(group *moduleGroup, name string) {
-	c.renames = append(c.renames, rename{group, name})
-}
-
-func (c *Context) replaceDependencies(module *moduleInfo, name string) {
+func (c *Context) moduleMatchingVariant(module *moduleInfo, name string) *moduleInfo {
 	targets := c.modulesFromName(name)
 
 	if targets == nil {
-		panic(fmt.Errorf("ReplaceDependencies called with non-existant name %q", name))
+		return nil
 	}
 
-	var target *moduleInfo
 	for _, m := range targets {
 		if module.variantName == m.variantName {
-			target = m
-			break
+			return m
 		}
 	}
 
-	if target == nil {
-		panic(fmt.Errorf("ReplaceDependencies could not find identical variant %q for module %q",
-			module.variantName, name))
-	}
-
-	c.replacements = append(c.replacements, replace{target, module})
+	return nil
 }
 
-func (c *Context) handleRenamesAndReplacements() []error {
+func (c *Context) handleRenames(renames []rename) []error {
 	var errs []error
-	for _, rename := range c.renames {
+	for _, rename := range renames {
 		group, name := rename.group, rename.name
 		if name == group.name {
 			continue
@@ -2180,7 +2182,12 @@ func (c *Context) handleRenamesAndReplacements() []error {
 		group.name = name
 	}
 
-	for _, replace := range c.replacements {
+	return errs
+}
+
+func (c *Context) handleReplacements(replacements []replace) []error {
+	var errs []error
+	for _, replace := range replacements {
 		for _, m := range replace.from.reverseDeps {
 			for i, d := range m.directDeps {
 				if d.module == replace.from {
@@ -2191,6 +2198,7 @@ func (c *Context) handleRenamesAndReplacements() []error {
 
 		atomic.AddUint32(&c.depsModified, 1)
 	}
+
 	return errs
 }
 
