@@ -461,6 +461,8 @@ type mutatorContext struct {
 	baseModuleContext
 	name        string
 	reverseDeps []reverseDep
+	rename      []rename
+	replace     []replace
 	newModules  []*moduleInfo
 }
 
@@ -669,7 +671,14 @@ func (mctx *mutatorContext) AddInterVariantDependency(tag DependencyTag, from, t
 // specified name with the current variant of this module.  Replacements don't take effect until
 // after the mutator pass is finished.
 func (mctx *mutatorContext) ReplaceDependencies(name string) {
-	mctx.context.replaceDependencies(mctx.module, name)
+	target := mctx.context.moduleMatchingVariant(mctx.module, name)
+
+	if target == nil {
+		panic(fmt.Errorf("ReplaceDependencies could not find identical variant %q for module %q",
+			mctx.module.variantName, name))
+	}
+
+	mctx.replace = append(mctx.replace, replace{target, mctx.module})
 }
 
 func (mctx *mutatorContext) OtherModuleExists(name string) bool {
@@ -679,7 +688,7 @@ func (mctx *mutatorContext) OtherModuleExists(name string) bool {
 // Rename all variants of a module.  The new name is not visible to calls to ModuleName,
 // AddDependency or OtherModuleName until after this mutator pass is complete.
 func (mctx *mutatorContext) Rename(name string) {
-	mctx.context.rename(mctx.module.group, name)
+	mctx.rename = append(mctx.rename, rename{mctx.module.group, name})
 }
 
 // SimpleName is an embeddable object to implement the ModuleContext.Name method using a property
