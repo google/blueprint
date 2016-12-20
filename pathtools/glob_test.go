@@ -417,6 +417,28 @@ var globTestCases = []struct {
 		excludes: []string{"**/**"},
 		err:      GlobLastRecursiveErr,
 	},
+
+	// If names are excluded by default, but referenced explicitly, they should return results
+	{
+		pattern: ".test/*",
+		matches: []string{".test/a"},
+		dirs:    []string{".test"},
+	},
+	{
+		pattern: ".t*/a",
+		matches: []string{".test/a"},
+		dirs:    []string{".", ".test"},
+	},
+	{
+		pattern: ".*/.*",
+		matches: []string{".test/.ing"},
+		dirs:    []string{".", ".test"},
+	},
+	{
+		pattern: ".t*",
+		matches: []string{".test", ".testing"},
+		dirs:    []string{"."},
+	},
 }
 
 func TestGlob(t *testing.T) {
