@@ -131,6 +131,9 @@ func glob(pattern string, hasRecursive bool) (matches, dirs []string, err error)
 				if err != nil {
 					return nil, nil, err
 				}
+				if file[0] != '.' {
+					newMatches = filterDotFiles(newMatches)
+				}
 				matches = append(matches, newMatches...)
 			}
 		}
@@ -170,6 +173,11 @@ func walkAllDirs(dir string) (dirs []string, err error) {
 		}
 
 		if info.Mode().IsDir() {
+			name := info.Name()
+			if name[0] == '.' && name != "." {
+				return filepath.SkipDir
+			}
+
 			dirs = append(dirs, path)
 		}
 		return nil
@@ -201,6 +209,21 @@ matchLoop:
 	}
 
 	return ret, nil
+}
+
+// filterDotFiles filters out files that start with '.'
+func filterDotFiles(matches []string) []string {
+	ret := make([]string, 0, len(matches))
+
+	for _, match := range matches {
+		_, name := filepath.Split(match)
+		if name[0] == '.' {
+			continue
+		}
+		ret = append(ret, match)
+	}
+
+	return ret
 }
 
 // match returns true if name matches pattern using the same rules as filepath.Match, but supporting
