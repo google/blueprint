@@ -14,6 +14,7 @@ mkdir out.test
 rm -rf src.test
 mkdir src.test
 cp -r tests/test_tree src.test/test_tree
+ln -s ../.. src.test/test_tree/blueprint
 
 cd out.test
 export SRCDIR=../src.test/test_tree
