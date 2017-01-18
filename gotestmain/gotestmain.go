@@ -85,6 +85,7 @@ var testMainTmpl = template.Must(template.New("testMain").Parse(`
 package main
 
 import (
+	"regexp"
 	"testing"
 
 	pkg "{{.Package}}"
@@ -96,8 +97,18 @@ var t = []testing.InternalTest{
 {{end}}
 }
 
-func matchString(pat, str string) (bool, error) {
-	return true, nil
+var matchPat string
+var matchRe *regexp.Regexp
+
+func matchString(pat, str string) (result bool, err error) {
+	if matchRe == nil || matchPat != pat {
+		matchPat = pat
+		matchRe, err = regexp.Compile(matchPat)
+		if err != nil {
+			return
+		}
+	}
+	return matchRe.MatchString(str), nil
 }
 
 func main() {
