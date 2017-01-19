@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"syscall"
 )
 
@@ -56,12 +57,20 @@ func main() {
 
 	test, err := filepath.Abs(flag.Arg(0))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: Failed to locate test binary: %s", err)
+		fmt.Fprintln(os.Stderr, "error: Failed to locate test binary:", err)
 	}
 
 	cmd := exec.Command(test, flag.Args()[1:]...)
 	if *chdir != "" {
 		cmd.Dir = *chdir
+
+		// GOROOT is commonly a relative path in Android, make it
+		// absolute if we're changing directories.
+		if absRoot, err := filepath.Abs(runtime.GOROOT()); err == nil {
+			os.Setenv("GOROOT", absRoot)
+		} else {
+			fmt.Fprintln(os.Stderr, "error: Failed to locate GOROOT:", err)
+		}
 	}
 
 	cmd.Stderr = os.Stderr
