@@ -612,6 +612,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 	case 1:
 		primaryBuilderName = ctx.ModuleName(primaryBuilders[0])
+		primaryBuilderExtraFlags = extraTestFlags
 
 	default:
 		ctx.Errorf("multiple primary builder modules present:")
