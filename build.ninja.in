@@ -58,9 +58,8 @@ rule g.bootstrap.link
 build $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint/pkg/github.com/google/blueprint.a $
         : g.bootstrap.compile ${g.bootstrap.srcDir}/context.go $
-        ${g.bootstrap.srcDir}/fs.go ${g.bootstrap.srcDir}/glob.go $
-        ${g.bootstrap.srcDir}/live_tracker.go ${g.bootstrap.srcDir}/mangle.go $
-        ${g.bootstrap.srcDir}/module_ctx.go $
+        ${g.bootstrap.srcDir}/glob.go ${g.bootstrap.srcDir}/live_tracker.go $
+        ${g.bootstrap.srcDir}/mangle.go ${g.bootstrap.srcDir}/module_ctx.go $
         ${g.bootstrap.srcDir}/ninja_defs.go $
         ${g.bootstrap.srcDir}/ninja_strings.go $
         ${g.bootstrap.srcDir}/ninja_writer.go $
@@ -130,7 +129,7 @@ default $
 # Variant:
 # Type:    bootstrap_go_package
 # Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
-# Defined: Blueprints:50:1
+# Defined: Blueprints:49:1
 
 build $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a $
@@ -145,7 +144,7 @@ default $
 # Variant:
 # Type:    bootstrap_go_package
 # Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
-# Defined: Blueprints:34:1
+# Defined: Blueprints:33:1
 
 build $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-parser/pkg/github.com/google/blueprint/parser.a $
@@ -163,11 +162,12 @@ default $
 # Variant:
 # Type:    bootstrap_go_package
 # Factory: github.com/google/blueprint/bootstrap.newGoPackageModuleFactory.func1
-# Defined: Blueprints:56:1
+# Defined: Blueprints:55:1
 
 build $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-pathtools/pkg/github.com/google/blueprint/pathtools.a $
         : g.bootstrap.compile ${g.bootstrap.srcDir}/pathtools/lists.go $
+        ${g.bootstrap.srcDir}/pathtools/fs.go $
         ${g.bootstrap.srcDir}/pathtools/glob.go | ${g.bootstrap.compileCmd} $
         ${g.bootstrap.buildDir}/.bootstrap/blueprint-deptools/pkg/github.com/google/blueprint/deptools.a
     incFlags = -I ${g.bootstrap.buildDir}/.bootstrap/blueprint-deptools/pkg

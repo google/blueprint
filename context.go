@@ -31,6 +31,7 @@ import (
 	"text/template"
 
 	"github.com/google/blueprint/parser"
+	"github.com/google/blueprint/pathtools"
 	"github.com/google/blueprint/proptools"
 )
 
@@ -104,7 +105,7 @@ type Context struct {
 	globs    map[string]GlobPath
 	globLock sync.Mutex
 
-	fs fileSystem
+	fs pathtools.FileSystem
 }
 
 // An Error describes a problem that was encountered that is related to a
@@ -270,7 +271,7 @@ func NewContext() *Context {
 		moduleInfo:       make(map[Module]*moduleInfo),
 		moduleNinjaNames: make(map[string]*moduleGroup),
 		globs:            make(map[string]GlobPath),
-		fs:               fs,
+		fs:               pathtools.OsFs,
 	}
 
 	ctx.RegisterBottomUpMutator("blueprint_deps", blueprintDepsMutator)
@@ -768,9 +769,7 @@ loop:
 // MockFileSystem causes the Context to replace all reads with accesses to the provided map of
 // filenames to contents stored as a byte slice.
 func (c *Context) MockFileSystem(files map[string][]byte) {
-	c.fs = &mockFS{
-		files: files,
-	}
+	c.fs = pathtools.MockFs(files)
 }
 
 // parseBlueprintFile parses a single Blueprints file, returning any errors through
