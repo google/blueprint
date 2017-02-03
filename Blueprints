@@ -8,7 +8,6 @@ bootstrap_go_package(
     pkgPath = "github.com/google/blueprint",
     srcs = [
         "context.go",
-        "fs.go",
         "glob.go",
         "live_tracker.go",
         "mangle.go",
@@ -61,6 +60,7 @@ bootstrap_go_package(
     ],
     srcs = [
         "pathtools/lists.go",
+        "pathtools/fs.go",
         "pathtools/glob.go",
     ],
     testSrcs = [
