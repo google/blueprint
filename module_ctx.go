@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"text/scanner"
+
+	"github.com/google/blueprint/pathtools"
 )
 
 // A Module handles generating all of the Ninja build actions needed to build a
@@ -133,6 +135,8 @@ type BaseModuleContext interface {
 	// builder whenever a file matching the pattern as added or removed, without rerunning if a
 	// file that does not match the pattern is added to a searched directory.
 	GlobWithDeps(pattern string, excludes []string) ([]string, error)
+
+	Fs() pathtools.FileSystem
 
 	moduleInfo() *moduleInfo
 	error(err error)
@@ -258,6 +262,10 @@ func (d *baseModuleContext) Failed() bool {
 func (d *baseModuleContext) GlobWithDeps(pattern string,
 	excludes []string) ([]string, error) {
 	return d.context.glob(pattern, excludes)
+}
+
+func (d *baseModuleContext) Fs() pathtools.FileSystem {
+	return d.context.fs
 }
 
 var _ ModuleContext = (*moduleContext)(nil)

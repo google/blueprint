@@ -23,6 +23,7 @@ import (
 	"go/token"
 	"io/ioutil"
 	"os"
+	"sort"
 	"strings"
 	"text/template"
 )
@@ -51,6 +52,7 @@ func findTests(srcs []string) (tests []string) {
 			tests = append(tests, obj.Name)
 		}
 	}
+	sort.Strings(tests)
 	return
 }
 

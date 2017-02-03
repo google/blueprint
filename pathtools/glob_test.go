@@ -445,7 +445,7 @@ func TestGlob(t *testing.T) {
 	os.Chdir("testdata")
 	defer os.Chdir("..")
 	for _, testCase := range globTestCases {
-		matches, dirs, err := GlobWithExcludes(testCase.pattern, testCase.excludes)
+		matches, dirs, err := Glob(testCase.pattern, testCase.excludes)
 		if err != testCase.err {
 			t.Errorf(" pattern: %q", testCase.pattern)
 			if testCase.excludes != nil {

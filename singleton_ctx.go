@@ -16,6 +16,7 @@ package blueprint
 
 import (
 	"fmt"
+	"github.com/google/blueprint/pathtools"
 )
 
 type Singleton interface {
@@ -68,6 +69,8 @@ type SingletonContext interface {
 	// builder whenever a file matching the pattern as added or removed, without rerunning if a
 	// file that does not match the pattern is added to a searched directory.
 	GlobWithDeps(pattern string, excludes []string) ([]string, error)
+
+	Fs() pathtools.FileSystem
 }
 
 var _ SingletonContext = (*singletonContext)(nil)
@@ -238,4 +241,8 @@ func (s *singletonContext) AddNinjaFileDeps(deps ...string) {
 func (s *singletonContext) GlobWithDeps(pattern string,
 	excludes []string) ([]string, error) {
 	return s.context.glob(pattern, excludes)
+}
+
+func (s *singletonContext) Fs() pathtools.FileSystem {
+	return s.context.fs
 }
