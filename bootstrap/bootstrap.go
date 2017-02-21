@@ -17,6 +17,7 @@ package bootstrap
 import (
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/google/blueprint"
@@ -201,6 +202,15 @@ type goPackage struct {
 		TestSrcs  []string
 		PluginFor []string
 
+		Darwin struct {
+			Srcs     []string
+			TestSrcs []string
+		}
+		Linux struct {
+			Srcs     []string
+			TestSrcs []string
+		}
+
 		// The stage in which this module should be built
 		BuildStage Stage `blueprint:"mutated"`
 	}
@@ -307,14 +317,23 @@ func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
 			return
 		}
 
+		var srcs, testSrcs []string
+		if runtime.GOOS == "darwin" {
+			srcs = append(g.properties.Srcs, g.properties.Darwin.Srcs...)
+			testSrcs = append(g.properties.TestSrcs, g.properties.Darwin.TestSrcs...)
+		} else if runtime.GOOS == "linux" {
+			srcs = append(g.properties.Srcs, g.properties.Linux.Srcs...)
+			testSrcs = append(g.properties.TestSrcs, g.properties.Linux.TestSrcs...)
+		}
+
 		if g.config.runGoTests {
 			g.testResultFile = buildGoTest(ctx, testRoot(ctx), testArchiveFile,
-				g.properties.PkgPath, g.properties.Srcs, genSrcs,
-				g.properties.TestSrcs)
+				g.properties.PkgPath, srcs, genSrcs,
+				testSrcs)
 		}
 
 		buildGoPackage(ctx, g.pkgRoot, g.properties.PkgPath, g.archiveFile,
-			g.properties.Srcs, genSrcs)
+			srcs, genSrcs)
 	}
 }
 
@@ -326,6 +345,15 @@ type goBinary struct {
 		Srcs           []string
 		TestSrcs       []string
 		PrimaryBuilder bool
+
+		Darwin struct {
+			Srcs     []string
+			TestSrcs []string
+		}
+		Linux struct {
+			Srcs     []string
+			TestSrcs []string
+		}
 
 		// The stage in which this module should be built
 		BuildStage Stage `blueprint:"mutated"`
@@ -391,12 +419,21 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 			return
 		}
 
-		if g.config.runGoTests {
-			deps = buildGoTest(ctx, testRoot(ctx), testArchiveFile,
-				name, g.properties.Srcs, genSrcs, g.properties.TestSrcs)
+		var srcs, testSrcs []string
+		if runtime.GOOS == "darwin" {
+			srcs = append(g.properties.Srcs, g.properties.Darwin.Srcs...)
+			testSrcs = append(g.properties.TestSrcs, g.properties.Darwin.TestSrcs...)
+		} else if runtime.GOOS == "linux" {
+			srcs = append(g.properties.Srcs, g.properties.Linux.Srcs...)
+			testSrcs = append(g.properties.TestSrcs, g.properties.Linux.TestSrcs...)
 		}
 
-		buildGoPackage(ctx, objDir, name, archiveFile, g.properties.Srcs, genSrcs)
+		if g.config.runGoTests {
+			deps = buildGoTest(ctx, testRoot(ctx), testArchiveFile,
+				name, srcs, genSrcs, testSrcs)
+		}
+
+		buildGoPackage(ctx, objDir, name, archiveFile, srcs, genSrcs)
 
 		var libDirFlags []string
 		ctx.VisitDepsDepthFirstIf(isGoPackageProducer,
