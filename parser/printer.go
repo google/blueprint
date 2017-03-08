@@ -330,36 +330,60 @@ func (p *printer) flush() {
 		p.curComment++
 	}
 	p.output = append(p.output, '\n')
+// a VerbosePrinter prints a syntax tree and is intended for debugging purposes
+type VerbosePrinter struct {
+	syntaxTree *SyntaxTree
+	output     bytes.Buffer
+	indent     int
 }
 
-// Print whitespace to pad from column l to column max
-func (p *printer) pad(l int) {
-	if l > len(p.wsBuf) {
-		p.wsBuf = make([]byte, l)
-		for i := range p.wsBuf {
-			p.wsBuf[i] = ' '
+func VerbosePrint(tree *SyntaxTree) string {
+	return NewVerbosePrinter(tree).Print()
+}
+
+func NewVerbosePrinter(tree *SyntaxTree) (p *VerbosePrinter) {
+	return &VerbosePrinter{tree, bytes.Buffer{}, 0}
+}
+
+func (p *VerbosePrinter) Print() string {
+	for _, node := range p.syntaxTree.nodes {
+		p.printNode(node)
+	}
+	return p.output.String()
+}
+
+func (p *VerbosePrinter) printNode(parseNode ParseNode) {
+	comments := p.syntaxTree.GetComments(parseNode)
+
+	p.printComments("Pre-comments", comments.preComments)
+
+	p.printIndent()
+	p.printString(fmt.Sprintf(
+		`Node %T@%p
+`, parseNode, parseNode))
+
+	p.indent++
+	for _, child := range parseNode.Children() {
+		p.printNode(child)
+	}
+	p.indent--
+
+	p.printComments("Post-comments", comments.postComments)
+}
+
+func (p *VerbosePrinter) printComments(description string, comments []*Comment) {
+	if len(comments) > 0 {
+		p.printIndent()
+		p.printString(fmt.Sprintf("%s: [", description))
+		for _, comment := range comments {
+			p.printString(fmt.Sprintf("%#v,", comment.Text))
 		}
+		p.printString("]\n")
 	}
-	p.output = append(p.output, p.wsBuf[0:l]...)
 }
-
-func (p *printer) indent(i int) {
-	p.indentList = append(p.indentList, i)
+func (p *VerbosePrinter) printString(text string) {
+	p.output.WriteString(text)
 }
-
-func (p *printer) unindent(pos scanner.Position) {
-	p.printEndOfLineCommentsBefore(pos)
-	p.indentList = p.indentList[0 : len(p.indentList)-1]
-}
-
-func (p *printer) curIndent() int {
-	return p.indentList[len(p.indentList)-1]
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	} else {
-		return b
-	}
+func (p *VerbosePrinter) printIndent() {
+	p.printString(strings.Repeat(" ", p.indent*2))
 }
