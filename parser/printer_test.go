@@ -16,14 +16,20 @@ package parser
 
 import (
 	"bytes"
+	"fmt"
+	"math"
 	"testing"
 )
 
+// printer_test.go is allowed to use the parser in its tests because the parser is tested separately (and doesn't use the printer in its tests)
+
 var validPrinterTestCases = []struct {
-	input  string
-	output string
+	description string
+	input       string
+	output      string
 }{
 	{
+		description: "empty map",
 		input: `
 foo {}
 `,
@@ -32,6 +38,7 @@ foo {}
 `,
 	},
 	{
+		description: "map with '='",
 		input: `
 foo{name= "abc",}
 `,
@@ -42,6 +49,18 @@ foo {
 `,
 	},
 	{
+		description: "multikey map on one line",
+		input: `
+IAmConcise{name:"concise",style:"short"}`,
+		output: `
+IAmConcise {
+    name: "concise",
+    style: "short",
+}
+`,
+	},
+	{
+		description: "multiline list",
 		input: `
 			foo {
 				stuff: ["asdf", "jkl;", "qwert",
@@ -52,15 +71,48 @@ foo {
 foo {
     stuff: [
         "asdf",
-        "bnm,",
         "jkl;",
         "qwert",
         "uiop",
+        "bnm,",
     ],
 }
 `,
 	},
 	{
+		description: "singleline list with multiple elements",
+		input: `
+			foo {
+				stuff: ["asdf", "jkl;", "qwert", "uiop", "bnm,"]
+			}
+			`,
+		output: `
+foo {
+    stuff: [
+        "asdf",
+        "jkl;",
+        "qwert",
+        "uiop",
+        "bnm,",
+    ],
+}
+`,
+	},
+	{
+		description: "singleline list with one element",
+		input: `
+foo {
+    stuff: ["asdf"],
+}
+`,
+		output: `
+foo {
+    stuff: ["asdf"],
+}
+`,
+	},
+	{
+		description: "variable assignment",
 		input: `
 		        var = "asdf"
 			foo {
@@ -74,6 +126,7 @@ foo {
 `,
 	},
 	{
+		description: "variable assignment and multiline list",
 		input: `
 		        var = "asdf"
 			foo {
@@ -91,6 +144,7 @@ foo {
 `,
 	},
 	{
+		description: "concatenating lists",
 		input: `
 		        var = "asdf"
 			foo {
@@ -104,6 +158,7 @@ foo {
 `,
 	},
 	{
+		description: "nested structs",
 		input: `
 		foo {
 			stuff: {
@@ -122,22 +177,41 @@ foo {
 `,
 	},
 	{
+		description: "module with trailing comment",
+		input: `
+fdsa {
+} // I'm a comment
+`,
+		output: `
+fdsa {
+} // I'm a comment
+`,
+	},
+	{
+		description: "commented struct",
 		input: `
 // comment1
-foo {
+foo /* inline */ {
 	// comment2
 	isGood: true,  // comment3
+	// comment4
+	isGood: true,  // comment5
+	// comment6
 }
 `,
 		output: `
 // comment1
-foo {
+foo /* inline */ {
     // comment2
     isGood: true, // comment3
+    // comment4
+    isGood: true, // comment5
+    // comment6
 }
 `,
 	},
 	{
+		description: "two structs separated by a space",
 		input: `
 foo {
 	name: "abc",
@@ -158,6 +232,7 @@ bar {
 `,
 	},
 	{
+		description: "several variable assignments",
 		input: `
 foo = "stuff"
 bar = foo
@@ -172,6 +247,7 @@ baz += foo
 `,
 	},
 	{
+		description: "list with inline comments",
 		input: `
 //test
 test /* test */ {
@@ -199,14 +275,14 @@ test /* test */ {
         /*"bootstrap/bootstrap.go",
         "bootstrap/cleanup.go",*/
         "bootstrap/command.go",
-        "bootstrap/config.go", //config.go
         "bootstrap/doc.go", //doc.go
+        "bootstrap/config.go", //config.go
     ],
     deps: ["libabc"],
     incs: [],
 } //test
-//test
 
+//test
 test2 {
 }
 
@@ -214,6 +290,7 @@ test2 {
 `,
 	},
 	{
+		description: "extra newlines (1)",
 		input: `
 // test
 module // test
@@ -243,6 +320,7 @@ module { // test
 `,
 	},
 	{
+		description: "many comments",
 		input: `
 /*test {
     test: true,
@@ -262,7 +340,7 @@ test {
 test {}
 
 // This
-/* Is */
+/* is */
 // A
 // Trailing
 
@@ -288,7 +366,7 @@ test {
 test {}
 
 // This
-/* Is */
+/* is */
 // A
 // Trailing
 
@@ -297,17 +375,147 @@ test {}
 `,
 	},
 	{
+		description: "comments between module type and map body",
 		input: `
-test // test
+test // test2
 
-// test
+// test3
 {
 }
 `,
 		output: `
-test { // test
+test { // test2
 
-// test
+    // test3
+
+}
+`,
+	},
+	{
+		description: "comments separated by multiple spaces",
+		input: `
+/* if there are multiple spaces between two inline comments */  /* then they are reduced to one space */
+`,
+		output: `
+/* if there are multiple spaces between two inline comments */ /* then they are reduced to one space */
+`,
+	},
+	{
+		description: "comment inside a property",
+		input: `
+smallModule {
+    stringProp: /* don't forget me */ "stringVal"
+}
+`,
+		output: `
+smallModule {
+    stringProp: /* don't forget me */ "stringVal",
+}
+`,
+	},
+	{
+		description: "extra newlines (2)",
+		input: `
+// two blank lines after a comment turn into one
+
+
+// three blank lines after a comment turn into one
+
+
+
+// two consecutive comments remain adjacent
+// two comments next to each other remain adjacent
+
+myModule {
+
+    // a blank line before a property remains as a blank line
+
+    myProperty: "myValue",
+
+    // a blank line after a property remains as a blank line
+
+
+    propertyTwo: [ // A blank line remains before the first property
+
+        // End of blank line
+        "a",
+
+        // A blank line remains before the second property
+        "b",
+
+        "c", // Two blank lines within a list turn into one
+
+
+        "d",  // Two blank lines after the last property turn into one
+
+
+    ],
+}
+`,
+		output: `
+// two blank lines after a comment turn into one
+
+// three blank lines after a comment turn into one
+
+// two consecutive comments remain adjacent
+// two comments next to each other remain adjacent
+
+myModule {
+
+    // a blank line before a property remains as a blank line
+
+    myProperty: "myValue",
+
+    // a blank line after a property remains as a blank line
+
+    propertyTwo: [ // A blank line remains before the first property
+
+        // End of blank line
+        "a",
+
+        // A blank line remains before the second property
+        "b",
+
+        "c", // Two blank lines within a list turn into one
+
+        "d", // Two blank lines after the last property turn into one
+
+    ],
+}
+`,
+	},
+	{
+		description: "newlines without comments",
+		input: `
+		cc_test {
+		    name: "linker-unit-tests",
+
+		    cflags: [
+			"-g",
+			"-Wall",
+			"-Wextra",
+			"-Wunused",
+			"-Werror",
+		    ],
+		    local_include_dirs: ["../../libc/"],
+
+		    srcs: ["linker_block_allocator_test.cpp"],
+
+		}`,
+		output: `
+cc_test {
+    name: "linker-unit-tests",
+
+    cflags: [
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Wunused",
+        "-Werror",
+    ],
+    local_include_dirs: ["../../libc/"],
+
+    srcs: ["linker_block_allocator_test.cpp"],
 
 }
 `,
@@ -334,7 +542,7 @@ func TestPrinter(t *testing.T) {
 		}
 
 		r := bytes.NewBufferString(in)
-		parsed, errs := Parse(fmt.Sprintf("testcase '%s' (printer_test#%v) ", description, i), r, NewScope(nil), true, false)
+		parsed, errs := Parse(fmt.Sprintf("testcase '%s' (printer_test#%v) ", description, i), r, NewScope(nil))
 		if len(errs) != 0 {
 			t.Errorf("input: %s", in)
 			t.Error("unexpected errors:")
