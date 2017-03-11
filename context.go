@@ -1191,6 +1191,10 @@ func (c *Context) findMatchingVariant(module *moduleInfo, possible []*moduleInfo
 }
 
 func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName string) []error {
+	if _, ok := tag.(BaseDependencyTag); ok {
+		panic("BaseDependencyTag is not allowed to be used directly!")
+	}
+
 	if depName == module.Name() {
 		return []error{&BlueprintError{
 			Err: fmt.Errorf("%q depends on itself", depName),
@@ -1262,6 +1266,9 @@ func (c *Context) findReverseDependency(module *moduleInfo, destName string) (*m
 
 func (c *Context) addVariationDependency(module *moduleInfo, variations []Variation,
 	tag DependencyTag, depName string, far bool) []error {
+	if _, ok := tag.(BaseDependencyTag); ok {
+		panic("BaseDependencyTag is not allowed to be used directly!")
+	}
 
 	possibleDeps := c.modulesFromName(depName)
 	if possibleDeps == nil {
@@ -1328,6 +1335,9 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 
 func (c *Context) addInterVariantDependency(origModule *moduleInfo, tag DependencyTag,
 	from, to Module) {
+	if _, ok := tag.(BaseDependencyTag); ok {
+		panic("BaseDependencyTag is not allowed to be used directly!")
+	}
 
 	var fromInfo, toInfo *moduleInfo
 	for _, m := range origModule.splitModules {
