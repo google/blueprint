@@ -660,6 +660,10 @@ func (mctx *mutatorContext) AddDependency(module Module, tag DependencyTag, deps
 // collected until the end of the mutator pass, sorted by name, and then appended to the destination
 // module's dependency list.
 func (mctx *mutatorContext) AddReverseDependency(module Module, tag DependencyTag, destName string) {
+	if _, ok := tag.(BaseDependencyTag); ok {
+		panic("BaseDependencyTag is not allowed to be used directly!")
+	}
+
 	destModule, errs := mctx.context.findReverseDependency(mctx.context.moduleInfo[module], destName)
 	if len(errs) > 0 {
 		mctx.errs = append(mctx.errs, errs...)
