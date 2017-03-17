@@ -294,11 +294,6 @@ func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
 	g.pkgRoot = packageRoot(ctx)
 	g.archiveFile = filepath.Join(g.pkgRoot,
 		filepath.FromSlash(g.properties.PkgPath)+".a")
-	var testArchiveFile string
-	if len(g.properties.TestSrcs) > 0 && g.config.runGoTests {
-		testArchiveFile = filepath.Join(testRoot(ctx),
-			filepath.FromSlash(g.properties.PkgPath)+".a")
-	}
 
 	ctx.VisitDepsDepthFirstIf(isGoPluginFor(name),
 		func(module blueprint.Module) { hasPlugins = true })
@@ -327,6 +322,8 @@ func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
 		}
 
 		if g.config.runGoTests {
+			testArchiveFile := filepath.Join(testRoot(ctx),
+				filepath.FromSlash(g.properties.PkgPath)+".a")
 			g.testResultFile = buildGoTest(ctx, testRoot(ctx), testArchiveFile,
 				g.properties.PkgPath, srcs, genSrcs,
 				testSrcs)
