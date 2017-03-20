@@ -2544,9 +2544,45 @@ func (c *Context) VisitAllModulesIf(pred func(Module) bool,
 	c.visitAllModulesIf(pred, visit)
 }
 
-func (c *Context) VisitDepsDepthFirst(module Module,
-	visit func(Module)) {
+func (c *Context) VisitDirectDeps(module Module, visit func(Module)) {
+	topModule := c.moduleInfo[module]
 
+	var visiting *moduleInfo
+
+	defer func() {
+		if r := recover(); r != nil {
+			panic(newPanicErrorf(r, "VisitDirectDeps(%s, %s) for dependency %s",
+				topModule, funcName(visit), visiting))
+		}
+	}()
+
+	for _, dep := range topModule.directDeps {
+		visiting = dep.module
+		visit(dep.module.logicModule)
+	}
+}
+
+func (c *Context) VisitDirectDepsIf(module Module, pred func(Module) bool, visit func(Module)) {
+	topModule := c.moduleInfo[module]
+
+	var visiting *moduleInfo
+
+	defer func() {
+		if r := recover(); r != nil {
+			panic(newPanicErrorf(r, "VisitDirectDepsIf(%s, %s, %s) for dependency %s",
+				topModule, funcName(pred), funcName(visit), visiting))
+		}
+	}()
+
+	for _, dep := range topModule.directDeps {
+		visiting = dep.module
+		if pred(dep.module.logicModule) {
+			visit(dep.module.logicModule)
+		}
+	}
+}
+
+func (c *Context) VisitDepsDepthFirst(module Module, visit func(Module)) {
 	topModule := c.moduleInfo[module]
 
 	var visiting *moduleInfo
@@ -2564,9 +2600,7 @@ func (c *Context) VisitDepsDepthFirst(module Module,
 	})
 }
 
-func (c *Context) VisitDepsDepthFirstIf(module Module,
-	pred func(Module) bool, visit func(Module)) {
-
+func (c *Context) VisitDepsDepthFirstIf(module Module, pred func(Module) bool, visit func(Module)) {
 	topModule := c.moduleInfo[module]
 
 	var visiting *moduleInfo
