@@ -37,29 +37,29 @@ func (e *ParseError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Pos, e.Err)
 }
 
-type File struct {
-	Name     string
+type ParseTree struct {
+	FileName string
 	Defs     []Definition
 	Comments []*CommentGroup
 }
 
-func (f *File) Pos() scanner.Position {
+func (f *ParseTree) Pos() scanner.Position {
 	return scanner.Position{
-		Filename: f.Name,
+		Filename: f.FileName,
 		Line:     1,
 		Column:   1,
 		Offset:   0,
 	}
 }
 
-func (f *File) End() scanner.Position {
+func (f *ParseTree) End() scanner.Position {
 	if len(f.Defs) > 0 {
 		return f.Defs[len(f.Defs)-1].End()
 	}
 	return noPos
 }
 
-func parse(p *parser) (file *File, errs []error) {
+func parse(p *parser) (file *ParseTree, errs []error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if r == errTooManyErrors {
@@ -75,15 +75,15 @@ func parse(p *parser) (file *File, errs []error) {
 	errs = p.errors
 	comments := p.comments
 
-	return &File{
-		Name:     p.scanner.Filename,
+	return &ParseTree{
+		FileName: p.scanner.Filename,
 		Defs:     defs,
 		Comments: comments,
 	}, errs
 
 }
 
-func ParseAndEval(filename string, r io.Reader, scope *Scope) (file *File, errs []error) {
+func ParseAndEval(filename string, r io.Reader, scope *Scope) (file *ParseTree, errs []error) {
 	p := newParser(r, scope)
 	p.eval = true
 	p.scanner.Filename = filename
@@ -91,7 +91,7 @@ func ParseAndEval(filename string, r io.Reader, scope *Scope) (file *File, errs 
 	return parse(p)
 }
 
-func Parse(filename string, r io.Reader, scope *Scope) (file *File, errs []error) {
+func Parse(filename string, r io.Reader, scope *Scope) (file *ParseTree, errs []error) {
 	p := newParser(r, scope)
 	p.scanner.Filename = filename
 

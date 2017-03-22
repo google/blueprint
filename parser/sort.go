@@ -19,7 +19,7 @@ import (
 	"text/scanner"
 )
 
-func SortLists(file *File) {
+func SortLists(file *ParseTree) {
 	for _, def := range file.Defs {
 		if assignment, ok := def.(*Assignment); ok {
 			sortListsInValue(assignment.Value, file)
@@ -32,7 +32,7 @@ func SortLists(file *File) {
 	sort.Sort(commentsByOffset(file.Comments))
 }
 
-func SortList(file *File, list *List) {
+func SortList(file *ParseTree, list *List) {
 	for i := 0; i < len(list.Values); i++ {
 		// Find a set of values on contiguous lines
 		line := list.Values[i].Pos().Line
@@ -74,7 +74,7 @@ func ListIsSorted(list *List) bool {
 	return true
 }
 
-func sortListsInValue(value Expression, file *File) {
+func sortListsInValue(value Expression, file *ParseTree) {
 	switch v := value.(type) {
 	case *Variable:
 		// Nothing
@@ -90,7 +90,7 @@ func sortListsInValue(value Expression, file *File) {
 	}
 }
 
-func sortSubList(values []Expression, nextPos scanner.Position, file *File) {
+func sortSubList(values []Expression, nextPos scanner.Position, file *ParseTree) {
 	l := make(elemList, len(values))
 	for i, v := range values {
 		s, ok := v.(*String)

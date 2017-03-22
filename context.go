@@ -525,7 +525,7 @@ func (c *Context) SetAllowMissingDependencies(allowMissingDependencies bool) {
 // filename specifies the path to the Blueprints file.  These paths are used for
 // error reporting and for determining the module's directory.
 func (c *Context) parse(rootDir, filename string, r io.Reader,
-	scope *parser.Scope) (file *parser.File, subBlueprints []stringAndScope, errs []error) {
+	scope *parser.Scope) (file *parser.ParseTree, subBlueprints []stringAndScope, errs []error) {
 
 	relBlueprintsFile, err := filepath.Rel(rootDir, filename)
 	if err != nil {
@@ -552,7 +552,7 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 		// result.
 		return nil, nil, errs
 	}
-	file.Name = relBlueprintsFile
+	file.FileName = relBlueprintsFile
 
 	subdirs, subdirsPos, err := getLocalStringListFromScope(scope, "subdirs")
 	if err != nil {
@@ -628,7 +628,7 @@ func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string,
 	var numGoroutines int32
 
 	// handler must be reentrant
-	handler := func(file *parser.File) {
+	handler := func(file *parser.ParseTree) {
 		if atomic.LoadUint32(&numErrs) > maxErrors {
 			return
 		}
@@ -640,7 +640,7 @@ func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string,
 				var errs []error
 				switch def := def.(type) {
 				case *parser.Module:
-					module, errs = c.processModuleDef(def, file.Name)
+					module, errs = c.processModuleDef(def, file.FileName)
 				case *parser.Assignment:
 					// Already handled via Scope object
 				default:
@@ -689,7 +689,7 @@ loop:
 	return deps, errs
 }
 
-type FileHandler func(*parser.File)
+type FileHandler func(*parser.ParseTree)
 
 // Walk a set of Blueprints files starting with the file at rootFile, calling handler on each.
 // When it encounters a Blueprints file with a set of subdirs listed it recursively parses any
@@ -710,7 +710,7 @@ func (c *Context) WalkBlueprintsFiles(rootFile string, handler FileHandler) (dep
 	// Channels to receive data back from parseBlueprintsFile goroutines
 	blueprintsCh := make(chan stringAndScope)
 	errsCh := make(chan []error)
-	fileCh := make(chan *parser.File)
+	fileCh := make(chan *parser.ParseTree)
 	depsCh := make(chan string)
 
 	// Channel to notify main loop that a parseBlueprintsFile goroutine has finished
@@ -788,7 +788,7 @@ func (c *Context) MockFileSystem(files map[string][]byte) {
 // blueprintsCh, and any dependencies on Blueprints files or directories through
 // depsCh.
 func (c *Context) parseBlueprintsFile(filename string, scope *parser.Scope, rootDir string,
-	errsCh chan<- []error, fileCh chan<- *parser.File, blueprintsCh chan<- stringAndScope,
+	errsCh chan<- []error, fileCh chan<- *parser.ParseTree, blueprintsCh chan<- stringAndScope,
 	depsCh chan<- string) {
 
 	f, err := c.fs.Open(filename)

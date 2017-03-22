@@ -43,7 +43,7 @@ type printer struct {
 	skippedComments []*CommentGroup
 }
 
-func newPrinter(file *File) *printer {
+func newPrinter(file *ParseTree) *printer {
 	return &printer{
 		defs:       file.Defs,
 		comments:   file.Comments,
@@ -58,7 +58,7 @@ func newPrinter(file *File) *printer {
 	}
 }
 
-func Print(file *File) ([]byte, error) {
+func Print(file *ParseTree) ([]byte, error) {
 	p := newPrinter(file)
 
 	for _, def := range p.defs {

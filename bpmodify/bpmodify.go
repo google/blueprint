@@ -119,7 +119,7 @@ func processFile(filename string, in io.Reader, out io.Writer) error {
 	return err
 }
 
-func findModules(file *parser.File) (modified bool, errs []error) {
+func findModules(file *parser.ParseTree) (modified bool, errs []error) {
 
 	for _, def := range file.Defs {
 		if module, ok := def.(*parser.Module); ok {
@@ -139,7 +139,7 @@ func findModules(file *parser.File) (modified bool, errs []error) {
 }
 
 func processModule(module *parser.Module, moduleName string,
-	file *parser.File) (modified bool, errs []error) {
+	file *parser.ParseTree) (modified bool, errs []error) {
 
 	for _, prop := range module.Properties {
 		if prop.Name == *parameter {
@@ -152,7 +152,7 @@ func processModule(module *parser.Module, moduleName string,
 }
 
 func processParameter(value parser.Expression, paramName, moduleName string,
-	file *parser.File) (modified bool, errs []error) {
+	file *parser.ParseTree) (modified bool, errs []error) {
 	if _, ok := value.(*parser.Variable); ok {
 		return false, []error{fmt.Errorf("parameter %s in module %s is a variable, unsupported",
 			paramName, moduleName)}
