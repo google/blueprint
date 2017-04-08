@@ -1227,10 +1227,17 @@ func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName s
 		return nil
 	}
 
+	variants := make([]string, len(possibleDeps))
+	for i, mod := range possibleDeps {
+		variants[i] = c.prettyPrintVariant(mod.variant)
+	}
+	sort.Strings(variants)
+
 	return []error{&BlueprintError{
-		Err: fmt.Errorf("dependency %q of %q missing variant %q",
+		Err: fmt.Errorf("dependency %q of %q missing variant:\n  %s\navailable variants:\n  %s",
 			depName, module.Name(),
-			c.prettyPrintVariant(module.dependencyVariant)),
+			c.prettyPrintVariant(module.dependencyVariant),
+			strings.Join(variants, "\n  ")),
 		Pos: module.pos,
 	}}
 }
@@ -1256,10 +1263,17 @@ func (c *Context) findReverseDependency(module *moduleInfo, destName string) (*m
 		return m, nil
 	}
 
+	variants := make([]string, len(possibleDeps))
+	for i, mod := range possibleDeps {
+		variants[i] = c.prettyPrintVariant(mod.variant)
+	}
+	sort.Strings(variants)
+
 	return nil, []error{&BlueprintError{
-		Err: fmt.Errorf("reverse dependency %q of %q missing variant %q",
+		Err: fmt.Errorf("reverse dependency %q of %q missing variant:\n  %s\navailable variants:\n  %s",
 			destName, module.Name(),
-			c.prettyPrintVariant(module.dependencyVariant)),
+			c.prettyPrintVariant(module.dependencyVariant),
+			strings.Join(variants, "\n  ")),
 		Pos: module.pos,
 	}}
 }
@@ -1325,10 +1339,17 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 		}
 	}
 
+	variants := make([]string, len(possibleDeps))
+	for i, mod := range possibleDeps {
+		variants[i] = c.prettyPrintVariant(mod.variant)
+	}
+	sort.Strings(variants)
+
 	return []error{&BlueprintError{
-		Err: fmt.Errorf("dependency %q of %q missing variant %q",
+		Err: fmt.Errorf("dependency %q of %q missing variant:\n  %s\navailable variants:\n  %s",
 			depName, module.Name(),
-			c.prettyPrintVariant(newVariant)),
+			c.prettyPrintVariant(newVariant),
+			strings.Join(variants, "\n  ")),
 		Pos: module.pos,
 	}}
 }
