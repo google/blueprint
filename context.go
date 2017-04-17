@@ -2656,6 +2656,18 @@ func (c *Context) VisitAllModuleVariants(module Module,
 	c.visitAllModuleVariants(c.moduleInfo[module], visit)
 }
 
+func (c *Context) PrimaryModule(module Module) Module {
+	return c.moduleInfo[module].group.modules[0].logicModule
+}
+
+func (c *Context) VisitAllModuleVariants(module Module,
+	visit func(Module)) {
+
+	for _, module := range c.moduleInfo[module].group.modules {
+		visit(module.logicModule)
+	}
+}
+
 // WriteBuildFile writes the Ninja manifeset text for the generated build
 // actions to w.  If this is called before PrepareBuildActions successfully
 // completes then ErrBuildActionsNotReady is returned.
