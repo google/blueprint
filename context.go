@@ -835,6 +835,7 @@ func (c *Context) findBuildBlueprints(dir string, build []string,
 
 		for _, foundBlueprints := range matches {
 			blueprints = append(blueprints, foundBlueprints)
+			deps = append(deps, foundBlueprints)
 		}
 	}
 
