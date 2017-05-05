@@ -88,7 +88,8 @@ func processFile(filename string, in io.Reader, out io.Writer) error {
 	}
 
 	if modified {
-		res, err := parser.Print(file)
+		text := parser.Print(file)
+		res := []byte(text)
 		if err != nil {
 			return err
 		}
@@ -121,7 +122,7 @@ func processFile(filename string, in io.Reader, out io.Writer) error {
 
 func findModules(file *parser.ParseTree) (modified bool, errs []error) {
 
-	for _, def := range file.Defs {
+	for _, def := range file.SyntaxTree.Nodes() {
 		if module, ok := def.(*parser.Module); ok {
 			for _, prop := range module.Properties {
 				if prop.Name == "name" && prop.Value.Type() == parser.StringType {
@@ -169,7 +170,7 @@ func processParameter(value parser.Expression, paramName, moduleName string,
 			paramName, moduleName, value.Type().String())}
 	}
 
-	wasSorted := parser.ListIsSorted(list)
+	wasSorted := parser.ListIsSorted(file, list)
 
 	for _, a := range addIdents.idents {
 		m := parser.AddStringToList(list, a)

@@ -30,10 +30,10 @@ type packedProperty struct {
 }
 
 func unpackProperties(propertyDefs []*parser.Property,
-	propertiesStructs ...interface{}) (map[string]*parser.Property, []error) {
+	parseTree *parser.ParseTree, propertiesStructs ...interface{}) (map[string]*parser.Property, []error) {
 
 	propertyMap := make(map[string]*packedProperty)
-	errs := buildPropertyMap("", propertyDefs, propertyMap)
+	errs := buildPropertyMap("", propertyDefs, propertyMap, parseTree)
 	if len(errs) > 0 {
 		return nil, errs
 	}
@@ -49,7 +49,7 @@ func unpackProperties(propertyDefs []*parser.Property,
 			panic("properties must be a pointer to a struct")
 		}
 
-		newErrs := unpackStructValue("", propertiesValue, propertyMap, "", "")
+		newErrs := unpackStructValue("", propertiesValue, propertyMap, "", "", parseTree)
 		errs = append(errs, newErrs...)
 
 		if len(errs) >= maxErrors {
@@ -65,7 +65,7 @@ func unpackProperties(propertyDefs []*parser.Property,
 		if !packedProperty.unpacked {
 			err := &BlueprintError{
 				Err: fmt.Errorf("unrecognized property %q", name),
-				Pos: packedProperty.property.ColonPos,
+				Pos: parseTree.SourcePosition(packedProperty.property),
 			}
 			errs = append(errs, err)
 		}
@@ -79,7 +79,8 @@ func unpackProperties(propertyDefs []*parser.Property,
 }
 
 func buildPropertyMap(namePrefix string, propertyDefs []*parser.Property,
-	propertyMap map[string]*packedProperty) (errs []error) {
+	propertyMap map[string]*packedProperty,
+	parseTree *parser.ParseTree) (errs []error) {
 
 	for _, propertyDef := range propertyDefs {
 		name := namePrefix + propertyDef.Name
@@ -90,11 +91,11 @@ func buildPropertyMap(namePrefix string, propertyDefs []*parser.Property,
 			}
 			errs = append(errs, &BlueprintError{
 				Err: fmt.Errorf("property %q already defined", name),
-				Pos: propertyDef.ColonPos,
+				Pos: parseTree.SourcePosition(propertyDef),
 			})
 			errs = append(errs, &BlueprintError{
 				Err: fmt.Errorf("<-- previous definition here"),
-				Pos: first.property.ColonPos,
+				Pos: parseTree.SourcePosition(first.property),
 			})
 			if len(errs) >= maxErrors {
 				return errs
@@ -119,7 +120,8 @@ func buildPropertyMap(namePrefix string, propertyDefs []*parser.Property,
 }
 
 func unpackStructValue(namePrefix string, structValue reflect.Value,
-	propertyMap map[string]*packedProperty, filterKey, filterValue string) []error {
+	propertyMap map[string]*packedProperty, filterKey, filterValue string,
+	parseTree *parser.ParseTree) []error {
 
 	structType := structValue.Type()
 
@@ -202,7 +204,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 		}
 
 		if field.Anonymous && fieldValue.Kind() == reflect.Struct {
-			newErrs := unpackStructValue(namePrefix, fieldValue, propertyMap, filterKey, filterValue)
+			newErrs := unpackStructValue(namePrefix, fieldValue, propertyMap, filterKey, filterValue, parseTree)
 			errs = append(errs, newErrs...)
 			continue
 		}
@@ -218,7 +220,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			errs = append(errs,
 				&BlueprintError{
 					Err: fmt.Errorf("mutated field %s cannot be set in a Blueprint file", propertyName),
-					Pos: packedProperty.property.ColonPos,
+					Pos: parseTree.SourcePosition(packedProperty.property),
 				})
 			if len(errs) >= maxErrors {
 				return errs
@@ -230,7 +232,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			errs = append(errs,
 				&BlueprintError{
 					Err: fmt.Errorf("filtered field %s cannot be set in a Blueprint file", propertyName),
-					Pos: packedProperty.property.ColonPos,
+					Pos: parseTree.SourcePosition(packedProperty.property),
 				})
 			if len(errs) >= maxErrors {
 				return errs
@@ -242,20 +244,20 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 
 		switch kind := fieldValue.Kind(); kind {
 		case reflect.Bool:
-			newErrs = unpackBool(fieldValue, packedProperty.property)
+			newErrs = unpackBool(fieldValue, packedProperty.property, parseTree)
 		case reflect.String:
-			newErrs = unpackString(fieldValue, packedProperty.property)
+			newErrs = unpackString(fieldValue, packedProperty.property, parseTree)
 		case reflect.Slice:
-			newErrs = unpackSlice(fieldValue, packedProperty.property)
+			newErrs = unpackSlice(fieldValue, packedProperty.property, parseTree)
 		case reflect.Ptr:
 			switch ptrKind := fieldValue.Type().Elem().Kind(); ptrKind {
 			case reflect.Bool:
 				newValue := reflect.New(fieldValue.Type().Elem())
-				newErrs = unpackBool(newValue.Elem(), packedProperty.property)
+				newErrs = unpackBool(newValue.Elem(), packedProperty.property, parseTree)
 				fieldValue.Set(newValue)
 			case reflect.String:
 				newValue := reflect.New(fieldValue.Type().Elem())
-				newErrs = unpackString(newValue.Elem(), packedProperty.property)
+				newErrs = unpackString(newValue.Elem(), packedProperty.property, parseTree)
 				fieldValue.Set(newValue)
 			default:
 				panic(fmt.Errorf("unexpected pointer kind %s", ptrKind))
@@ -279,7 +281,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 				}
 			}
 			newErrs = unpackStruct(propertyName+".", fieldValue,
-				packedProperty.property, propertyMap, localFilterKey, localFilterValue)
+				packedProperty.property, propertyMap, localFilterKey, localFilterValue, parseTree)
 		default:
 			panic(fmt.Errorf("unexpected kind %s", kind))
 		}
@@ -292,12 +294,13 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 	return errs
 }
 
-func unpackBool(boolValue reflect.Value, property *parser.Property) []error {
+func unpackBool(boolValue reflect.Value, property *parser.Property, parseTree *parser.ParseTree) []error {
 	b, ok := property.Value.Eval().(*parser.Bool)
 	if !ok {
 		return []error{
 			fmt.Errorf("%s: can't assign %s value to bool property %q",
-				property.Value.Pos(), property.Value.Type(), property.Name),
+				parseTree.SourcePosition(property.Value),
+				property.Value.Type(), property.Name),
 		}
 	}
 	boolValue.SetBool(b.Value)
@@ -305,26 +308,28 @@ func unpackBool(boolValue reflect.Value, property *parser.Property) []error {
 }
 
 func unpackString(stringValue reflect.Value,
-	property *parser.Property) []error {
+	property *parser.Property, parseTree *parser.ParseTree) []error {
 
 	s, ok := property.Value.Eval().(*parser.String)
 	if !ok {
 		return []error{
 			fmt.Errorf("%s: can't assign %s value to string property %q",
-				property.Value.Pos(), property.Value.Type(), property.Name),
+				parseTree.SourcePosition(property.Value),
+				property.Value.Type(), property.Name),
 		}
 	}
 	stringValue.SetString(s.Value)
 	return nil
 }
 
-func unpackSlice(sliceValue reflect.Value, property *parser.Property) []error {
+func unpackSlice(sliceValue reflect.Value, property *parser.Property, parseTree *parser.ParseTree) []error {
 
 	l, ok := property.Value.Eval().(*parser.List)
 	if !ok {
 		return []error{
 			fmt.Errorf("%s: can't assign %s value to list property %q",
-				property.Value.Pos(), property.Value.Type(), property.Name),
+				parseTree.SourcePosition(property.Value),
+				property.Value.Type(), property.Name),
 		}
 	}
 
@@ -344,22 +349,24 @@ func unpackSlice(sliceValue reflect.Value, property *parser.Property) []error {
 
 func unpackStruct(namePrefix string, structValue reflect.Value,
 	property *parser.Property, propertyMap map[string]*packedProperty,
-	filterKey, filterValue string) []error {
+	filterKey, filterValue string,
+	parseTree *parser.ParseTree) []error {
 
-	m, ok := property.Value.Eval().(*parser.Map)
+	m, ok := property.Value.Eval().(*parser.MapBody)
 	if !ok {
 		return []error{
 			fmt.Errorf("%s: can't assign %s value to map property %q",
-				property.Value.Pos(), property.Value.Type(), property.Name),
+				/* property.Value.Pos(), */ 0,
+				property.Value.Type(), property.Name),
 		}
 	}
 
-	errs := buildPropertyMap(namePrefix, m.Properties, propertyMap)
+	errs := buildPropertyMap(namePrefix, m.Properties, propertyMap, parseTree)
 	if len(errs) > 0 {
 		return errs
 	}
 
-	return unpackStructValue(namePrefix, structValue, propertyMap, filterKey, filterValue)
+	return unpackStructValue(namePrefix, structValue, propertyMap, filterKey, filterValue, parseTree)
 }
 
 func HasFilter(field reflect.StructTag) (k, v string, err error) {

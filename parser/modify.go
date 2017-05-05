@@ -29,8 +29,7 @@ func AddStringToList(list *List, s string) (modified bool) {
 	}
 
 	list.Values = append(list.Values, &String{
-		LiteralPos: list.RBracePos,
-		Value:      s,
+		Value: s,
 	})
 
 	return true

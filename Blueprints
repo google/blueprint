@@ -44,7 +44,10 @@ bootstrap_go_package(
         "parser/sort.go",
     ],
     testSrcs = [
+        "parser/ast_test.go",
         "parser/parser_test.go",
+        "parser/parser_test_cases.go",
+        "parser/parser_test_generator.go",
         "parser/printer_test.go",
     ],
 )
@@ -76,6 +79,7 @@ bootstrap_go_package(
     pkgPath = "github.com/google/blueprint/proptools",
     srcs = [
         "proptools/clone.go",
+        "proptools/compare.go",
         "proptools/escape.go",
         "proptools/extend.go",
         "proptools/proptools.go",
@@ -83,6 +87,7 @@ bootstrap_go_package(
     ],
     testSrcs = [
         "proptools/clone_test.go",
+        "proptools/compare_test.go",
         "proptools/escape_test.go",
         "proptools/extend_test.go",
         "proptools/typeequal_test.go",

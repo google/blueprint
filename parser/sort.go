@@ -16,53 +16,49 @@ package parser
 
 import (
 	"sort"
-	"text/scanner"
 )
 
-func SortLists(file *ParseTree) {
-	for _, def := range file.Defs {
+func SortLists(tree *ParseTree) {
+	for _, def := range tree.SyntaxTree.nodes {
 		if assignment, ok := def.(*Assignment); ok {
-			sortListsInValue(assignment.Value, file)
+			sortListsInValue(assignment.Value, tree)
 		} else if module, ok := def.(*Module); ok {
 			for _, prop := range module.Properties {
-				sortListsInValue(prop.Value, file)
+				sortListsInValue(prop.Value, tree)
 			}
 		}
 	}
-	sort.Sort(commentsByOffset(file.Comments))
 }
 
-func SortList(file *ParseTree, list *List) {
+func SortList(tree *ParseTree, list *List) {
 	for i := 0; i < len(list.Values); i++ {
 		// Find a set of values on contiguous lines
-		line := list.Values[i].Pos().Line
+		iLine := tree.SourcePosition(list.Values[i]).Line
 		var j int
 		for j = i + 1; j < len(list.Values); j++ {
-			if list.Values[j].Pos().Line > line+1 {
+			jLine := tree.SourcePosition(list.Values[j]).Line
+			if jLine > iLine+1 {
 				break
 			}
-			line = list.Values[j].Pos().Line
+			iLine = jLine
 		}
 
-		nextPos := list.End()
-		if j < len(list.Values) {
-			nextPos = list.Values[j].Pos()
-		}
-		sortSubList(list.Values[i:j], nextPos, file)
+		sortSubList(list.Values[i:j], tree)
 		i = j - 1
 	}
 }
 
-func ListIsSorted(list *List) bool {
+func ListIsSorted(tree *ParseTree, list *List) bool {
 	for i := 0; i < len(list.Values); i++ {
 		// Find a set of values on contiguous lines
-		line := list.Values[i].Pos().Line
+		iLine := tree.SourcePosition(list.Values[i]).Line
 		var j int
 		for j = i + 1; j < len(list.Values); j++ {
-			if list.Values[j].Pos().Line > line+1 {
+			jLine := tree.SourcePosition(list.Values[j]).Line
+			if jLine > iLine+1 {
 				break
 			}
-			line = list.Values[j].Pos().Line
+			iLine = jLine
 		}
 
 		if !subListIsSorted(list.Values[i:j]) {
@@ -74,63 +70,40 @@ func ListIsSorted(list *List) bool {
 	return true
 }
 
-func sortListsInValue(value Expression, file *ParseTree) {
+func sortListsInValue(value Expression, tree *ParseTree) {
 	switch v := value.(type) {
 	case *Variable:
 		// Nothing
 	case *Operator:
-		sortListsInValue(v.Args[0], file)
-		sortListsInValue(v.Args[1], file)
+		sortListsInValue(v.Args[0], tree)
+		sortListsInValue(v.Args[1], tree)
 	case *Map:
 		for _, p := range v.Properties {
-			sortListsInValue(p.Value, file)
+			sortListsInValue(p.Value, tree)
 		}
 	case *List:
-		SortList(file, v)
+		SortList(tree, v)
 	}
 }
 
-func sortSubList(values []Expression, nextPos scanner.Position, file *ParseTree) {
-	l := make(elemList, len(values))
+func sortSubList(values []Expression, file *ParseTree) {
+	// make a wrapper list to send into the built-in Sort function
+	sortList := make(elemList, len(values))
 	for i, v := range values {
 		s, ok := v.(*String)
 		if !ok {
 			panic("list contains non-string element")
 		}
-		n := nextPos
-		if i < len(values)-1 {
-			n = values[i+1].Pos()
-		}
-		l[i] = elem{s.Value, i, v.Pos(), n}
+		sortList[i] = elem{s.Value, i}
 	}
 
-	sort.Sort(l)
+	// call the built-in Sort function
+	sort.Sort(sortList)
 
-	copyValues := append([]Expression{}, values...)
-	copyComments := make([]*CommentGroup, len(file.Comments))
-	for i := range file.Comments {
-		cg := *file.Comments[i]
-		cg.Comments = make([]*Comment, len(cg.Comments))
-		for j := range file.Comments[i].Comments {
-			c := *file.Comments[i].Comments[j]
-			cg.Comments[j] = &c
-		}
-		copyComments[i] = &cg
-	}
-
-	curPos := values[0].Pos()
-	for i, e := range l {
-		values[i] = copyValues[e.i]
-		values[i].(*String).LiteralPos = curPos
-		for j, c := range copyComments {
-			if c.Pos().Offset > e.pos.Offset && c.Pos().Offset < e.nextPos.Offset {
-				file.Comments[j].Comments[0].Slash.Line = curPos.Line
-				file.Comments[j].Comments[0].Slash.Offset += values[i].Pos().Offset - e.pos.Offset
-			}
-		}
-
-		curPos.Offset += e.nextPos.Offset - e.pos.Offset
-		curPos.Line++
+	// use the positions received by the built-in Sort function to re-order the given list
+	clone := append([]Expression{}, values...)
+	for i, sortNode := range sortList {
+		values[i] = clone[sortNode.index]
 	}
 }
 
@@ -151,10 +124,8 @@ func subListIsSorted(values []Expression) bool {
 }
 
 type elem struct {
-	s       string
-	i       int
-	pos     scanner.Position
-	nextPos scanner.Position
+	item  string
+	index int
 }
 
 type elemList []elem
@@ -168,19 +139,5 @@ func (l elemList) Swap(i, j int) {
 }
 
 func (l elemList) Less(i, j int) bool {
-	return l[i].s < l[j].s
-}
-
-type commentsByOffset []*CommentGroup
-
-func (l commentsByOffset) Len() int {
-	return len(l)
-}
-
-func (l commentsByOffset) Less(i, j int) bool {
-	return l[i].Pos().Offset < l[j].Pos().Offset
-}
-
-func (l commentsByOffset) Swap(i, j int) {
-	l[i], l[j] = l[j], l[i]
+	return l[i].item < l[j].item
 }

@@ -16,646 +16,230 @@ package parser
 
 import (
 	"bytes"
-	"reflect"
+	"fmt"
 	"testing"
 	"text/scanner"
+
+	"github.com/google/blueprint/proptools"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 )
 
-func mkpos(offset, line, column int) scanner.Position {
-	return scanner.Position{
-		Offset: offset,
-		Line:   line,
-		Column: column,
+// parser_test.go isn't allowed to use the printer in its tests because printer_test.go uses the parser in its tests
+
+// Assuming that the two trees have equivalent structure, this function returns a map that translates non-comment nodes in <actual> to <expected>
+// The behavior is undefined if the two trees don't have equal structure between their non-comment nodes
+func getNodeMappingWithoutComments(expected *SyntaxTree, actual *SyntaxTree) (remappings map[ParseNode]ParseNode) {
+	actualNodes := actual.ListOfAllNodes()
+	expectedNodes := expected.ListOfAllNodes()
+	remappings = make(map[ParseNode]ParseNode, 0)
+	if len(actualNodes) != len(expectedNodes) {
+		panic(fmt.Errorf("Illegal usage of getNodeMappingWithoutComments. getNodeMappingWithoutComments may only be executed against two trees with equivalent structure between their non-comment nodes. "+
+			"Actual number of nodes: %v nodes in tree %v and %v nodes in tree %v .",
+			len(actualNodes), actualNodes, len(expectedNodes), expectedNodes))
+	}
+	count := 0
+	for i, actualNode := range actualNodes {
+		count++
+		analogue := expectedNodes[i]
+		if actualNode != nil && analogue != nil {
+			_, exists := remappings[actualNode]
+			if exists {
+				panic(fmt.Sprintf("node %s(%#v) already found in remapping", actualNode, actualNode))
+			}
+			remappings[actualNode] = analogue
+		} else {
+			panic(fmt.Sprintf("why do the nodes actual=%#v and expected=%#v have a nil (index %v)?", actualNode, expectedNodes, i))
+		}
+	}
+	if count != len(remappings) {
+		panic(fmt.Sprintf("i length mismatch, got %v, expected %v", len(remappings), count))
+	}
+	if len(remappings) != len(actualNodes) {
+		panic(fmt.Sprintf("length mismatch, got %v, expected %v", len(remappings), len(actualNodes)))
+	}
+	return remappings
+}
+
+// Assuming that the two trees have equivalent structure, this function returns a map that translates nodes in <actual> to <expected>
+// This includes attached comments
+// The behavior is undefined if the two trees don't have equal structure between their non-comment nodes
+func getNodeMappingWithComments(expected *SyntaxTree, actual *SyntaxTree, existingRemappings map[ParseNode]ParseNode) map[ParseNode]ParseNode {
+	remappings := existingRemappings
+	for _, actualNode := range actual.ListOfAllNodes() {
+		expectedNode := existingRemappings[actualNode]
+		actualComments := actual.GetCommentsIfPresent(actualNode)
+		expectedComments := expected.GetCommentsIfPresent(expectedNode)
+		if actualComments != nil && expectedComments != nil {
+			if len(actualComments.preComments) != len(expectedComments.preComments) {
+				panic(fmt.Sprintf(
+					"Illegal usage of getNodeMappingWithComments. Expected node %s has %v "+
+						"pre-comments whereas actual node %s has %v",
+					expectedNode, len(expectedComments.preComments),
+					actualNode, len(actualComments.preComments)))
+			}
+			for i := range actualComments.preComments {
+				remappings[actualComments.preComments[i]] = expectedComments.preComments[i]
+			}
+			if len(actualComments.postComments) != len(expectedComments.postComments) {
+				panic(fmt.Sprintf(
+					"Illegal usage of getNodeMappingWithComments. Expected node %s has %v "+
+						"post-comments whereas actual node %s has %v",
+					expectedNode, len(expectedComments.postComments),
+					actualNode, len(actualComments.postComments)))
+			}
+			for i := range actualComments.postComments {
+				remappings[actualComments.postComments[i]] = expectedComments.postComments[i]
+			}
+		}
+	}
+	return remappings
+}
+
+// Tells whether the attached comments are equivalent between the two trees, when applying the given remapping
+func compareComments(expected *ParseTree, actual *ParseTree,
+	actualToExpected map[ParseNode]ParseNode) (equal bool, difference string) {
+	// Construct a new map of comments, whose values are the same as <actual>, but whose keys are the corresponding keys in <expected>
+	// The reason we replace the keys is so proptools.DeepCompare can know which keys we want to compare against which others
+
+	analogousActualComments := make(map[ParseNode](*CommentPair), 0)
+	for actualKey, actualValue := range actual.SyntaxTree.comments {
+		expectedKey := actualToExpected[actualKey]
+		if actualKey != nil && expectedKey != nil { // we don't attach comments to a nil node
+			analogousActualComments[expectedKey] = actualValue
+		}
+	}
+
+	// now compare the comments
+	return proptools.DeepCompare(
+		"expected.SyntaxTree.Comments", expected.SyntaxTree.comments,
+		"analogous actual.SyntaxTree.Comments", analogousActualComments)
+}
+
+// Tells whether the source positions are equivalent between the two trees, when applying the given remapping
+func compareSourcePositions(expected *ParseTree, actual *ParseTree,
+	actualToExpected map[ParseNode]ParseNode) (equal bool, difference string) {
+	// Construct a new map of source positions, whose values are the same as <actual>, but whose keys are the corresponding keys in <expected>
+	// The reason we replace the keys is so proptools.DeepCompare can know which keys we want to compare against which others
+
+	analogousSourcePositions := make(map[ParseNode]scanner.Position)
+	for actualKey, actualValue := range actual.SourcePositions {
+		expectedKey := actualToExpected[actualKey]
+		if actualKey != nil && expectedKey != nil { // we don't save the position of a nil node
+			analogousSourcePositions[expectedKey] = actualValue
+		}
+	}
+
+	// now compare the source positions
+	return proptools.DeepCompare(
+		"expected.SourcePositions", expected.SourcePositions,
+		"analogous actual.SourcePositions", analogousSourcePositions)
+}
+
+func compareParseTrees(expected *ParseTree, actual *ParseTree) (equal bool, difference string) {
+	// first compare all nodes other than attached comments
+	equal, difference = proptools.DeepCompare(
+		"expected.SyntaxTree.Nodes", expected.SyntaxTree.nodes,
+		"actual.SyntaxTree.Nodes", actual.SyntaxTree.nodes)
+	if !equal {
+		return equal, difference
+	}
+
+	// now that we've confirmed that the non-comment nodes have equivalent structure, we can compute a node mapping
+	remappings := getNodeMappingWithoutComments(expected.SyntaxTree, actual.SyntaxTree)
+
+	// use the node mapping to compare the comments
+	equal, difference = compareComments(expected, actual, remappings)
+	if !equal {
+		return equal, difference
+	}
+
+	remappings = getNodeMappingWithComments(expected.SyntaxTree, actual.SyntaxTree, remappings)
+
+	return compareSourcePositions(expected, actual, remappings)
+}
+
+func runValidTestCase(t *testing.T, testCase parserTestCase) {
+	var succeeded = false
+	defer func() {
+		if !succeeded {
+			t.Errorf("test case %s failed with input: \n%s\n", testCase.name, testCase.input)
+		}
+	}()
+	r := bytes.NewBufferString(testCase.input)
+	actualFileParse, errs := ParseAndEval(testCase.name, r, NewScope(nil))
+	actualParse := actualFileParse
+	if len(errs) != 0 {
+		t.Errorf("test case: %s", testCase.input)
+		t.Error("unexpected errors:")
+		for _, err := range errs {
+			t.Errorf("  %s", err)
+		}
+		t.FailNow()
+	}
+
+	correctParse := testCase.treeProvider(testCase.name)
+	// TODO update all the test cases to specify SourcePositions, and then just use that
+
+	// confirm that the actual and expected trees are equivalent
+	equal, difference := compareParseTrees(correctParse, actualParse)
+
+	expectedRepresentation := VerbosePrint(correctParse)
+	actualRepresentation := VerbosePrint(actualParse)
+	if equal {
+		succeeded = true
+	} else {
+		messageTemplate := `
+test case: %s
+with input:
+                %s
+expected:
+%s
+got     :
+%s
+1st diff: %v
+
+`
+		t.Errorf(messageTemplate, testCase.name, testCase.input, expectedRepresentation, actualRepresentation, difference)
 	}
 }
 
-var validParseTestCases = []struct {
-	input    string
-	defs     []Definition
-	comments []*CommentGroup
-}{
-	{`
-		foo {}
-		`,
-		[]Definition{
-			&Module{
-				Type:    "foo",
-				TypePos: mkpos(3, 2, 3),
-				Map: Map{
-					LBracePos: mkpos(7, 2, 7),
-					RBracePos: mkpos(8, 2, 8),
-				},
-			},
-		},
-		nil,
-	},
-
-	{`
-		foo {
-			name: "abc",
-		}
-		`,
-		[]Definition{
-			&Module{
-				Type:    "foo",
-				TypePos: mkpos(3, 2, 3),
-				Map: Map{
-					LBracePos: mkpos(7, 2, 7),
-					RBracePos: mkpos(27, 4, 3),
-					Properties: []*Property{
-						{
-							Name:     "name",
-							NamePos:  mkpos(12, 3, 4),
-							ColonPos: mkpos(16, 3, 8),
-							Value: &String{
-								LiteralPos: mkpos(18, 3, 10),
-								Value:      "abc",
-							},
-						},
-					},
-				},
-			},
-		},
-		nil,
-	},
-
-	{`
-		foo {
-			isGood: true,
-		}
-		`,
-		[]Definition{
-			&Module{
-				Type:    "foo",
-				TypePos: mkpos(3, 2, 3),
-				Map: Map{
-					LBracePos: mkpos(7, 2, 7),
-					RBracePos: mkpos(28, 4, 3),
-					Properties: []*Property{
-						{
-							Name:     "isGood",
-							NamePos:  mkpos(12, 3, 4),
-							ColonPos: mkpos(18, 3, 10),
-							Value: &Bool{
-								LiteralPos: mkpos(20, 3, 12),
-								Value:      true,
-							},
-						},
-					},
-				},
-			},
-		},
-		nil,
-	},
-
-	{`
-		foo {
-			stuff: ["asdf", "jkl;", "qwert",
-				"uiop", "bnm,"]
-		}
-		`,
-		[]Definition{
-			&Module{
-				Type:    "foo",
-				TypePos: mkpos(3, 2, 3),
-				Map: Map{
-					LBracePos: mkpos(7, 2, 7),
-					RBracePos: mkpos(67, 5, 3),
-					Properties: []*Property{
-						{
-							Name:     "stuff",
-							NamePos:  mkpos(12, 3, 4),
-							ColonPos: mkpos(17, 3, 9),
-							Value: &List{
-								LBracePos: mkpos(19, 3, 11),
-								RBracePos: mkpos(63, 4, 19),
-								Values: []Expression{
-									&String{
-										LiteralPos: mkpos(20, 3, 12),
-										Value:      "asdf",
-									},
-									&String{
-										LiteralPos: mkpos(28, 3, 20),
-										Value:      "jkl;",
-									},
-									&String{
-										LiteralPos: mkpos(36, 3, 28),
-										Value:      "qwert",
-									},
-									&String{
-										LiteralPos: mkpos(49, 4, 5),
-										Value:      "uiop",
-									},
-									&String{
-										LiteralPos: mkpos(57, 4, 13),
-										Value:      "bnm,",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		nil,
-	},
-
-	{`
-		foo {
-			stuff: {
-				isGood: true,
-				name: "bar"
-			}
-		}
-		`,
-		[]Definition{
-			&Module{
-				Type:    "foo",
-				TypePos: mkpos(3, 2, 3),
-				Map: Map{
-					LBracePos: mkpos(7, 2, 7),
-					RBracePos: mkpos(62, 7, 3),
-					Properties: []*Property{
-						{
-							Name:     "stuff",
-							NamePos:  mkpos(12, 3, 4),
-							ColonPos: mkpos(17, 3, 9),
-							Value: &Map{
-								LBracePos: mkpos(19, 3, 11),
-								RBracePos: mkpos(58, 6, 4),
-								Properties: []*Property{
-									{
-										Name:     "isGood",
-										NamePos:  mkpos(25, 4, 5),
-										ColonPos: mkpos(31, 4, 11),
-										Value: &Bool{
-											LiteralPos: mkpos(33, 4, 13),
-											Value:      true,
-										},
-									},
-									{
-										Name:     "name",
-										NamePos:  mkpos(43, 5, 5),
-										ColonPos: mkpos(47, 5, 9),
-										Value: &String{
-											LiteralPos: mkpos(49, 5, 11),
-											Value:      "bar",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		nil,
-	},
-
-	{`
-		// comment1
-		foo /* test */ {
-			// comment2
-			isGood: true,  // comment3
-		}
-		`,
-		[]Definition{
-			&Module{
-				Type:    "foo",
-				TypePos: mkpos(17, 3, 3),
-				Map: Map{
-					LBracePos: mkpos(32, 3, 18),
-					RBracePos: mkpos(81, 6, 3),
-					Properties: []*Property{
-						{
-							Name:     "isGood",
-							NamePos:  mkpos(52, 5, 4),
-							ColonPos: mkpos(58, 5, 10),
-							Value: &Bool{
-								LiteralPos: mkpos(60, 5, 12),
-								Value:      true,
-							},
-						},
-					},
-				},
-			},
-		},
-		[]*CommentGroup{
-			{
-				Comments: []*Comment{
-					&Comment{
-						Comment: []string{"// comment1"},
-						Slash:   mkpos(3, 2, 3),
-					},
-				},
-			},
-			{
-				Comments: []*Comment{
-					&Comment{
-						Comment: []string{"/* test */"},
-						Slash:   mkpos(21, 3, 7),
-					},
-				},
-			},
-			{
-				Comments: []*Comment{
-					&Comment{
-						Comment: []string{"// comment2"},
-						Slash:   mkpos(37, 4, 4),
-					},
-				},
-			},
-			{
-				Comments: []*Comment{
-					&Comment{
-						Comment: []string{"// comment3"},
-						Slash:   mkpos(67, 5, 19),
-					},
-				},
-			},
-		},
-	},
-
-	{`
-		foo {
-			name: "abc",
-		}
-
-		bar {
-			name: "def",
-		}
-		`,
-		[]Definition{
-			&Module{
-				Type:    "foo",
-				TypePos: mkpos(3, 2, 3),
-				Map: Map{
-					LBracePos: mkpos(7, 2, 7),
-					RBracePos: mkpos(27, 4, 3),
-					Properties: []*Property{
-						{
-							Name:     "name",
-							NamePos:  mkpos(12, 3, 4),
-							ColonPos: mkpos(16, 3, 8),
-							Value: &String{
-								LiteralPos: mkpos(18, 3, 10),
-								Value:      "abc",
-							},
-						},
-					},
-				},
-			},
-			&Module{
-				Type:    "bar",
-				TypePos: mkpos(32, 6, 3),
-				Map: Map{
-					LBracePos: mkpos(36, 6, 7),
-					RBracePos: mkpos(56, 8, 3),
-					Properties: []*Property{
-						{
-							Name:     "name",
-							NamePos:  mkpos(41, 7, 4),
-							ColonPos: mkpos(45, 7, 8),
-							Value: &String{
-								LiteralPos: mkpos(47, 7, 10),
-								Value:      "def",
-							},
-						},
-					},
-				},
-			},
-		},
-		nil,
-	},
-	{`
-		foo = "stuff"
-		bar = foo
-		baz = foo + bar
-		boo = baz
-		boo += foo
-		`,
-		[]Definition{
-			&Assignment{
-				Name:      "foo",
-				NamePos:   mkpos(3, 2, 3),
-				EqualsPos: mkpos(7, 2, 7),
-				Value: &String{
-					LiteralPos: mkpos(9, 2, 9),
-					Value:      "stuff",
-				},
-				OrigValue: &String{
-					LiteralPos: mkpos(9, 2, 9),
-					Value:      "stuff",
-				},
-				Assigner:   "=",
-				Referenced: true,
-			},
-			&Assignment{
-				Name:      "bar",
-				NamePos:   mkpos(19, 3, 3),
-				EqualsPos: mkpos(23, 3, 7),
-				Value: &Variable{
-					Name:    "foo",
-					NamePos: mkpos(25, 3, 9),
-					Value: &String{
-						LiteralPos: mkpos(9, 2, 9),
-						Value:      "stuff",
-					},
-				},
-				OrigValue: &Variable{
-					Name:    "foo",
-					NamePos: mkpos(25, 3, 9),
-					Value: &String{
-						LiteralPos: mkpos(9, 2, 9),
-						Value:      "stuff",
-					},
-				},
-				Assigner:   "=",
-				Referenced: true,
-			},
-			&Assignment{
-				Name:      "baz",
-				NamePos:   mkpos(31, 4, 3),
-				EqualsPos: mkpos(35, 4, 7),
-				Value: &Operator{
-					OperatorPos: mkpos(41, 4, 13),
-					Operator:    '+',
-					Value: &String{
-						LiteralPos: mkpos(9, 2, 9),
-						Value:      "stuffstuff",
-					},
-					Args: [2]Expression{
-						&Variable{
-							Name:    "foo",
-							NamePos: mkpos(37, 4, 9),
-							Value: &String{
-								LiteralPos: mkpos(9, 2, 9),
-								Value:      "stuff",
-							},
-						},
-						&Variable{
-							Name:    "bar",
-							NamePos: mkpos(43, 4, 15),
-							Value: &Variable{
-								Name:    "foo",
-								NamePos: mkpos(25, 3, 9),
-								Value: &String{
-									LiteralPos: mkpos(9, 2, 9),
-									Value:      "stuff",
-								},
-							},
-						},
-					},
-				},
-				OrigValue: &Operator{
-					OperatorPos: mkpos(41, 4, 13),
-					Operator:    '+',
-					Value: &String{
-						LiteralPos: mkpos(9, 2, 9),
-						Value:      "stuffstuff",
-					},
-					Args: [2]Expression{
-						&Variable{
-							Name:    "foo",
-							NamePos: mkpos(37, 4, 9),
-							Value: &String{
-								LiteralPos: mkpos(9, 2, 9),
-								Value:      "stuff",
-							},
-						},
-						&Variable{
-							Name:    "bar",
-							NamePos: mkpos(43, 4, 15),
-							Value: &Variable{
-								Name:    "foo",
-								NamePos: mkpos(25, 3, 9),
-								Value: &String{
-									LiteralPos: mkpos(9, 2, 9),
-									Value:      "stuff",
-								},
-							},
-						},
-					},
-				},
-				Assigner:   "=",
-				Referenced: true,
-			},
-			&Assignment{
-				Name:      "boo",
-				NamePos:   mkpos(49, 5, 3),
-				EqualsPos: mkpos(53, 5, 7),
-				Value: &Operator{
-					Args: [2]Expression{
-						&Variable{
-							Name:    "baz",
-							NamePos: mkpos(55, 5, 9),
-							Value: &Operator{
-								OperatorPos: mkpos(41, 4, 13),
-								Operator:    '+',
-								Value: &String{
-									LiteralPos: mkpos(9, 2, 9),
-									Value:      "stuffstuff",
-								},
-								Args: [2]Expression{
-									&Variable{
-										Name:    "foo",
-										NamePos: mkpos(37, 4, 9),
-										Value: &String{
-											LiteralPos: mkpos(9, 2, 9),
-											Value:      "stuff",
-										},
-									},
-									&Variable{
-										Name:    "bar",
-										NamePos: mkpos(43, 4, 15),
-										Value: &Variable{
-											Name:    "foo",
-											NamePos: mkpos(25, 3, 9),
-											Value: &String{
-												LiteralPos: mkpos(9, 2, 9),
-												Value:      "stuff",
-											},
-										},
-									},
-								},
-							},
-						},
-						&Variable{
-							Name:    "foo",
-							NamePos: mkpos(68, 6, 10),
-							Value: &String{
-								LiteralPos: mkpos(9, 2, 9),
-								Value:      "stuff",
-							},
-						},
-					},
-					OperatorPos: mkpos(66, 6, 8),
-					Operator:    '+',
-					Value: &String{
-						LiteralPos: mkpos(9, 2, 9),
-						Value:      "stuffstuffstuff",
-					},
-				},
-				OrigValue: &Variable{
-					Name:    "baz",
-					NamePos: mkpos(55, 5, 9),
-					Value: &Operator{
-						OperatorPos: mkpos(41, 4, 13),
-						Operator:    '+',
-						Value: &String{
-							LiteralPos: mkpos(9, 2, 9),
-							Value:      "stuffstuff",
-						},
-						Args: [2]Expression{
-							&Variable{
-								Name:    "foo",
-								NamePos: mkpos(37, 4, 9),
-								Value: &String{
-									LiteralPos: mkpos(9, 2, 9),
-									Value:      "stuff",
-								},
-							},
-							&Variable{
-								Name:    "bar",
-								NamePos: mkpos(43, 4, 15),
-								Value: &Variable{
-									Name:    "foo",
-									NamePos: mkpos(25, 3, 9),
-									Value: &String{
-										LiteralPos: mkpos(9, 2, 9),
-										Value:      "stuff",
-									},
-								},
-							},
-						},
-					},
-				},
-				Assigner: "=",
-			},
-			&Assignment{
-				Name:      "boo",
-				NamePos:   mkpos(61, 6, 3),
-				EqualsPos: mkpos(66, 6, 8),
-				Value: &Variable{
-					Name:    "foo",
-					NamePos: mkpos(68, 6, 10),
-					Value: &String{
-						LiteralPos: mkpos(9, 2, 9),
-						Value:      "stuff",
-					},
-				},
-				OrigValue: &Variable{
-					Name:    "foo",
-					NamePos: mkpos(68, 6, 10),
-					Value: &String{
-						LiteralPos: mkpos(9, 2, 9),
-						Value:      "stuff",
-					},
-				},
-				Assigner: "+=",
-			},
-		},
-		nil,
-	},
-	{`
-		// comment1
-		// comment2
-
-		/* comment3
-		   comment4 */
-		// comment5
-
-		/* comment6 */ /* comment7 */ // comment8
-		`,
-		nil,
-		[]*CommentGroup{
-			{
-				Comments: []*Comment{
-					&Comment{
-						Comment: []string{"// comment1"},
-						Slash:   mkpos(3, 2, 3),
-					},
-					&Comment{
-						Comment: []string{"// comment2"},
-						Slash:   mkpos(17, 3, 3),
-					},
-				},
-			},
-			{
-				Comments: []*Comment{
-					&Comment{
-						Comment: []string{"/* comment3", "		   comment4 */"},
-						Slash: mkpos(32, 5, 3),
-					},
-					&Comment{
-						Comment: []string{"// comment5"},
-						Slash:   mkpos(63, 7, 3),
-					},
-				},
-			},
-			{
-				Comments: []*Comment{
-					&Comment{
-						Comment: []string{"/* comment6 */"},
-						Slash:   mkpos(78, 9, 3),
-					},
-					&Comment{
-						Comment: []string{"/* comment7 */"},
-						Slash:   mkpos(93, 9, 18),
-					},
-					&Comment{
-						Comment: []string{"// comment8"},
-						Slash:   mkpos(108, 9, 33),
-					},
-				},
-			},
-		},
-	},
-}
-
+// this function runs the tests
 func TestParseValidInput(t *testing.T) {
-	for _, testCase := range validParseTestCases {
-		r := bytes.NewBufferString(testCase.input)
-		file, errs := ParseAndEval("", r, NewScope(nil))
-		if len(errs) != 0 {
-			t.Errorf("test case: %s", testCase.input)
-			t.Errorf("unexpected errors:")
-			for _, err := range errs {
-				t.Errorf("  %s", err)
-			}
-			t.FailNow()
+	testNames := make(map[string]bool, len(parserTestCases))
+	for i := range parserTestCases {
+		testCase := parserTestCases[i]
+		name := testCase.name
+		if _, found := testNames[name]; found {
+			t.Fatalf("Duplicate test case name %s", name)
 		}
-
-		if len(file.Defs) == len(testCase.defs) {
-			for i := range file.Defs {
-				if !reflect.DeepEqual(file.Defs[i], testCase.defs[i]) {
-					t.Errorf("test case: %s", testCase.input)
-					t.Errorf("incorrect defintion %d:", i)
-					t.Errorf("  expected: %s", testCase.defs[i])
-					t.Errorf("       got: %s", file.Defs[i])
-				}
-			}
-		} else {
-			t.Errorf("test case: %s", testCase.input)
-			t.Errorf("length mismatch, expected %d definitions, got %d",
-				len(testCase.defs), len(file.Defs))
-		}
-
-		if len(file.Comments) == len(testCase.comments) {
-			for i := range file.Comments {
-				if !reflect.DeepEqual(file.Comments[i], testCase.comments[i]) {
-					t.Errorf("test case: %s", testCase.input)
-					t.Errorf("incorrect comment %d:", i)
-					t.Errorf("  expected: %s", testCase.comments[i])
-					t.Errorf("       got: %s", file.Comments[i])
-				}
-			}
-		} else {
-			t.Errorf("test case: %s", testCase.input)
-			t.Errorf("length mismatch, expected %d comments, got %d",
-				len(testCase.comments), len(file.Comments))
-		}
+		testNames[name] = true
+		runValidTestCase(t, testCase)
 	}
 }
 
 // TODO: Test error strings
+
+// This function confirms that the test cases in parser_test_cases.go can be autogenerated from parser_test_inputs.go
+// This is checked so users don't accidentally edit parser_test_cases.go directly
+func TestAutogeneratedTestCasesMatch(t *testing.T) {
+	testCasesPath := "parser_test_cases.go"
+	actualBytes, err := ioutil.ReadFile(testCasesPath)
+	actualText := string(actualBytes)
+	if err != nil {
+		t.Errorf("failed to open %s", testCasesPath)
+	}
+	generatedText := generateParserTestCasesDotGo()
+	generatedBytes := []byte(generatedText)
+	if actualText != generatedText {
+		// save generated file and tell the user to copy it
+		generatedPath := filepath.Join(os.TempDir(), "parser_test_cases.go.generated")
+		ioutil.WriteFile(generatedPath, generatedBytes, os.FileMode(0777))
+		separator := "\n\n\n***\n\n\n"
+		t.Errorf("%sparser_test_cases.go DOES NOT MATCH THE RESULT GENERATED BY parser_test_generator.go .\n"+
+			"Do `diff %q %q` to inspect the proposed changes\n"+
+			"Do `cp %q %q`   to accept  the proposed changes%s",
+			separator, testCasesPath, generatedPath, generatedPath, testCasesPath, separator)
+	}
+}

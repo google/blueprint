@@ -525,7 +525,7 @@ func (c *Context) SetAllowMissingDependencies(allowMissingDependencies bool) {
 // filename specifies the path to the Blueprints file.  These paths are used for
 // error reporting and for determining the module's directory.
 func (c *Context) parse(rootDir, filename string, r io.Reader,
-	scope *parser.Scope) (file *parser.ParseTree, subBlueprints []stringAndScope, errs []error) {
+	scope *parser.Scope) (tree *parser.ParseTree, subBlueprints []stringAndScope, errs []error) {
 
 	relBlueprintsFile, err := filepath.Rel(rootDir, filename)
 	if err != nil {
@@ -536,7 +536,7 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 	scope.Remove("subdirs")
 	scope.Remove("optional_subdirs")
 	scope.Remove("build")
-	file, errs = parser.ParseAndEval(filename, r, scope)
+	tree, errs = parser.ParseAndEval(filename, r, scope)
 	if len(errs) > 0 {
 		for i, err := range errs {
 			if parseErr, ok := err.(*parser.ParseError); ok {
@@ -552,24 +552,24 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 		// result.
 		return nil, nil, errs
 	}
-	file.FileName = relBlueprintsFile
+	tree.FileName = relBlueprintsFile
 
-	subdirs, subdirsPos, err := getLocalStringListFromScope(scope, "subdirs")
+	subdirs, subdirsPos, err := getLocalStringListFromScope(scope, "subdirs", tree)
 	if err != nil {
 		errs = append(errs, err)
 	}
 
-	optionalSubdirs, optionalSubdirsPos, err := getLocalStringListFromScope(scope, "optional_subdirs")
+	optionalSubdirs, optionalSubdirsPos, err := getLocalStringListFromScope(scope, "optional_subdirs", tree)
 	if err != nil {
 		errs = append(errs, err)
 	}
 
-	build, buildPos, err := getLocalStringListFromScope(scope, "build")
+	build, buildPos, err := getLocalStringListFromScope(scope, "build", tree)
 	if err != nil {
 		errs = append(errs, err)
 	}
 
-	subBlueprintsName, _, err := getStringFromScope(scope, "subname")
+	subBlueprintsName, _, err := getStringFromScope(scope, "subname", tree)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -599,7 +599,7 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 		subBlueprintsAndScope[i] = stringAndScope{b, scope}
 	}
 
-	return file, subBlueprintsAndScope, errs
+	return tree, subBlueprintsAndScope, errs
 }
 
 type stringAndScope struct {
@@ -635,14 +635,16 @@ func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string,
 
 		atomic.AddInt32(&numGoroutines, 1)
 		go func() {
-			for _, def := range file.Defs {
+			for _, def := range file.SyntaxTree.Nodes() {
 				var module *moduleInfo
 				var errs []error
 				switch def := def.(type) {
 				case *parser.Module:
-					module, errs = c.processModuleDef(def, file.FileName)
+					module, errs = c.processModuleDef(def, file.FileName, file)
 				case *parser.Assignment:
 					// Already handled via Scope object
+				case *parser.Comment:
+					// Nothing to do
 				default:
 					panic("unknown definition type")
 				}
@@ -816,8 +818,7 @@ func (c *Context) parseBlueprintsFile(filename string, scope *parser.Scope, root
 	}
 }
 
-func (c *Context) findBuildBlueprints(dir string, build []string,
-	buildPos scanner.Position) ([]string, []error) {
+func (c *Context) findBuildBlueprints(dir string, build []string, buildPos scanner.Position) ([]string, []error) {
 
 	var blueprints []string
 	var errs []error
@@ -888,7 +889,7 @@ func (c *Context) findSubdirBlueprints(dir string, subdirs []string, subdirsPos 
 	return blueprints, errs
 }
 
-func getLocalStringListFromScope(scope *parser.Scope, v string) ([]string, scanner.Position, error) {
+func getLocalStringListFromScope(scope *parser.Scope, v string, tree *parser.ParseTree) ([]string, scanner.Position, error) {
 	if assignment, local := scope.Get(v); assignment == nil || !local {
 		return nil, scanner.Position{}, nil
 	} else {
@@ -906,11 +907,11 @@ func getLocalStringListFromScope(scope *parser.Scope, v string) ([]string, scann
 				ret = append(ret, s.Value)
 			}
 
-			return ret, assignment.EqualsPos, nil
+			return ret, tree.SourcePosition(assignment), nil
 		case *parser.Bool, *parser.String:
 			return nil, scanner.Position{}, &BlueprintError{
 				Err: fmt.Errorf("%q must be a list of strings", v),
-				Pos: assignment.EqualsPos,
+				Pos: tree.SourcePosition(assignment),
 			}
 		default:
 			panic(fmt.Errorf("unknown value type: %d", assignment.Value.Type))
@@ -918,17 +919,17 @@ func getLocalStringListFromScope(scope *parser.Scope, v string) ([]string, scann
 	}
 }
 
-func getStringFromScope(scope *parser.Scope, v string) (string, scanner.Position, error) {
+func getStringFromScope(scope *parser.Scope, v string, tree *parser.ParseTree) (string, scanner.Position, error) {
 	if assignment, _ := scope.Get(v); assignment == nil {
 		return "", scanner.Position{}, nil
 	} else {
 		switch value := assignment.Value.Eval().(type) {
 		case *parser.String:
-			return value.Value, assignment.EqualsPos, nil
+			return value.Value, tree.SourcePosition(assignment), nil
 		case *parser.Bool, *parser.List:
 			return "", scanner.Position{}, &BlueprintError{
 				Err: fmt.Errorf("%q must be a string", v),
-				Pos: assignment.EqualsPos,
+				Pos: tree.SourcePosition(assignment),
 			}
 		default:
 			panic(fmt.Errorf("unknown value type: %d", assignment.Value.Type))
@@ -1063,9 +1064,9 @@ func (c *Context) prettyPrintVariant(variant variationMap) string {
 }
 
 func (c *Context) processModuleDef(moduleDef *parser.Module,
-	relBlueprintsFile string) (*moduleInfo, []error) {
+	relBlueprintsFile string, tree *parser.ParseTree) (*moduleInfo, []error) {
 
-	factory, ok := c.moduleFactories[moduleDef.Type]
+	factory, ok := c.moduleFactories[moduleDef.Type.Value]
 	if !ok {
 		if c.ignoreUnknownModuleTypes {
 			return nil, nil
@@ -1074,7 +1075,7 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 		return nil, []error{
 			&BlueprintError{
 				Err: fmt.Errorf("unrecognized module type %q", moduleDef.Type),
-				Pos: moduleDef.TypePos,
+				Pos: tree.SourcePosition(moduleDef),
 			},
 		}
 	}
@@ -1083,21 +1084,22 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 
 	module := &moduleInfo{
 		logicModule:       logicModule,
-		typeName:          moduleDef.Type,
+		typeName:          moduleDef.Type.Value,
 		relBlueprintsFile: relBlueprintsFile,
 	}
 
 	module.moduleProperties = properties
 
-	propertyMap, errs := unpackProperties(moduleDef.Properties, properties...)
+	propertyMap, errs := unpackProperties(moduleDef.Properties, tree, properties...)
 	if len(errs) > 0 {
 		return nil, errs
 	}
 
-	module.pos = moduleDef.TypePos
+	module.pos = tree.SourcePosition(moduleDef)
+
 	module.propertyPos = make(map[string]scanner.Position)
 	for name, propertyDef := range propertyMap {
-		module.propertyPos[name] = propertyDef.ColonPos
+		module.propertyPos[name] = tree.SourcePosition(propertyDef)
 	}
 
 	return module, nil

@@ -70,7 +70,8 @@ func processFile(filename string, in io.Reader, out io.Writer) error {
 		parser.SortLists(file)
 	}
 
-	res, err := parser.Print(file)
+	outputText := parser.Print(file)
+	res := []byte(outputText)
 	if err != nil {
 		return err
 	}
