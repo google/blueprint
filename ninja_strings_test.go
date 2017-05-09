@@ -71,6 +71,11 @@ var ninjaParseTestCases = []struct {
 		strs:  []string{"foo bar"},
 	},
 	{
+		input: " foo ",
+		vars:  nil,
+		strs:  []string{"$ foo "},
+	},
+	{
 		input: "foo $ bar",
 		err:   "invalid character after '$' at byte offset 5",
 	},
