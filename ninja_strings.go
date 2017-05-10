@@ -54,6 +54,7 @@ func simpleNinjaString(str string) *ninjaString {
 type parseState struct {
 	scope       scope
 	str         string
+	pendingStr  string
 	stringStart int
 	varStart    int
 	result      *ninjaString
@@ -64,6 +65,9 @@ func (ps *parseState) pushVariable(v Variable) {
 		// Last push was a variable, we need a blank string separator
 		ps.result.strings = append(ps.result.strings, "")
 	}
+	if ps.pendingStr != "" {
+		panic("oops, pushed variable with pending string")
+	}
 	ps.result.variables = append(ps.result.variables, v)
 }
 
@@ -71,7 +75,8 @@ func (ps *parseState) pushString(s string) {
 	if len(ps.result.strings) != len(ps.result.variables) {
 		panic("oops, pushed string after string")
 	}
-	ps.result.strings = append(ps.result.strings, s)
+	ps.result.strings = append(ps.result.strings, ps.pendingStr+s)
+	ps.pendingStr = ""
 }
 
 type stateFunc func(*parseState, int, rune) (stateFunc, error)
@@ -93,7 +98,7 @@ func parseNinjaString(scope scope, str string) (*ninjaString, error) {
 		result: result,
 	}
 
-	state := parseStringState
+	state := parseFirstRuneState
 	var err error
 	for i := 0; i < len(str); i++ {
 		r := rune(str[i])
@@ -109,6 +114,13 @@ func parseNinjaString(scope scope, str string) (*ninjaString, error) {
 	}
 
 	return result, nil
+}
+
+func parseFirstRuneState(state *parseState, i int, r rune) (stateFunc, error) {
+	if r == ' ' {
+		state.pendingStr += "$"
+	}
+	return parseStringState(state, i, r)
 }
 
 func parseStringState(state *parseState, i int, r rune) (stateFunc, error) {
