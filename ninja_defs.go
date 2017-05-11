@@ -79,6 +79,7 @@ type BuildParams struct {
 	Comment         string            // The comment that will appear above the definition.
 	Depfile         string            // The dependency file name.
 	Deps            Deps              // The format of the dependency file.
+	Description     string            // The description that Ninja will print for the build.
 	Rule            Rule              // The rule to invoke.
 	Outputs         []string          // The list of explicit output targets.
 	ImplicitOutputs []string          // The list of implicit output targets.
@@ -265,6 +266,13 @@ func parseBuildParams(scope scope, params *BuildParams) (*buildDef,
 		Rule:    rule,
 	}
 
+	setVariable := func(name string, value *ninjaString) {
+		if b.Variables == nil {
+			b.Variables = make(map[string]*ninjaString)
+		}
+		b.Variables[name] = value
+	}
+
 	if !scope.IsRuleVisible(rule) {
 		return nil, fmt.Errorf("Rule %s is not visible in this scope", rule)
 	}
@@ -301,22 +309,24 @@ func parseBuildParams(scope scope, params *BuildParams) (*buildDef,
 
 	b.Optional = params.Optional
 
-	if params.Depfile != "" || params.Deps != DepsNone {
-		if b.Variables == nil {
-			b.Variables = make(map[string]*ninjaString)
-		}
-	}
-
 	if params.Depfile != "" {
 		value, err := parseNinjaString(scope, params.Depfile)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing Depfile param: %s", err)
 		}
-		b.Variables["depfile"] = value
+		setVariable("depfile", value)
 	}
 
 	if params.Deps != DepsNone {
-		b.Variables["deps"] = simpleNinjaString(params.Deps.String())
+		setVariable("deps", simpleNinjaString(params.Deps.String()))
+	}
+
+	if params.Description != "" {
+		value, err := parseNinjaString(scope, params.Description)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing Description param: %s", err)
+		}
+		setVariable("description", value)
 	}
 
 	argNameScope := rule.scope()
