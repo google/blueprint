@@ -719,10 +719,14 @@ func (c *Context) WalkBlueprintsFiles(rootFile string, handler FileHandler) (dep
 	// Number of outstanding goroutines to wait for
 	count := 0
 
-	startParseBlueprintsFile := func(filename string, scope *parser.Scope) {
+	startParseBlueprintsFile := func(blueprint stringAndScope) {
+		if blueprintsSet[blueprint.string] {
+			return
+		}
+		blueprintsSet[blueprint.string] = true
 		count++
 		go func() {
-			c.parseBlueprintsFile(filename, scope, rootDir,
+			c.parseBlueprintsFile(blueprint.string, blueprint.Scope, rootDir,
 				errsCh, fileCh, blueprintsCh, depsCh)
 			doneCh <- struct{}{}
 		}()
@@ -730,7 +734,9 @@ func (c *Context) WalkBlueprintsFiles(rootFile string, handler FileHandler) (dep
 
 	tooManyErrors := false
 
-	startParseBlueprintsFile(rootFile, nil)
+	startParseBlueprintsFile(stringAndScope{rootFile, nil})
+
+	var pending []stringAndScope
 
 loop:
 	for {
@@ -749,14 +755,19 @@ loop:
 			if tooManyErrors {
 				continue
 			}
-			if blueprintsSet[blueprint.string] {
+			// Limit concurrent calls to parseBlueprintFiles to 200
+			// Darwin has a default limit of 256 open files
+			if count >= 200 {
+				pending = append(pending, blueprint)
 				continue
 			}
-
-			blueprintsSet[blueprint.string] = true
-			startParseBlueprintsFile(blueprint.string, blueprint.Scope)
+			startParseBlueprintsFile(blueprint)
 		case <-doneCh:
 			count--
+			if len(pending) > 0 {
+				startParseBlueprintsFile(pending[len(pending)-1])
+				pending = pending[:len(pending)-1]
+			}
 			if count == 0 {
 				break loop
 			}
