@@ -122,6 +122,40 @@ type Expression interface {
 	Eval() Expression
 }
 
+// ExpressionsAreSame tells whether the two values are the same Expression.
+// This includes the symbolic representation of each Expression but not their positions in the original source tree.
+// This does not apply any simplification to the expressions before comparing them
+// (for example, "!!a" wouldn't be deemed equal to "a")
+func ExpressionsAreSame(a Expression, b Expression) (equal bool, err error) {
+	return hackyExpressionsAreSame(a, b)
+}
+
+// TODO(jeffrygaston) once positions are removed from Expression stucts,
+// remove this function and have callers use reflect.DeepEqual(a, b)
+func hackyExpressionsAreSame(a Expression, b Expression) (equal bool, err error) {
+	if a.Type() != b.Type() {
+		return false, nil
+	}
+	left, err := hackyFingerprint(a)
+	if err != nil {
+		return false, nil
+	}
+	right, err := hackyFingerprint(b)
+	if err != nil {
+		return false, nil
+	}
+	areEqual := string(left) == string(right)
+	return areEqual, nil
+}
+
+func hackyFingerprint(expression Expression) (fingerprint []byte, err error) {
+	assignment := &Assignment{"a", noPos, expression, expression, noPos, "=", false}
+	module := &File{}
+	module.Defs = append(module.Defs, assignment)
+	p := newPrinter(module)
+	return p.Print()
+}
+
 type Type int
 
 const (
@@ -232,6 +266,31 @@ func (x *Map) String() string {
 }
 
 func (x *Map) Type() Type { return MapType }
+
+// GetProperty looks for a property with the given name.
+// It resembles the bracket operator of a built-in Golang map.
+func (x *Map) GetProperty(name string) (Property *Property, found bool) {
+	prop, found, _ := x.getPropertyImpl(name)
+	return prop, found // we don't currently expose the index to callers
+}
+
+func (x *Map) getPropertyImpl(name string) (Property *Property, found bool, index int) {
+	for i, prop := range x.Properties {
+		if prop.Name == name {
+			return prop, true, i
+		}
+	}
+	return nil, false, -1
+}
+
+// GetProperty removes the property with the given name, if it exists.
+func (x *Map) RemoveProperty(propertyName string) (removed bool) {
+	_, found, index := x.getPropertyImpl(propertyName)
+	if found {
+		x.Properties = append(x.Properties[:index], x.Properties[index+1:]...)
+	}
+	return found
+}
 
 type List struct {
 	LBracePos scanner.Position
