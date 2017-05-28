@@ -65,7 +65,7 @@ func unpackProperties(propertyDefs []*parser.Property,
 		if !packedProperty.unpacked {
 			err := &BlueprintError{
 				Err: fmt.Errorf("unrecognized property %q", name),
-				Pos: packedProperty.property.ColonPos,
+				//Pos: packedProperty.property.ColonPos,
 			}
 			errs = append(errs, err)
 		}
@@ -90,11 +90,11 @@ func buildPropertyMap(namePrefix string, propertyDefs []*parser.Property,
 			}
 			errs = append(errs, &BlueprintError{
 				Err: fmt.Errorf("property %q already defined", name),
-				Pos: propertyDef.ColonPos,
+				//Pos: propertyDef.ColonPos,
 			})
 			errs = append(errs, &BlueprintError{
 				Err: fmt.Errorf("<-- previous definition here"),
-				Pos: first.property.ColonPos,
+				//Pos: first.property.ColonPos,
 			})
 			if len(errs) >= maxErrors {
 				return errs
@@ -218,7 +218,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			errs = append(errs,
 				&BlueprintError{
 					Err: fmt.Errorf("mutated field %s cannot be set in a Blueprint file", propertyName),
-					Pos: packedProperty.property.ColonPos,
+					//Pos: packedProperty.property.ColonPos,
 				})
 			if len(errs) >= maxErrors {
 				return errs
@@ -230,7 +230,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			errs = append(errs,
 				&BlueprintError{
 					Err: fmt.Errorf("filtered field %s cannot be set in a Blueprint file", propertyName),
-					Pos: packedProperty.property.ColonPos,
+					//Pos: packedProperty.property.ColonPos,
 				})
 			if len(errs) >= maxErrors {
 				return errs
@@ -297,7 +297,8 @@ func unpackBool(boolValue reflect.Value, property *parser.Property) []error {
 	if !ok {
 		return []error{
 			fmt.Errorf("%s: can't assign %s value to bool property %q",
-				property.Value.Pos(), property.Value.Type(), property.Name),
+				/* property.Value.Pos(), */ 0,
+				property.Value.Type(), property.Name),
 		}
 	}
 	boolValue.SetBool(b.Value)
@@ -311,7 +312,8 @@ func unpackString(stringValue reflect.Value,
 	if !ok {
 		return []error{
 			fmt.Errorf("%s: can't assign %s value to string property %q",
-				property.Value.Pos(), property.Value.Type(), property.Name),
+				/* property.Value.Pos(), */ 0,
+				property.Value.Type(), property.Name),
 		}
 	}
 	stringValue.SetString(s.Value)
@@ -324,7 +326,8 @@ func unpackSlice(sliceValue reflect.Value, property *parser.Property) []error {
 	if !ok {
 		return []error{
 			fmt.Errorf("%s: can't assign %s value to list property %q",
-				property.Value.Pos(), property.Value.Type(), property.Name),
+				/* property.Value.Pos(), */ 0,
+				property.Value.Type(), property.Name),
 		}
 	}
 
@@ -346,11 +349,12 @@ func unpackStruct(namePrefix string, structValue reflect.Value,
 	property *parser.Property, propertyMap map[string]*packedProperty,
 	filterKey, filterValue string) []error {
 
-	m, ok := property.Value.Eval().(*parser.Map)
+	m, ok := property.Value.Eval().(*parser.MapBody)
 	if !ok {
 		return []error{
 			fmt.Errorf("%s: can't assign %s value to map property %q",
-				property.Value.Pos(), property.Value.Type(), property.Name),
+				/* property.Value.Pos(), */ 0,
+				property.Value.Type(), property.Name),
 		}
 	}
 

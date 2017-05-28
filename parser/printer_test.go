@@ -16,14 +16,20 @@ package parser
 
 import (
 	"bytes"
+	"fmt"
+	"math"
 	"testing"
 )
 
+// printer_test.go is allowed to use the parser in its tests because the parser is tested separately (and doesn't use the printer in its tests)
+
 var validPrinterTestCases = []struct {
-	input  string
-	output string
+	description string
+	input       string
+	output      string
 }{
 	{
+		description: "empty map",
 		input: `
 foo {}
 `,
@@ -32,6 +38,7 @@ foo {}
 `,
 	},
 	{
+		description: "map with '='",
 		input: `
 foo{name= "abc",}
 `,
@@ -42,6 +49,7 @@ foo {
 `,
 	},
 	{
+		description: "multiline list",
 		input: `
 			foo {
 				stuff: ["asdf", "jkl;", "qwert",
@@ -52,15 +60,16 @@ foo {
 foo {
     stuff: [
         "asdf",
-        "bnm,",
         "jkl;",
         "qwert",
         "uiop",
+        "bnm,",
     ],
 }
 `,
 	},
 	{
+		description: "variable assignment",
 		input: `
 		        var = "asdf"
 			foo {
@@ -74,6 +83,7 @@ foo {
 `,
 	},
 	{
+		description: "variable assignment and multiline list",
 		input: `
 		        var = "asdf"
 			foo {
@@ -91,6 +101,7 @@ foo {
 `,
 	},
 	{
+		description: "concatenating lists",
 		input: `
 		        var = "asdf"
 			foo {
@@ -104,6 +115,7 @@ foo {
 `,
 	},
 	{
+		description: "nested structs",
 		input: `
 		foo {
 			stuff: {
@@ -122,22 +134,30 @@ foo {
 `,
 	},
 	{
+		description: "commented struct",
 		input: `
 // comment1
-foo {
+foo /* inline */ {
 	// comment2
 	isGood: true,  // comment3
+	// comment4
+	isGood: true,  // comment5
+	// comment6
 }
 `,
 		output: `
 // comment1
-foo {
+foo /* inline */ {
     // comment2
     isGood: true, // comment3
+    // comment4
+    isGood: true, // comment5
+    // comment6
 }
 `,
 	},
 	{
+		description: "two structs separated by a space",
 		input: `
 foo {
 	name: "abc",
@@ -158,6 +178,7 @@ bar {
 `,
 	},
 	{
+		description: "several variable assignments",
 		input: `
 foo = "stuff"
 bar = foo
@@ -172,6 +193,7 @@ baz += foo
 `,
 	},
 	{
+		description: "list with inline comments",
 		input: `
 //test
 test /* test */ {
@@ -199,14 +221,14 @@ test /* test */ {
         /*"bootstrap/bootstrap.go",
         "bootstrap/cleanup.go",*/
         "bootstrap/command.go",
-        "bootstrap/config.go", //config.go
         "bootstrap/doc.go", //doc.go
+        "bootstrap/config.go", //config.go
     ],
     deps: ["libabc"],
     incs: [],
 } //test
-//test
 
+//test
 test2 {
 }
 
@@ -214,6 +236,7 @@ test2 {
 `,
 	},
 	{
+		description: "extra newlines (1)",
 		input: `
 // test
 module // test
@@ -243,6 +266,7 @@ module { // test
 `,
 	},
 	{
+		description: "many comments",
 		input: `
 /*test {
     test: true,
@@ -262,7 +286,7 @@ test {
 test {}
 
 // This
-/* Is */
+/* is */
 // A
 // Trailing
 
@@ -288,7 +312,7 @@ test {
 test {}
 
 // This
-/* Is */
+/* is */
 // A
 // Trailing
 
@@ -297,6 +321,7 @@ test {}
 `,
 	},
 	{
+		description: "comments between module type and map body",
 		input: `
 test // test
 
@@ -312,15 +337,157 @@ test { // test
 }
 `,
 	},
+	{
+		description: "comments separated by multiple spaces",
+		input: `
+/* if there are multiple spaces between two inline comments */  /* then they are reduced to one space */
+`,
+		output: `
+/* if there are multiple spaces between two inline comments */ /* then they are reduced to one space */
+		`,
+	},
+	{
+		description: "extra newlines (2)",
+		input: `
+// two blank lines after a comment turn into one
+
+
+// three blank lines after a comment turn into one
+
+
+
+// two consecutive comments remain adjacent
+// two comments next two each other remain adjacent
+
+myModule {
+
+    // a blank line before a property remains as a blank line
+
+    myProperty: "myValue",
+
+    // a blank line after a property remains as a blank line
+
+
+    propertyTwo: [ // A blank line remains before the first property
+
+        "a", // Two blank lines within a list turn into one
+
+
+        "b",  // Two blank lines after the last property turn into one
+
+
+    ],
+
+    // a string property spanning multiple lines will be rearranged onto one line
+
+    stringProp: /* don't forget me */
+    "stringVal"
+}
+`,
+		output: `
+// two blank lines after a comment turn into one
+
+// three blank lines after a comment turn into one
+
+// two consecutive comments remain adjacent
+// two comments next two each other remain adjacent
+
+myModule {
+
+    // a blank line before a property remains as a blank line
+
+    myProperty: "myValue",
+
+    // a blank line after a property remains as a blank line
+
+
+    propertyTwo: [ // A blank line remains before the first property
+
+        "a", // Two blank lines within a list turn into one
+
+        "b",  // Two blank lines after the last property turn into one
+
+    ],
+
+    // a string property spanning multiple lines will be rearranged onto one line
+
+    stringProp: /* don't forget me */
+    "stringVal"
+}
+`,
+	},
+}
+
+var currentPrinterTestCases = []struct {
+	description string
+	input       string
+	output      string
+}{
+	{
+		description: "many comments",
+		input: `
+/*test {
+    test: true,
+}*/
+
+test {
+/*test: true,*/
+}
+
+// This
+/* Is *//* A */ // A
+// A
+
+// Multiline
+// Comment
+
+testJeff {}
+
+// This
+/* Is */
+// A
+// Trailing
+
+// Multiline
+// Comment
+`,
+		output: `
+/*test {
+    test: true,
+}*/
+
+test {
+    /*test: true,*/
+}
+
+// This
+/* Is */ /* A */ // A
+// A
+
+// Multiline
+// Comment
+
+testJeff {}
+
+// This
+/* Is */
+// A
+// Trailing
+
+// Multiline
+// Comment
+`,
+	},
 }
 
 func TestPrinter(t *testing.T) {
-	for _, testCase := range validPrinterTestCases {
+	for i, testCase := range currentPrinterTestCases {
 		in := testCase.input[1:]
 		expected := testCase.output[1:]
+		description := testCase.description
 
 		r := bytes.NewBufferString(in)
-		file, errs := Parse("", r, NewScope(nil))
+		parsed, errs := Parse(fmt.Sprintf("testcase '%s' (printer_test#%v) ", description, i), r, NewScope(nil), true, false)
 		if len(errs) != 0 {
 			t.Errorf("test case: %s", in)
 			t.Errorf("unexpected errors:")
@@ -330,19 +497,35 @@ func TestPrinter(t *testing.T) {
 			t.FailNow()
 		}
 
-		SortLists(file)
+		got := string(PrintTree(parsed.SyntaxTree))
 
-		got, err := Print(file)
-		if err != nil {
-			t.Errorf("test case: %s", in)
-			t.Errorf("unexpected error: %s", err)
-			t.FailNow()
-		}
+		if got != expected {
+			var diff = ""
+			var line = 0
+			var column = 0
+			for i := 0; i < int(math.Min(float64(len(got)), float64(len(expected)))); i++ {
+				if got[i] != expected[i] {
+					diff = fmt.Sprintf("diff     : got %#v instead of %#v (at %v, %v)\nMatching portions of strings before mismatch: '%v'",
+						string(got[i]), string(expected[i]), line, column, got[:i])
+					break
+				}
+				if got[i] == '\n' {
+					line++
+					column = 0
+				} else {
+					column++
+				}
+			}
+			t.Errorf(
+				"\ntest case: \n"+
+					"%s\n"+
+					"parsed:%s\n"+
+					"expected: \n%s\n"+
+					"got     : \n%s\n"+
+					"%v",
+				in, parsed, expected, got, diff)
 
-		if string(got) != expected {
-			t.Errorf("test case: %s", in)
-			t.Errorf("  expected: %s", expected)
-			t.Errorf("       got: %s", string(got))
 		}
 	}
+	//panic("printer tests complete")
 }
