@@ -25,6 +25,8 @@ import (
 	"github.com/google/blueprint/proptools"
 )
 
+var mockFilename = ""
+
 var validUnpackTestCases = []struct {
 	input  string
 	output []interface{}
@@ -246,7 +248,7 @@ var validUnpackTestCases = []struct {
 		errs: []error{
 			&BlueprintError{
 				Err: fmt.Errorf("filtered field nested.foo cannot be set in a Blueprint file"),
-				Pos: mkpos(30, 4, 9),
+				Pos: newPosition(20, 3, 13),
 			},
 		},
 	},
@@ -506,7 +508,7 @@ type EmbeddedInterface interface{}
 func TestUnpackProperties(t *testing.T) {
 	for _, testCase := range validUnpackTestCases {
 		r := bytes.NewBufferString(testCase.input)
-		file, errs := parser.ParseAndEval("", r, parser.NewScope(nil))
+		file, errs := parser.ParseAndEval(mockFilename, r, parser.NewScope(nil))
 		if len(errs) != 0 {
 			t.Errorf("test case: %s", testCase.input)
 			t.Errorf("unexpected parse errors:")
@@ -516,7 +518,7 @@ func TestUnpackProperties(t *testing.T) {
 			t.FailNow()
 		}
 
-		for _, def := range file.Defs {
+		for _, def := range file.SyntaxTree.Nodes() {
 			module, ok := def.(*parser.Module)
 			if !ok {
 				continue
@@ -530,7 +532,7 @@ func TestUnpackProperties(t *testing.T) {
 					output = append(output, proptools.CloneEmptyProperties(reflect.ValueOf(p)).Interface())
 				}
 			}
-			_, errs = unpackProperties(module.Properties, output...)
+			_, errs = unpackProperties(module.Properties, file, output...)
 			if len(errs) != 0 && len(testCase.errs) == 0 {
 				t.Errorf("test case: %s", testCase.input)
 				t.Errorf("unexpected unpack errors:")
@@ -563,10 +565,11 @@ func TestUnpackProperties(t *testing.T) {
 	}
 }
 
-func mkpos(offset, line, column int) scanner.Position {
+func newPosition(offset, line, column int) scanner.Position {
 	return scanner.Position{
-		Offset: offset,
-		Line:   line,
-		Column: column,
+		Filename: mockFilename,
+		Offset:   offset,
+		Line:     line,
+		Column:   column,
 	}
 }
