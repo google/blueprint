@@ -150,6 +150,7 @@ type ModuleContext interface {
 	OtherModuleName(m Module) string
 	OtherModuleErrorf(m Module, fmt string, args ...interface{})
 	OtherModuleDependencyTag(m Module) DependencyTag
+	OtherModuleType(m Module) string
 
 	GetDirectDepWithTag(name string, tag DependencyTag) Module
 	GetDirectDep(name string) (Module, DependencyTag)
@@ -309,6 +310,11 @@ func (m *baseModuleContext) OtherModuleDependencyTag(logicModule Module) Depende
 	}
 
 	return nil
+}
+
+func (m *baseModuleContext) OtherModuleType(logicModule Module) string {
+	module := m.context.moduleInfo[logicModule]
+	return module.typeName
 }
 
 // GetDirectDep returns the Module and DependencyTag for the direct dependency with the specified
@@ -526,6 +532,7 @@ type TopDownMutatorContext interface {
 	OtherModuleName(m Module) string
 	OtherModuleErrorf(m Module, fmt string, args ...interface{})
 	OtherModuleDependencyTag(m Module) DependencyTag
+	OtherModuleType(m Module) string
 
 	GetDirectDepWithTag(name string, tag DependencyTag) Module
 	GetDirectDep(name string) (Module, DependencyTag)
