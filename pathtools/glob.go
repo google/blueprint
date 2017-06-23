@@ -28,25 +28,25 @@ import (
 var GlobMultipleRecursiveErr = errors.New("pattern contains multiple **")
 var GlobLastRecursiveErr = errors.New("pattern ** as last path element")
 
-// Glob returns the list of files that match the given pattern but
-// do not match the given exclude patterns, along with the list of directories
-// that were searched to construct the file list.  The supported glob and
-// exclude patterns are equivalent to filepath.Glob, with an extension that
-// recursive glob (** matching zero or more complete path entries) is supported.
-// Glob also returns a list of directories that were searched.
+// Glob returns the list of files that match the given pattern but do not match
+// the given exclude patterns, along with the list of directories and other
+// dependencies that were searched to construct the file list.  The supported
+// glob and exclude patterns are equivalent to filepath.Glob, with an extension
+// that recursive glob (** matching zero or more complete path entries) is
+// supported.  Glob also returns a list of directories that were searched.
 //
 // In general ModuleContext.GlobWithDeps or SingletonContext.GlobWithDeps
 // should be used instead, as they will automatically set up dependencies
 // to rerun the primary builder when the list of matching files changes.
-func Glob(pattern string, excludes []string) (matches, dirs []string, err error) {
+func Glob(pattern string, excludes []string) (matches, deps []string, err error) {
 	return startGlob(OsFs, pattern, excludes)
 }
 
-func startGlob(fs FileSystem, pattern string, excludes []string) (matches, dirs []string, err error) {
+func startGlob(fs FileSystem, pattern string, excludes []string) (matches, deps []string, err error) {
 	if filepath.Base(pattern) == "**" {
 		return nil, nil, GlobLastRecursiveErr
 	} else {
-		matches, dirs, err = glob(fs, pattern, false)
+		matches, deps, err = glob(fs, pattern, false)
 	}
 
 	if err != nil {
@@ -58,7 +58,20 @@ func startGlob(fs FileSystem, pattern string, excludes []string) (matches, dirs 
 		return nil, nil, err
 	}
 
-	return matches, dirs, nil
+	// If the pattern has wildcards, we added dependencies on the
+	// containing directories to know about changes.
+	//
+	// If the pattern didn't have wildcards, and didn't find matches, the
+	// most specific found directories were added.
+	//
+	// But if it didn't have wildcards, and did find a match, no
+	// dependencies were added, so add the match itself to detect when it
+	// is removed.
+	if !isWild(pattern) {
+		deps = append(deps, matches...)
+	}
+
+	return matches, deps, nil
 }
 
 // glob is a recursive helper function to handle globbing each level of the pattern individually,
@@ -346,7 +359,7 @@ func HasGlob(in []string) bool {
 // should be used instead, as they will automatically set up dependencies
 // to rerun the primary builder when the list of matching files changes.
 func GlobWithDepFile(glob, fileListFile, depFile string, excludes []string) (files []string, err error) {
-	files, dirs, err := Glob(glob, excludes)
+	files, deps, err := Glob(glob, excludes)
 	if err != nil {
 		return nil, err
 	}
@@ -354,7 +367,7 @@ func GlobWithDepFile(glob, fileListFile, depFile string, excludes []string) (fil
 	fileList := strings.Join(files, "\n") + "\n"
 
 	WriteFileIfChanged(fileListFile, []byte(fileList), 0666)
-	deptools.WriteDepFile(depFile, fileListFile, dirs)
+	deptools.WriteDepFile(depFile, fileListFile, deps)
 
 	return
 }
