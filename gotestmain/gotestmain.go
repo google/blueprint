@@ -23,8 +23,10 @@ import (
 	"go/token"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"sort"
 	"strings"
+	"testing"
 	"text/template"
 )
 
@@ -35,11 +37,13 @@ var (
 )
 
 type data struct {
-	Package string
-	Tests   []string
+	Package                 string
+	Tests                   []string
+	HasMain                 bool
+	MainStartTakesInterface bool
 }
 
-func findTests(srcs []string) (tests []string) {
+func findTests(srcs []string) (tests []string, hasMain bool) {
 	for _, src := range srcs {
 		f, err := parser.ParseFile(token.NewFileSet(), src, nil, 0)
 		if err != nil {
@@ -49,11 +53,21 @@ func findTests(srcs []string) (tests []string) {
 			if obj.Kind != ast.Fun || !strings.HasPrefix(obj.Name, "Test") {
 				continue
 			}
-			tests = append(tests, obj.Name)
+			if obj.Name == "TestMain" {
+				hasMain = true
+			} else {
+				tests = append(tests, obj.Name)
+			}
 		}
 	}
 	sort.Strings(tests)
 	return
+}
+
+// Returns true for go1.8+, where testing.MainStart takes an interface instead of a function
+// as its first argument.
+func mainStartTakesInterface() bool {
+	return reflect.TypeOf(testing.MainStart).In(0).Kind() == reflect.Interface
 }
 
 func main() {
@@ -67,9 +81,13 @@ func main() {
 
 	buf := &bytes.Buffer{}
 
+	tests, hasMain := findTests(flag.Args())
+
 	d := data{
-		Package: *pkg,
-		Tests:   findTests(flag.Args()),
+		Package:                 *pkg,
+		Tests:                   tests,
+		HasMain:                 hasMain,
+		MainStartTakesInterface: mainStartTakesInterface(),
 	}
 
 	err := testMainTmpl.Execute(buf, d)
@@ -87,6 +105,8 @@ var testMainTmpl = template.Must(template.New("testMain").Parse(`
 package main
 
 import (
+	"io"
+	"os"
 	"regexp"
 	"testing"
 
@@ -102,7 +122,9 @@ var t = []testing.InternalTest{
 var matchPat string
 var matchRe *regexp.Regexp
 
-func matchString(pat, str string) (result bool, err error) {
+type matchString struct{}
+
+func MatchString(pat, str string) (result bool, err error) {
 	if matchRe == nil || matchPat != pat {
 		matchPat = pat
 		matchRe, err = regexp.Compile(matchPat)
@@ -113,7 +135,35 @@ func matchString(pat, str string) (result bool, err error) {
 	return matchRe.MatchString(str), nil
 }
 
+func (matchString) MatchString(pat, str string) (bool, error) {
+	return MatchString(pat, str)
+}
+
+func (matchString) StartCPUProfile(w io.Writer) error {
+	panic("shouldn't get here")
+}
+
+func (matchString) StopCPUProfile() {
+}
+
+func (matchString) WriteHeapProfile(w io.Writer) error {
+    panic("shouldn't get here")
+}
+
+func (matchString) WriteProfileTo(string, io.Writer, int) error {
+    panic("shouldn't get here")
+}
+
 func main() {
-	testing.Main(matchString, t, nil, nil)
+{{if .MainStartTakesInterface}}
+	m := testing.MainStart(matchString{}, t, nil, nil)
+{{else}}
+	m := testing.MainStart(MatchString, t, nil, nil)
+{{end}}
+{{if .HasMain}}
+	pkg.TestMain(m)
+{{else}}
+	os.Exit(m.Run())
+{{end}}
 }
 `))
