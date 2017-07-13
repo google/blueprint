@@ -123,6 +123,7 @@ bootstrap_core_go_binary(
     deps = [
         "blueprint",
         "blueprint-bootstrap",
+        "gotestmain-tests",
     ],
     srcs = ["bootstrap/minibp/main.go"],
 )
@@ -148,6 +149,19 @@ blueprint_go_binary(
 bootstrap_core_go_binary(
     name = "gotestmain",
     srcs = ["gotestmain/gotestmain.go"],
+)
+
+// gotestmain tests can't be on the gotestmain module because it is an implicit dependency of tests.
+// Put the tests in their own package and make it a dependency of minibp to make sure they run.
+bootstrap_go_package(
+    name = "gotestmain-tests",
+    pkgPath = "github.com/google/blueprint/gotestmain",
+    srcs = [
+        "gotestmain/dummy.go",
+    ],
+    testSrcs = [
+        "gotestmain/testmain_test.go",
+    ],
 )
 
 bootstrap_core_go_binary(

@@ -106,7 +106,9 @@ package main
 
 import (
 	"io"
+{{if not .HasMain}}
 	"os"
+{{end}}
 	"regexp"
 	"testing"
 
