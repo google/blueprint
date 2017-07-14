@@ -204,6 +204,70 @@ func (module *moduleInfo) String() string {
 	return s
 }
 
+func (module *moduleInfo) GetBuildActions(c *Context) NinjaBuildActions {
+	ret := NinjaBuildActions{}
+
+	for _, v := range module.actionDefs.variables {
+		name := v.fullName(nil)
+		value, err := v.value(nil)
+		if err != nil {
+			panic(err)
+		}
+		ret.Variables = append(ret.Variables,
+			NinjaVariable{Name: name, Value: value.Value(c.pkgNames)})
+	}
+
+	for _, r := range module.actionDefs.rules {
+		name := r.fullName(nil)
+		def, err := r.def(nil)
+		if err != nil {
+			panic(err)
+		}
+		ret.Rules = append(ret.Rules,
+			NinjaRuleDef{Name: name,
+				CommandDeps: valueList(def.CommandDeps, c.pkgNames, inputEscaper),
+				Comment:     def.Comment,
+				Pool:        NinjaVariable{Name: "pool", Value: def.Pool.fullName(c.pkgNames)},
+				Variables:   getNinjaVariables(def.Variables, c.pkgNames)})
+	}
+
+	for _, b := range module.actionDefs.buildDefs {
+		implicitDeps := valueList(b.Implicits, c.pkgNames, inputEscaper)
+		if b.RuleDef != nil {
+			implicitDeps = append(valueList(b.RuleDef.CommandDeps, c.pkgNames, inputEscaper), implicitDeps...)
+		}
+
+		argsMap := make(map[string]string)
+		for k, v := range b.Args {
+			argsMap[k.fullName(c.pkgNames)] = v.Value(c.pkgNames)
+		}
+		var keys []string
+		for k := range argsMap {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+
+		var args []NinjaVariable
+		for _, name := range keys {
+			args = append(args, NinjaVariable{Name: name, Value: argsMap[name]})
+		}
+
+		ret.Builds = append(ret.Builds,
+			NinjaBuildDef{Comment: b.Comment,
+				Rule:          b.Rule.fullName(c.pkgNames),
+				Outputs:       valueList(b.Outputs, c.pkgNames, outputEscaper),
+				ImplicitOuts:  valueList(b.ImplicitOutputs, c.pkgNames, outputEscaper),
+				ExplicitDeps:  valueList(b.Inputs, c.pkgNames, inputEscaper),
+				ImplicitDeps:  implicitDeps,
+				OrderOnlyDeps: valueList(b.OrderOnly, c.pkgNames, inputEscaper),
+				Args:          args,
+				Variables:     getNinjaVariables(b.Variables, c.pkgNames)})
+
+	}
+
+	return ret
+}
+
 // A Variation is a way that a variant of a module differs from other variants of the same module.
 // For example, two variants of the same module might have Variation{"arch","arm"} and
 // Variation{"arch","arm64"}
@@ -2263,7 +2327,7 @@ func (c *Context) sortedModuleNames() []string {
 	return c.cachedSortedModuleNames
 }
 
-func (c *Context) visitAllModules(visit func(Module)) {
+func (c *Context) visitAllModules(visit func(*moduleInfo)) {
 	var module *moduleInfo
 
 	defer func() {
@@ -2276,29 +2340,7 @@ func (c *Context) visitAllModules(visit func(Module)) {
 	for _, moduleName := range c.sortedModuleNames() {
 		modules := c.modulesFromName(moduleName)
 		for _, module = range modules {
-			visit(module.logicModule)
-		}
-	}
-}
-
-func (c *Context) visitAllModulesIf(pred func(Module) bool,
-	visit func(Module)) {
-
-	var module *moduleInfo
-
-	defer func() {
-		if r := recover(); r != nil {
-			panic(newPanicErrorf(r, "VisitAllModulesIf(%s, %s) for %s",
-				funcName(pred), funcName(visit), module))
-		}
-	}()
-
-	for _, moduleName := range c.sortedModuleNames() {
-		modules := c.modulesFromName(moduleName)
-		for _, module := range modules {
-			if pred(module.logicModule) {
-				visit(module.logicModule)
-			}
+			visit(module)
 		}
 	}
 }
@@ -2567,13 +2609,32 @@ func (c *Context) ModuleErrorf(logicModule Module, format string,
 }
 
 func (c *Context) VisitAllModules(visit func(Module)) {
-	c.visitAllModules(visit)
+
+	c.visitAllModules(func(module *moduleInfo) {
+		visit(module.logicModule)
+	})
 }
 
 func (c *Context) VisitAllModulesIf(pred func(Module) bool,
 	visit func(Module)) {
 
-	c.visitAllModulesIf(pred, visit)
+	c.visitAllModules(func(module *moduleInfo) {
+		if pred(module.logicModule) {
+			visit(module.logicModule)
+		}
+	})
+}
+
+func (c *Context) GetModuleBuildActionsIf(pred func(Module) bool) NinjaBuildActions {
+	var ret NinjaBuildActions
+
+	c.visitAllModules(func(module *moduleInfo) {
+		if pred(module.logicModule) {
+			ret = module.GetBuildActions(c)
+		}
+	})
+
+	return ret
 }
 
 func (c *Context) VisitDirectDeps(module Module, visit func(Module)) {

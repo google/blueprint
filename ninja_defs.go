@@ -90,6 +90,37 @@ type BuildParams struct {
 	Optional        bool              // Skip outputting a default statement
 }
 
+type NinjaVariable struct {
+	Name  string
+	Value string
+}
+
+type NinjaRuleDef struct {
+	Name        string
+	CommandDeps []string
+	Comment     string
+	Pool        NinjaVariable
+	Variables   []NinjaVariable
+}
+
+type NinjaBuildDef struct {
+	Comment       string
+	Rule          string
+	Outputs       []string
+	ImplicitOuts  []string
+	ExplicitDeps  []string
+	ImplicitDeps  []string
+	OrderOnlyDeps []string
+	Args          []NinjaVariable
+	Variables     []NinjaVariable
+}
+
+type NinjaBuildActions struct {
+	Variables []NinjaVariable
+	Rules     []NinjaRuleDef
+	Builds    []NinjaBuildDef
+}
+
 // A poolDef describes a pool definition.  It does not include the name of the
 // pool.
 type poolDef struct {
@@ -433,4 +464,21 @@ func writeVariables(nw *ninjaWriter, variables map[string]*ninjaString,
 		}
 	}
 	return nil
+}
+
+func getNinjaVariables(variables map[string]*ninjaString,
+	pkgNames map[*packageContext]string) []NinjaVariable {
+	var ret []NinjaVariable
+
+	var keys []string
+	for k := range variables {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, name := range keys {
+		ret = append(ret, NinjaVariable{Name: name, Value: variables[name].Value(pkgNames)})
+	}
+
+	return ret
 }
