@@ -165,13 +165,6 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		}
 	}
 
-	if c, ok := config.(ConfigRemoveAbandonedFiles); !ok || c.RemoveAbandonedFiles() {
-		err := removeAbandonedFiles(ctx, bootstrapConfig, SrcDir)
-		if err != nil {
-			fatalf("error removing abandoned files: %s", err)
-		}
-	}
-
 	if memprofile != "" {
 		f, err := os.Create(memprofile)
 		if err != nil {

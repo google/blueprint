@@ -669,14 +669,12 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	bootstrapNinjaFile := filepath.Join(miniBootstrapDir, "build.ninja")
 	docsFile := filepath.Join(docsDir, primaryBuilderName+".html")
 
+	ctx.SetNinjaBuildDir(pctx, "${buildDir}")
+
 	switch s.config.stage {
 	case StageBootstrap:
 		// We're generating a bootstrapper Ninja file, so we need to set things
 		// up to rebuild the build.ninja file using the primary builder.
-
-		// BuildDir must be different between the three stages, otherwise the
-		// cleanup process will remove files from the other builds.
-		ctx.SetNinjaBuildDir(pctx, miniBootstrapDir)
 
 		// Generate the Ninja file to build the primary builder.
 		ctx.Build(pctx, blueprint.BuildParams{
@@ -709,10 +707,6 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	case StagePrimary:
 		// We're generating a bootstrapper Ninja file, so we need to set things
 		// up to rebuild the build.ninja file using the primary builder.
-
-		// BuildDir must be different between the three stages, otherwise the
-		// cleanup process will remove files from the other builds.
-		ctx.SetNinjaBuildDir(pctx, bootstrapDir)
 
 		// Add a way to rebuild the primary build.ninja so that globs works
 		ctx.Build(pctx, blueprint.BuildParams{
@@ -756,8 +750,6 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		})
 
 	case StageMain:
-		ctx.SetNinjaBuildDir(pctx, "${buildDir}")
-
 		// Add a way to rebuild the main build.ninja in case it creates rules that
 		// it will depend on itself. (In Android, globs with soong_glob)
 		ctx.Build(pctx, blueprint.BuildParams{
@@ -765,9 +757,8 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			Outputs: []string{mainNinjaFile},
 			Inputs:  []string{topLevelBlueprints},
 			Args: map[string]string{
-				"builder":   primaryBuilderFile,
-				"extra":     primaryBuilderExtraFlags,
-				"generator": "true",
+				"builder": primaryBuilderFile,
+				"extra":   primaryBuilderExtraFlags,
 			},
 		})
 

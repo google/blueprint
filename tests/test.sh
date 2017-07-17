@@ -30,6 +30,9 @@ if cmp -s src.build.ninja.in .minibootstrap/build.ninja.in; then
   exit 1
 fi
 
+# Cleanup obsolete files
+rm -rf .bootstrap/blueprint/test
+
 sleep 2
 cp ../build.ninja.in src.build.ninja.in
 ./blueprint.bash
