@@ -65,12 +65,6 @@ type ConfigInterface interface {
 	GeneratingPrimaryBuilder() bool
 }
 
-type ConfigRemoveAbandonedFiles interface {
-	// RemoveAbandonedFiles should return true if files listed in the
-	// .ninja_log but not the output build.ninja file should be deleted.
-	RemoveAbandonedFiles() bool
-}
-
 type ConfigBlueprintToolLocation interface {
 	// BlueprintToolLocation can return a path name to install blueprint tools
 	// designed for end users (bpfmt, bpmodify, and anything else using

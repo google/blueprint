@@ -97,7 +97,6 @@ bootstrap_go_package(
     pkgPath = "github.com/google/blueprint/bootstrap",
     srcs = [
         "bootstrap/bootstrap.go",
-        "bootstrap/cleanup.go",
         "bootstrap/command.go",
         "bootstrap/config.go",
         "bootstrap/doc.go",
