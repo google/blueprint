@@ -41,6 +41,7 @@ func MockFs(files map[string][]byte) FileSystem {
 			fs.dirs[dir] = true
 			dir = filepath.Dir(dir)
 		}
+		fs.dirs[dir] = true
 	}
 
 	for f := range fs.files {

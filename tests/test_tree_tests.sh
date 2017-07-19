@@ -23,6 +23,7 @@ ${SRCDIR}/blueprint/bootstrap.bash
 
 if ! cmp -s ${SRCDIR}/build.ninja.in .minibootstrap/build.ninja.in; then
     echo "tests/test_tree/build.ninja.in and .minibootstrap/build.ninja.in should be the same" >&2
+    echo "run regen_build_ninja_in.sh" >&2
     exit 1
 fi
 
