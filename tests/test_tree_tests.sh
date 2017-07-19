@@ -27,6 +27,7 @@ if ! cmp -s ${SRCDIR}/build.ninja.in .minibootstrap/build.ninja.in; then
     exit 1
 fi
 
+OLDTIME_BOOTSTRAP=$(mtime .bootstrap/build.ninja)
 OLDTIME=$(mtime build.ninja)
 
 sleep 2
@@ -34,6 +35,11 @@ sleep 2
 
 if [ ${OLDTIME} != $(mtime build.ninja) ]; then
     echo "unnecessary build.ninja regeneration for null build" >&2
+    exit 1
+fi
+
+if [ ${OLDTIME_BOOTSTRAP} != $(mtime .bootstrap/build.ninja) ]; then
+    echo "unnecessary .bootstrap/build.ninja regeneration for null build" >&2
     exit 1
 fi
 
@@ -46,6 +52,10 @@ if [ ${OLDTIME} != $(mtime build.ninja) ]; then
     echo "unnecessary build.ninja regeneration for glob addition" >&2
     exit 1
 fi
+if [ ${OLDTIME_BOOTSTRAP} != $(mtime .bootstrap/build.ninja) ]; then
+    echo "unnecessary .bootstrap/build.ninja regeneration for glob addition" >&2
+    exit 1
+fi
 
 touch ${SRCDIR}/newglob/Blueprints
 
@@ -53,22 +63,32 @@ sleep 2
 ./blueprint.bash
 
 if [ ${OLDTIME} = $(mtime build.ninja) ]; then
-    echo "Failed to rebuild for glob addition" >&2
+    echo "Failed to rebuild build.ninja for glob addition" >&2
+    exit 1
+fi
+if [ ${OLDTIME_BOOTSTRAP} = $(mtime .bootstrap/build.ninja) ]; then
+    echo "Failed to rebuild .bootstrap/build.ninja for glob addition" >&2
     exit 1
 fi
 
 OLDTIME=$(mtime build.ninja)
+OLDTIME_BOOTSTRAP=$(mtime .bootstrap/build.ninja)
 rm ${SRCDIR}/newglob/Blueprints
 
 sleep 2
 ./blueprint.bash
 
 if [ ${OLDTIME} = $(mtime build.ninja) ]; then
-    echo "Failed to rebuild for glob removal" >&2
+    echo "Failed to rebuild build.ninja for glob removal" >&2
+    exit 1
+fi
+if [ ${OLDTIME_BOOTSTRAP} = $(mtime .bootstrap/build.ninja) ]; then
+    echo "Failed to rebuild .bootstrap/build.ninja for glob removal" >&2
     exit 1
 fi
 
 OLDTIME=$(mtime build.ninja)
+OLDTIME_BOOTSTRAP=$(mtime .bootstrap/build.ninja)
 rmdir ${SRCDIR}/newglob
 
 sleep 2
@@ -76,5 +96,9 @@ sleep 2
 
 if [ ${OLDTIME} != $(mtime build.ninja) ]; then
     echo "unnecessary build.ninja regeneration for glob removal" >&2
+    exit 1
+fi
+if [ ${OLDTIME_BOOTSTRAP} != $(mtime .bootstrap/build.ninja) ]; then
+    echo "unnecessary .bootstrap/build.ninja regeneration for glob removal" >&2
     exit 1
 fi
