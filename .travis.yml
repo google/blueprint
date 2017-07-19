@@ -19,3 +19,4 @@ script:
     - go test ./...
     - ./tests/test.sh
     - ./tests/test_tree_tests.sh
+    - ./tests/test_tree_tests.sh -t

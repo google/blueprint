@@ -19,7 +19,7 @@ ln -s ../.. src.test/test_tree/blueprint
 cd out.test
 export SRCDIR=../src.test/test_tree
 export BLUEPRINTDIR=${SRCDIR}/blueprint
-${SRCDIR}/blueprint/bootstrap.bash
+${SRCDIR}/blueprint/bootstrap.bash $@
 ./blueprint.bash
 
 OLDTIME_BOOTSTRAP=$(mtime .bootstrap/build.ninja)

@@ -628,7 +628,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 	var extraTestFlags string
 	if s.config.runGoTests {
-		extraTestFlags = " -t"
+		extraTestFlags = "-t"
 	}
 
 	var primaryBuilderName, primaryBuilderExtraFlags string
@@ -638,7 +638,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// as the primary builder.  We can trigger its primary builder mode with
 		// the -p flag.
 		primaryBuilderName = "minibp"
-		primaryBuilderExtraFlags = "-p" + extraTestFlags
+		primaryBuilderExtraFlags = "-p " + extraTestFlags
 
 	case 1:
 		primaryBuilderName = ctx.ModuleName(primaryBuilders[0])
@@ -678,9 +678,8 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			Outputs: []string{primaryBuilderNinjaFile},
 			Inputs:  []string{topLevelBlueprints},
 			Args: map[string]string{
-				"builder":   minibpFile,
-				"extra":     extraTestFlags,
-				"generator": "true",
+				"builder": minibpFile,
+				"extra":   extraTestFlags,
 			},
 		})
 
