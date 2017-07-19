@@ -116,8 +116,7 @@ var (
 		},
 		"depfile")
 
-	binDir     = pctx.StaticVariable("BinDir", filepath.Join(bootstrapDir, "bin"))
-	minibpFile = filepath.Join("$BinDir", "minibp")
+	binDir = pctx.StaticVariable("BinDir", filepath.Join(bootstrapDir, "bin"))
 
 	docsDir = filepath.Join(bootstrapDir, "docs")
 	toolDir = pctx.VariableFunc("ToolDir", func(config interface{}) (string, error) {
@@ -129,6 +128,8 @@ var (
 
 	bootstrapDir     = filepath.Join("$buildDir", bootstrapSubDir)
 	miniBootstrapDir = filepath.Join("$buildDir", miniBootstrapSubDir)
+
+	minibpFile = filepath.Join(miniBootstrapDir, "minibp")
 )
 
 type bootstrapGoCore interface {
@@ -471,11 +472,6 @@ func buildGoPluginLoader(ctx blueprint.ModuleContext, pkgPath, pluginSrc string,
 		func(module blueprint.Module) {
 			plugin := module.(goPluginProvider)
 			pluginPaths = append(pluginPaths, plugin.GoPkgPath())
-			if stage == StageBootstrap {
-				ctx.OtherModuleErrorf(module, "plugin %q may not be included in core module %q",
-					ctx.OtherModuleName(module), name)
-				ret = false
-			}
 		})
 
 	ctx.Build(pctx, blueprint.BuildParams{
@@ -665,47 +661,9 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 	mainNinjaFile := filepath.Join("$buildDir", "build.ninja")
 	primaryBuilderNinjaFile := filepath.Join(bootstrapDir, "build.ninja")
-	bootstrapNinjaFileTemplate := filepath.Join(miniBootstrapDir, "build.ninja.in")
-	bootstrapNinjaFile := filepath.Join(miniBootstrapDir, "build.ninja")
 	docsFile := filepath.Join(docsDir, primaryBuilderName+".html")
 
 	switch s.config.stage {
-	case StageBootstrap:
-		// We're generating a bootstrapper Ninja file, so we need to set things
-		// up to rebuild the build.ninja file using the primary builder.
-
-		// BuildDir must be different between the three stages, otherwise the
-		// cleanup process will remove files from the other builds.
-		ctx.SetNinjaBuildDir(pctx, miniBootstrapDir)
-
-		// Generate the Ninja file to build the primary builder.
-		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:    generateBuildNinja,
-			Outputs: []string{primaryBuilderNinjaFile},
-			Inputs:  []string{topLevelBlueprints},
-			Args: map[string]string{
-				"builder": minibpFile,
-				"extra":   "--build-primary" + extraTestFlags,
-			},
-		})
-
-		// Rebuild the bootstrap Ninja file using the minibp that we just built.
-		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:    generateBuildNinja,
-			Outputs: []string{bootstrapNinjaFileTemplate},
-			Inputs:  []string{topLevelBlueprints},
-			Args: map[string]string{
-				"builder": minibpFile,
-				"extra":   extraTestFlags,
-			},
-		})
-
-		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:    bootstrap,
-			Outputs: []string{bootstrapNinjaFile},
-			Inputs:  []string{bootstrapNinjaFileTemplate},
-		})
-
 	case StagePrimary:
 		// We're generating a bootstrapper Ninja file, so we need to set things
 		// up to rebuild the build.ninja file using the primary builder.
@@ -721,7 +679,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			Inputs:  []string{topLevelBlueprints},
 			Args: map[string]string{
 				"builder":   minibpFile,
-				"extra":     "--build-primary" + extraTestFlags,
+				"extra":     extraTestFlags,
 				"generator": "true",
 			},
 		})

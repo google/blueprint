@@ -265,7 +265,7 @@ func (p *GoPackage) Compile(outDir, trimPath string) error {
 
 	endTrace := trace("check compile %s", p.Name)
 
-	p.pkgDir = filepath.Join(outDir, p.Name)
+	p.pkgDir = filepath.Join(outDir, strings.Replace(p.Name, "/", "-", -1))
 	p.output = filepath.Join(p.pkgDir, p.Name) + ".a"
 	shaFile := p.output + ".hash"
 

@@ -25,16 +25,10 @@ var buildPrimaryBuilder bool
 
 func init() {
 	flag.BoolVar(&runAsPrimaryBuilder, "p", false, "run as a primary builder")
-	flag.BoolVar(&buildPrimaryBuilder, "build-primary", false, "build the primary builder")
 }
 
 type Config struct {
-	generatingBootstrapper   bool
 	generatingPrimaryBuilder bool
-}
-
-func (c Config) GeneratingBootstrapper() bool {
-	return c.generatingBootstrapper
 }
 
 func (c Config) GeneratingPrimaryBuilder() bool {
@@ -50,8 +44,7 @@ func main() {
 	}
 
 	config := Config{
-		generatingBootstrapper:   !runAsPrimaryBuilder && !buildPrimaryBuilder,
-		generatingPrimaryBuilder: !runAsPrimaryBuilder && buildPrimaryBuilder,
+		generatingPrimaryBuilder: !runAsPrimaryBuilder,
 	}
 
 	bootstrap.Main(ctx, config)

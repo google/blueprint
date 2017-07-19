@@ -45,7 +45,7 @@ var (
 )
 
 func init() {
-	flag.StringVar(&outFile, "o", "build.ninja.in", "the Ninja file to output")
+	flag.StringVar(&outFile, "o", "build.ninja", "the Ninja file to output")
 	flag.StringVar(&BuildDir, "b", ".", "the build output directory")
 	flag.StringVar(&depFile, "d", "", "the dependency file to output")
 	flag.StringVar(&docFile, "docs", "", "build documentation file to output")
@@ -95,9 +95,6 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 
 	stage := StageMain
 	if c, ok := config.(ConfigInterface); ok {
-		if c.GeneratingBootstrapper() {
-			stage = StageBootstrap
-		}
 		if c.GeneratingPrimaryBuilder() {
 			stage = StagePrimary
 		}
@@ -111,7 +108,6 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 
 	ctx.RegisterBottomUpMutator("bootstrap_plugin_deps", pluginDeps)
 	ctx.RegisterModuleType("bootstrap_go_package", newGoPackageModuleFactory(bootstrapConfig))
-	ctx.RegisterModuleType("bootstrap_core_go_binary", newGoBinaryModuleFactory(bootstrapConfig, StageBootstrap))
 	ctx.RegisterModuleType("bootstrap_go_binary", newGoBinaryModuleFactory(bootstrapConfig, StagePrimary))
 	ctx.RegisterModuleType("blueprint_go_binary", newGoBinaryModuleFactory(bootstrapConfig, StageMain))
 	ctx.RegisterTopDownMutator("bootstrap_stage", propagateStageBootstrap)

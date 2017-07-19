@@ -18,14 +18,9 @@ ln -s ../.. src.test/test_tree/blueprint
 
 cd out.test
 export SRCDIR=../src.test/test_tree
+export BLUEPRINTDIR=${SRCDIR}/blueprint
 ${SRCDIR}/blueprint/bootstrap.bash
 ./blueprint.bash
-
-if ! cmp -s ${SRCDIR}/build.ninja.in .minibootstrap/build.ninja.in; then
-    echo "tests/test_tree/build.ninja.in and .minibootstrap/build.ninja.in should be the same" >&2
-    echo "run regen_build_ninja_in.sh" >&2
-    exit 1
-fi
 
 OLDTIME_BOOTSTRAP=$(mtime .bootstrap/build.ninja)
 OLDTIME=$(mtime build.ninja)
