@@ -99,7 +99,7 @@ var (
 
 	generateBuildNinja = pctx.StaticRule("build.ninja",
 		blueprint.RuleParams{
-			Command:     "$builder $extra -b $buildDir -d $out.d -o $out $in",
+			Command:     "$builder $extra -b $buildDir -n $ninjaBuildDir -d $out.d -o $out $in",
 			CommandDeps: []string{"$builder"},
 			Description: "$builder $out",
 			Depfile:     "$out.d",
@@ -625,7 +625,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	primaryBuilderNinjaFile := filepath.Join(bootstrapDir, "build.ninja")
 	docsFile := filepath.Join(docsDir, primaryBuilderName+".html")
 
-	ctx.SetNinjaBuildDir(pctx, "${buildDir}")
+	ctx.SetNinjaBuildDir(pctx, "${ninjaBuildDir}")
 
 	// Build the main build.ninja
 	ctx.Build(pctx, blueprint.BuildParams{

@@ -35,6 +35,9 @@ var (
 	buildDir = bootstrapVariable("buildDir", func() string {
 		return BuildDir
 	})
+	ninjaBuildDir = bootstrapVariable("ninjaBuildDir", func() string {
+		return NinjaBuildDir
+	})
 	goRoot = bootstrapVariable("goRoot", func() string {
 		return runtime.GOROOT()
 	})
@@ -53,10 +56,11 @@ type ConfigInterface interface {
 	GeneratingPrimaryBuilder() bool
 }
 
-type ConfigRemoveAbandonedFiles interface {
-	// RemoveAbandonedFiles should return true if files listed in the
-	// .ninja_log but not the output build.ninja file should be deleted.
-	RemoveAbandonedFiles() bool
+type ConfigRemoveAbandonedFilesUnder interface {
+	// RemoveAbandonedFilesUnder should return a slice of path prefixes that
+	// will be cleaned of files that are no longer active targets, but are
+	// listed in the .ninja_log.
+	RemoveAbandonedFilesUnder() []string
 }
 
 type ConfigBlueprintToolLocation interface {

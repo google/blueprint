@@ -40,13 +40,15 @@ var (
 	runGoTests bool
 	noGC       bool
 
-	BuildDir string
-	SrcDir   string
+	BuildDir      string
+	NinjaBuildDir string
+	SrcDir        string
 )
 
 func init() {
 	flag.StringVar(&outFile, "o", "build.ninja", "the Ninja file to output")
 	flag.StringVar(&BuildDir, "b", ".", "the build output directory")
+	flag.StringVar(&NinjaBuildDir, "n", "", "the ninja builddir directory")
 	flag.StringVar(&depFile, "d", "", "the dependency file to output")
 	flag.StringVar(&docFile, "docs", "", "build documentation file to output")
 	flag.StringVar(&cpuprofile, "cpuprofile", "", "write cpu profile to file")
@@ -89,6 +91,10 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 
 	if flag.NArg() != 1 {
 		fatalf("no Blueprints file specified")
+	}
+
+	if NinjaBuildDir == "" {
+		NinjaBuildDir = BuildDir
 	}
 
 	SrcDir = filepath.Dir(flag.Arg(0))
@@ -160,8 +166,9 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		}
 	}
 
-	if c, ok := config.(ConfigRemoveAbandonedFiles); !ok || c.RemoveAbandonedFiles() {
-		err := removeAbandonedFiles(ctx, bootstrapConfig, SrcDir)
+	if c, ok := config.(ConfigRemoveAbandonedFilesUnder); ok {
+		under := c.RemoveAbandonedFilesUnder()
+		err := removeAbandonedFilesUnder(ctx, bootstrapConfig, SrcDir, under)
 		if err != nil {
 			fatalf("error removing abandoned files: %s", err)
 		}

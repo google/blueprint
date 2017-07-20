@@ -14,6 +14,7 @@
 #   SRCDIR
 #   BLUEPRINTDIR
 #   BUILDDIR
+#   NINJA_BUILDDIR
 #   GOROOT
 #
 # The invoking script should then run this script, passing along all of its
@@ -49,6 +50,10 @@ fi
 # BUILDDIR should be set to the path to store build results. By default, this
 # is the current directory, but it may be set to an absolute or relative path.
 [ -z "$BUILDDIR" ] && BUILDDIR=.
+
+# NINJA_BUILDDIR should be set to the path to store the .ninja_log/.ninja_deps
+# files. By default this is the same as $BUILDDIR.
+[ -z "$NINJA_BUILDDIR" ] && NINJA_BUILDDIR="${BUILDDIR}"
 
 # TOPNAME should be set to the name of the top-level Blueprints file
 [ -z "$TOPNAME" ] && TOPNAME="Blueprints"
@@ -93,12 +98,13 @@ mkdir -p $BUILDDIR/.minibootstrap
 echo "bootstrapBuildDir = $BUILDDIR" > $BUILDDIR/.minibootstrap/build.ninja
 echo "topFile = $SRCDIR/$TOPNAME" >> $BUILDDIR/.minibootstrap/build.ninja
 echo "extraArgs = $EXTRA_ARGS" >> $BUILDDIR/.minibootstrap/build.ninja
-echo "builddir = $BUILDDIR/.bootstrap" >> $BUILDDIR/.minibootstrap/build.ninja
+echo "builddir = $NINJA_BUILDDIR" >> $BUILDDIR/.minibootstrap/build.ninja
 echo "include $BLUEPRINTDIR/bootstrap/build.ninja" >> $BUILDDIR/.minibootstrap/build.ninja
 
 echo "BLUEPRINT_BOOTSTRAP_VERSION=1" > $BUILDDIR/.blueprint.bootstrap
 echo "SRCDIR=\"${SRCDIR}\"" >> $BUILDDIR/.blueprint.bootstrap
 echo "BLUEPRINTDIR=\"${BLUEPRINTDIR}\"" >> $BUILDDIR/.blueprint.bootstrap
+echo "NINJA_BUILDDIR=\"${NINJA_BUILDDIR}\"" >> $BUILDDIR/.blueprint.bootstrap
 echo "GOROOT=\"${GOROOT}\"" >> $BUILDDIR/.blueprint.bootstrap
 
 if [ ! -z "$WRAPPER" ]; then

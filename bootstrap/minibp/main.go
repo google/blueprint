@@ -16,6 +16,8 @@ package main
 
 import (
 	"flag"
+	"path/filepath"
+
 	"github.com/google/blueprint"
 	"github.com/google/blueprint/bootstrap"
 )
@@ -33,6 +35,10 @@ type Config struct {
 
 func (c Config) GeneratingPrimaryBuilder() bool {
 	return c.generatingPrimaryBuilder
+}
+
+func (c Config) RemoveAbandonedFilesUnder() []string {
+	return []string{filepath.Join(bootstrap.BuildDir, ".bootstrap")}
 }
 
 func main() {
