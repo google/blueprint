@@ -343,6 +343,7 @@ type goBinary struct {
 		Srcs           []string
 		TestSrcs       []string
 		PrimaryBuilder bool
+		Default        bool
 
 		Darwin struct {
 			Srcs     []string
@@ -448,10 +449,11 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 		}
 
 		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:    link,
-			Outputs: []string{aoutFile},
-			Inputs:  []string{archiveFile},
-			Args:    linkArgs,
+			Rule:     link,
+			Outputs:  []string{aoutFile},
+			Inputs:   []string{archiveFile},
+			Args:     linkArgs,
+			Optional: true,
 		})
 
 		ctx.Build(pctx, blueprint.BuildParams{
@@ -459,6 +461,7 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 			Outputs:   []string{binaryFile},
 			Inputs:    []string{aoutFile},
 			OrderOnly: deps,
+			Optional:  !g.properties.Default,
 		})
 	}
 }
@@ -481,6 +484,7 @@ func buildGoPluginLoader(ctx blueprint.ModuleContext, pkgPath, pluginSrc string,
 			"pkg":     pkgPath,
 			"plugins": strings.Join(pluginPaths, " "),
 		},
+		Optional: true,
 	})
 
 	return ret
@@ -518,6 +522,7 @@ func buildGoPackage(ctx blueprint.ModuleContext, pkgRoot string,
 		Inputs:    srcFiles,
 		Implicits: deps,
 		Args:      compileArgs,
+		Optional:  true,
 	})
 }
 
@@ -546,6 +551,7 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 		Args: map[string]string{
 			"pkg": pkgPath,
 		},
+		Optional: true,
 	})
 
 	libDirFlags := []string{"-L " + testRoot}
@@ -567,6 +573,7 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 			"pkgPath":  "main",
 			"incFlags": "-I " + testRoot,
 		},
+		Optional: true,
 	})
 
 	ctx.Build(pctx, blueprint.BuildParams{
@@ -576,6 +583,7 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 		Args: map[string]string{
 			"libDirFlags": strings.Join(libDirFlags, " "),
 		},
+		Optional: true,
 	})
 
 	ctx.Build(pctx, blueprint.BuildParams{
@@ -587,6 +595,7 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 			"pkg":       pkgPath,
 			"pkgSrcDir": filepath.Dir(testFiles[0]),
 		},
+		Optional: true,
 	})
 
 	return []string{testPassed}
