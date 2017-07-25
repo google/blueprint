@@ -28,10 +28,15 @@ import (
 
 const logFileName = ".ninja_log"
 
-// removeAbandonedFiles removes any files that appear in the Ninja log that are
-// not currently build targets.
-func removeAbandonedFiles(ctx *blueprint.Context, config *Config,
-	srcDir string) error {
+// removeAbandonedFilesUnder removes any files that appear in the Ninja log, and
+// are prefixed with one of the `under` entries, but that are not currently
+// build targets.
+func removeAbandonedFilesUnder(ctx *blueprint.Context, config *Config,
+	srcDir string, under []string) error {
+
+	if len(under) == 0 {
+		return nil
+	}
 
 	ninjaBuildDir, err := ctx.NinjaBuildDir()
 	if err != nil {
@@ -53,7 +58,7 @@ func removeAbandonedFiles(ctx *blueprint.Context, config *Config,
 		targets[filepath.Clean(replacedTarget)] = true
 	}
 
-	filePaths, err := parseNinjaLog(ninjaBuildDir)
+	filePaths, err := parseNinjaLog(ninjaBuildDir, under)
 	if err != nil {
 		return err
 	}
@@ -71,7 +76,7 @@ func removeAbandonedFiles(ctx *blueprint.Context, config *Config,
 	return nil
 }
 
-func parseNinjaLog(ninjaBuildDir string) ([]string, error) {
+func parseNinjaLog(ninjaBuildDir string, under []string) ([]string, error) {
 	logFilePath := filepath.Join(ninjaBuildDir, logFileName)
 	logFile, err := os.Open(logFilePath)
 	if err != nil {
@@ -111,7 +116,12 @@ func parseNinjaLog(ninjaBuildDir string) ([]string, error) {
 		end := len(fields) - followingFields
 		filePath := strings.Join(fields[start:end], fieldSeperator)
 
-		filePaths = append(filePaths, filePath)
+		for _, dir := range under {
+			if strings.HasPrefix(filePath, dir) {
+				filePaths = append(filePaths, filePath)
+				break
+			}
+		}
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
