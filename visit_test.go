@@ -95,22 +95,22 @@ func setupVisitTest(t *testing.T) *Context {
 				name: "A",
 				visit: ["B"],
 			}
-	
+
 			visit_module {
 				name: "B",
 				visit: ["C", "D"],
 			}
-	
+
 			visit_module {
 				name: "C",
 				visit: ["D"],
 			}
-	
+
 			visit_module {
 				name: "D",
 				visit: ["E"],
 			}
-	
+
 			visit_module {
 				name: "E",
 			}

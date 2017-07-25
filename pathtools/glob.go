@@ -96,6 +96,11 @@ func glob(fs FileSystem, pattern string, hasRecursive bool) (matches, dirs []str
 				if err != nil {
 					return matches, dirs, err
 				}
+
+				if pattern == "." {
+					break
+				}
+
 			}
 			dirs = append(dirs, matchDirs...)
 		}

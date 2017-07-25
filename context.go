@@ -780,7 +780,7 @@ loop:
 // MockFileSystem causes the Context to replace all reads with accesses to the provided map of
 // filenames to contents stored as a byte slice.
 func (c *Context) MockFileSystem(files map[string][]byte) {
-	c.fs = pathtools.MockFs(files)
+	c.fs = pathtools.NewMockFs(files)
 }
 
 // parseBlueprintFile parses a single Blueprints file, returning any errors through
