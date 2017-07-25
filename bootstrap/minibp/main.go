@@ -16,6 +16,8 @@ package main
 
 import (
 	"flag"
+	"path/filepath"
+
 	"github.com/google/blueprint"
 	"github.com/google/blueprint/bootstrap"
 )
@@ -25,20 +27,18 @@ var buildPrimaryBuilder bool
 
 func init() {
 	flag.BoolVar(&runAsPrimaryBuilder, "p", false, "run as a primary builder")
-	flag.BoolVar(&buildPrimaryBuilder, "build-primary", false, "build the primary builder")
 }
 
 type Config struct {
-	generatingBootstrapper   bool
 	generatingPrimaryBuilder bool
-}
-
-func (c Config) GeneratingBootstrapper() bool {
-	return c.generatingBootstrapper
 }
 
 func (c Config) GeneratingPrimaryBuilder() bool {
 	return c.generatingPrimaryBuilder
+}
+
+func (c Config) RemoveAbandonedFilesUnder() []string {
+	return []string{filepath.Join(bootstrap.BuildDir, ".bootstrap")}
 }
 
 func main() {
@@ -50,8 +50,7 @@ func main() {
 	}
 
 	config := Config{
-		generatingBootstrapper:   !runAsPrimaryBuilder && !buildPrimaryBuilder,
-		generatingPrimaryBuilder: !runAsPrimaryBuilder && buildPrimaryBuilder,
+		generatingPrimaryBuilder: !runAsPrimaryBuilder,
 	}
 
 	bootstrap.Main(ctx, config)

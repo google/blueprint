@@ -118,7 +118,7 @@ bootstrap_go_package(
     ],
 )
 
-bootstrap_core_go_binary(
+bootstrap_go_binary(
     name = "minibp",
     deps = [
         "blueprint",
@@ -128,7 +128,7 @@ bootstrap_core_go_binary(
     srcs = ["bootstrap/minibp/main.go"],
 )
 
-bootstrap_core_go_binary(
+bootstrap_go_binary(
     name = "bpglob",
     deps = ["blueprint-pathtools"],
     srcs = ["bootstrap/bpglob/bpglob.go"],
@@ -146,7 +146,7 @@ blueprint_go_binary(
     srcs = ["bpmodify/bpmodify.go"],
 )
 
-bootstrap_core_go_binary(
+bootstrap_go_binary(
     name = "gotestmain",
     srcs = ["gotestmain/gotestmain.go"],
 )
@@ -164,7 +164,7 @@ bootstrap_go_package(
     ],
 )
 
-bootstrap_core_go_binary(
+bootstrap_go_binary(
     name = "gotestrunner",
     srcs = ["gotestrunner/gotestrunner.go"],
 )
@@ -172,4 +172,10 @@ bootstrap_core_go_binary(
 bootstrap_go_binary{
     name = "loadplugins",
     srcs = ["loadplugins/loadplugins.go"],
+}
+
+blueprint_go_binary {
+    name: "microfactory",
+    srcs: ["microfactory/microfactory.go"],
+    testSrcs: ["microfactory/microfactory_test.go"],
 }

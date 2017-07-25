@@ -99,7 +99,7 @@ var (
 
 	generateBuildNinja = pctx.StaticRule("build.ninja",
 		blueprint.RuleParams{
-			Command:     "$builder $extra -b $buildDir -d $out.d -o $out $in",
+			Command:     "$builder $extra -b $buildDir -n $ninjaBuildDir -d $out.d -o $out $in",
 			CommandDeps: []string{"$builder"},
 			Description: "$builder $out",
 			Depfile:     "$out.d",
@@ -116,8 +116,7 @@ var (
 		},
 		"depfile")
 
-	binDir     = pctx.StaticVariable("BinDir", filepath.Join(bootstrapDir, "bin"))
-	minibpFile = filepath.Join("$BinDir", "minibp")
+	binDir = pctx.StaticVariable("BinDir", filepath.Join(bootstrapDir, "bin"))
 
 	docsDir = filepath.Join(bootstrapDir, "docs")
 	toolDir = pctx.VariableFunc("ToolDir", func(config interface{}) (string, error) {
@@ -129,24 +128,9 @@ var (
 
 	bootstrapDir     = filepath.Join("$buildDir", bootstrapSubDir)
 	miniBootstrapDir = filepath.Join("$buildDir", miniBootstrapSubDir)
+
+	minibpFile = filepath.Join(miniBootstrapDir, "minibp")
 )
-
-type bootstrapGoCore interface {
-	BuildStage() Stage
-	SetBuildStage(Stage)
-}
-
-func propagateStageBootstrap(mctx blueprint.TopDownMutatorContext) {
-	if mod, ok := mctx.Module().(bootstrapGoCore); ok {
-		stage := mod.BuildStage()
-
-		mctx.VisitDirectDeps(func(mod blueprint.Module) {
-			if m, ok := mod.(bootstrapGoCore); ok && m.BuildStage() > stage {
-				m.SetBuildStage(stage)
-			}
-		})
-	}
-}
 
 func pluginDeps(ctx blueprint.BottomUpMutatorContext) {
 	if pkg, ok := ctx.Module().(*goPackage); ok {
@@ -210,9 +194,6 @@ type goPackage struct {
 			Srcs     []string
 			TestSrcs []string
 		}
-
-		// The stage in which this module should be built
-		BuildStage Stage `blueprint:"mutated"`
 	}
 
 	// The root dir in which the package .a file is located.  The full .a file
@@ -236,7 +217,6 @@ func newGoPackageModuleFactory(config *Config) func() (blueprint.Module, []inter
 		module := &goPackage{
 			config: config,
 		}
-		module.properties.BuildStage = StageMain
 		return module, []interface{}{&module.properties, &module.SimpleName.Properties}
 	}
 }
@@ -259,14 +239,6 @@ func (g *goPackage) GoPackageTarget() string {
 
 func (g *goPackage) GoTestTargets() []string {
 	return g.testResultFile
-}
-
-func (g *goPackage) BuildStage() Stage {
-	return g.properties.BuildStage
-}
-
-func (g *goPackage) SetBuildStage(buildStage Stage) {
-	g.properties.BuildStage = buildStage
 }
 
 func (g *goPackage) IsPluginFor(name string) bool {
@@ -302,36 +274,29 @@ func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
 		genSrcs = append(genSrcs, pluginSrc)
 	}
 
-	// We only actually want to build the builder modules if we're running as
-	// minibp (i.e. we're generating a bootstrap Ninja file).  This is to break
-	// the circular dependence that occurs when the builder requires a new Ninja
-	// file to be built, but building a new ninja file requires the builder to
-	// be built.
-	if g.config.stage == g.BuildStage() {
-		if hasPlugins && !buildGoPluginLoader(ctx, g.properties.PkgPath, pluginSrc, g.config.stage) {
-			return
-		}
-
-		var srcs, testSrcs []string
-		if runtime.GOOS == "darwin" {
-			srcs = append(g.properties.Srcs, g.properties.Darwin.Srcs...)
-			testSrcs = append(g.properties.TestSrcs, g.properties.Darwin.TestSrcs...)
-		} else if runtime.GOOS == "linux" {
-			srcs = append(g.properties.Srcs, g.properties.Linux.Srcs...)
-			testSrcs = append(g.properties.TestSrcs, g.properties.Linux.TestSrcs...)
-		}
-
-		if g.config.runGoTests {
-			testArchiveFile := filepath.Join(testRoot(ctx),
-				filepath.FromSlash(g.properties.PkgPath)+".a")
-			g.testResultFile = buildGoTest(ctx, testRoot(ctx), testArchiveFile,
-				g.properties.PkgPath, srcs, genSrcs,
-				testSrcs)
-		}
-
-		buildGoPackage(ctx, g.pkgRoot, g.properties.PkgPath, g.archiveFile,
-			srcs, genSrcs)
+	if hasPlugins && !buildGoPluginLoader(ctx, g.properties.PkgPath, pluginSrc) {
+		return
 	}
+
+	var srcs, testSrcs []string
+	if runtime.GOOS == "darwin" {
+		srcs = append(g.properties.Srcs, g.properties.Darwin.Srcs...)
+		testSrcs = append(g.properties.TestSrcs, g.properties.Darwin.TestSrcs...)
+	} else if runtime.GOOS == "linux" {
+		srcs = append(g.properties.Srcs, g.properties.Linux.Srcs...)
+		testSrcs = append(g.properties.TestSrcs, g.properties.Linux.TestSrcs...)
+	}
+
+	if g.config.runGoTests {
+		testArchiveFile := filepath.Join(testRoot(ctx),
+			filepath.FromSlash(g.properties.PkgPath)+".a")
+		g.testResultFile = buildGoTest(ctx, testRoot(ctx), testArchiveFile,
+			g.properties.PkgPath, srcs, genSrcs,
+			testSrcs)
+	}
+
+	buildGoPackage(ctx, g.pkgRoot, g.properties.PkgPath, g.archiveFile,
+		srcs, genSrcs)
 }
 
 // A goBinary is a module for building executable binaries from Go sources.
@@ -342,6 +307,7 @@ type goBinary struct {
 		Srcs           []string
 		TestSrcs       []string
 		PrimaryBuilder bool
+		Default        bool
 
 		Darwin struct {
 			Srcs     []string
@@ -352,20 +318,19 @@ type goBinary struct {
 			TestSrcs []string
 		}
 
-		// The stage in which this module should be built
-		BuildStage Stage `blueprint:"mutated"`
+		Tool_dir bool `blueprint:mutated`
 	}
 
 	// The bootstrap Config
 	config *Config
 }
 
-func newGoBinaryModuleFactory(config *Config, buildStage Stage) func() (blueprint.Module, []interface{}) {
+func newGoBinaryModuleFactory(config *Config, tooldir bool) func() (blueprint.Module, []interface{}) {
 	return func() (blueprint.Module, []interface{}) {
 		module := &goBinary{
 			config: config,
 		}
-		module.properties.BuildStage = buildStage
+		module.properties.Tool_dir = tooldir
 		return module, []interface{}{&module.properties, &module.SimpleName.Properties}
 	}
 }
@@ -374,16 +339,8 @@ func (g *goBinary) DynamicDependencies(ctx blueprint.DynamicDependerModuleContex
 	return g.properties.Deps
 }
 
-func (g *goBinary) BuildStage() Stage {
-	return g.properties.BuildStage
-}
-
-func (g *goBinary) SetBuildStage(buildStage Stage) {
-	g.properties.BuildStage = buildStage
-}
-
 func (g *goBinary) InstallPath() string {
-	if g.BuildStage() == StageMain {
+	if g.properties.Tool_dir {
 		return "$ToolDir"
 	}
 	return "$BinDir"
@@ -409,60 +366,60 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 		genSrcs = append(genSrcs, pluginSrc)
 	}
 
-	if g.config.stage == g.BuildStage() {
-		var deps []string
+	var deps []string
 
-		if hasPlugins && !buildGoPluginLoader(ctx, "main", pluginSrc, g.config.stage) {
-			return
-		}
-
-		var srcs, testSrcs []string
-		if runtime.GOOS == "darwin" {
-			srcs = append(g.properties.Srcs, g.properties.Darwin.Srcs...)
-			testSrcs = append(g.properties.TestSrcs, g.properties.Darwin.TestSrcs...)
-		} else if runtime.GOOS == "linux" {
-			srcs = append(g.properties.Srcs, g.properties.Linux.Srcs...)
-			testSrcs = append(g.properties.TestSrcs, g.properties.Linux.TestSrcs...)
-		}
-
-		if g.config.runGoTests {
-			deps = buildGoTest(ctx, testRoot(ctx), testArchiveFile,
-				name, srcs, genSrcs, testSrcs)
-		}
-
-		buildGoPackage(ctx, objDir, name, archiveFile, srcs, genSrcs)
-
-		var libDirFlags []string
-		ctx.VisitDepsDepthFirstIf(isGoPackageProducer,
-			func(module blueprint.Module) {
-				dep := module.(goPackageProducer)
-				libDir := dep.GoPkgRoot()
-				libDirFlags = append(libDirFlags, "-L "+libDir)
-				deps = append(deps, dep.GoTestTargets()...)
-			})
-
-		linkArgs := map[string]string{}
-		if len(libDirFlags) > 0 {
-			linkArgs["libDirFlags"] = strings.Join(libDirFlags, " ")
-		}
-
-		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:    link,
-			Outputs: []string{aoutFile},
-			Inputs:  []string{archiveFile},
-			Args:    linkArgs,
-		})
-
-		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:      cp,
-			Outputs:   []string{binaryFile},
-			Inputs:    []string{aoutFile},
-			OrderOnly: deps,
-		})
+	if hasPlugins && !buildGoPluginLoader(ctx, "main", pluginSrc) {
+		return
 	}
+
+	var srcs, testSrcs []string
+	if runtime.GOOS == "darwin" {
+		srcs = append(g.properties.Srcs, g.properties.Darwin.Srcs...)
+		testSrcs = append(g.properties.TestSrcs, g.properties.Darwin.TestSrcs...)
+	} else if runtime.GOOS == "linux" {
+		srcs = append(g.properties.Srcs, g.properties.Linux.Srcs...)
+		testSrcs = append(g.properties.TestSrcs, g.properties.Linux.TestSrcs...)
+	}
+
+	if g.config.runGoTests {
+		deps = buildGoTest(ctx, testRoot(ctx), testArchiveFile,
+			name, srcs, genSrcs, testSrcs)
+	}
+
+	buildGoPackage(ctx, objDir, name, archiveFile, srcs, genSrcs)
+
+	var libDirFlags []string
+	ctx.VisitDepsDepthFirstIf(isGoPackageProducer,
+		func(module blueprint.Module) {
+			dep := module.(goPackageProducer)
+			libDir := dep.GoPkgRoot()
+			libDirFlags = append(libDirFlags, "-L "+libDir)
+			deps = append(deps, dep.GoTestTargets()...)
+		})
+
+	linkArgs := map[string]string{}
+	if len(libDirFlags) > 0 {
+		linkArgs["libDirFlags"] = strings.Join(libDirFlags, " ")
+	}
+
+	ctx.Build(pctx, blueprint.BuildParams{
+		Rule:     link,
+		Outputs:  []string{aoutFile},
+		Inputs:   []string{archiveFile},
+		Args:     linkArgs,
+		Optional: true,
+	})
+
+	ctx.Build(pctx, blueprint.BuildParams{
+		Rule:      cp,
+		Outputs:   []string{binaryFile},
+		Inputs:    []string{aoutFile},
+		OrderOnly: deps,
+		Optional:  !g.properties.Default,
+	})
 }
 
-func buildGoPluginLoader(ctx blueprint.ModuleContext, pkgPath, pluginSrc string, stage Stage) bool {
+func buildGoPluginLoader(ctx blueprint.ModuleContext, pkgPath, pluginSrc string) bool {
 	ret := true
 	name := ctx.ModuleName()
 
@@ -471,11 +428,6 @@ func buildGoPluginLoader(ctx blueprint.ModuleContext, pkgPath, pluginSrc string,
 		func(module blueprint.Module) {
 			plugin := module.(goPluginProvider)
 			pluginPaths = append(pluginPaths, plugin.GoPkgPath())
-			if stage == StageBootstrap {
-				ctx.OtherModuleErrorf(module, "plugin %q may not be included in core module %q",
-					ctx.OtherModuleName(module), name)
-				ret = false
-			}
 		})
 
 	ctx.Build(pctx, blueprint.BuildParams{
@@ -485,6 +437,7 @@ func buildGoPluginLoader(ctx blueprint.ModuleContext, pkgPath, pluginSrc string,
 			"pkg":     pkgPath,
 			"plugins": strings.Join(pluginPaths, " "),
 		},
+		Optional: true,
 	})
 
 	return ret
@@ -522,6 +475,7 @@ func buildGoPackage(ctx blueprint.ModuleContext, pkgRoot string,
 		Inputs:    srcFiles,
 		Implicits: deps,
 		Args:      compileArgs,
+		Optional:  true,
 	})
 }
 
@@ -550,6 +504,7 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 		Args: map[string]string{
 			"pkg": pkgPath,
 		},
+		Optional: true,
 	})
 
 	libDirFlags := []string{"-L " + testRoot}
@@ -571,6 +526,7 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 			"pkgPath":  "main",
 			"incFlags": "-I " + testRoot,
 		},
+		Optional: true,
 	})
 
 	ctx.Build(pctx, blueprint.BuildParams{
@@ -580,6 +536,7 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 		Args: map[string]string{
 			"libDirFlags": strings.Join(libDirFlags, " "),
 		},
+		Optional: true,
 	})
 
 	ctx.Build(pctx, blueprint.BuildParams{
@@ -591,6 +548,7 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 			"pkg":       pkgPath,
 			"pkgSrcDir": filepath.Dir(testFiles[0]),
 		},
+		Optional: true,
 	})
 
 	return []string{testPassed}
@@ -622,7 +580,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			binaryModuleName := ctx.ModuleName(binaryModule)
 			installPath := filepath.Join(binaryModule.InstallPath(), binaryModuleName)
 
-			if binaryModule.BuildStage() == StageMain {
+			if binaryModule.properties.Tool_dir {
 				blueprintTools = append(blueprintTools, installPath)
 			}
 			if binaryModule.properties.PrimaryBuilder {
@@ -632,7 +590,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 	var extraTestFlags string
 	if s.config.runGoTests {
-		extraTestFlags = " -t"
+		extraTestFlags = "-t"
 	}
 
 	var primaryBuilderName, primaryBuilderExtraFlags string
@@ -642,7 +600,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// as the primary builder.  We can trigger its primary builder mode with
 		// the -p flag.
 		primaryBuilderName = "minibp"
-		primaryBuilderExtraFlags = "-p" + extraTestFlags
+		primaryBuilderExtraFlags = "-p " + extraTestFlags
 
 	case 1:
 		primaryBuilderName = ctx.ModuleName(primaryBuilders[0])
@@ -665,112 +623,51 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 	mainNinjaFile := filepath.Join("$buildDir", "build.ninja")
 	primaryBuilderNinjaFile := filepath.Join(bootstrapDir, "build.ninja")
-	bootstrapNinjaFileTemplate := filepath.Join(miniBootstrapDir, "build.ninja.in")
-	bootstrapNinjaFile := filepath.Join(miniBootstrapDir, "build.ninja")
 	docsFile := filepath.Join(docsDir, primaryBuilderName+".html")
 
-	switch s.config.stage {
-	case StageBootstrap:
-		// We're generating a bootstrapper Ninja file, so we need to set things
-		// up to rebuild the build.ninja file using the primary builder.
+	ctx.SetNinjaBuildDir(pctx, "${ninjaBuildDir}")
 
-		// BuildDir must be different between the three stages, otherwise the
-		// cleanup process will remove files from the other builds.
-		ctx.SetNinjaBuildDir(pctx, miniBootstrapDir)
+	// Build the main build.ninja
+	ctx.Build(pctx, blueprint.BuildParams{
+		Rule:    generateBuildNinja,
+		Outputs: []string{mainNinjaFile},
+		Inputs:  []string{topLevelBlueprints},
+		Args: map[string]string{
+			"builder": primaryBuilderFile,
+			"extra":   primaryBuilderExtraFlags,
+		},
+	})
 
-		// Generate the Ninja file to build the primary builder.
-		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:    generateBuildNinja,
-			Outputs: []string{primaryBuilderNinjaFile},
-			Inputs:  []string{topLevelBlueprints},
-			Args: map[string]string{
-				"builder": minibpFile,
-				"extra":   "--build-primary" + extraTestFlags,
-			},
+	// Generate build system docs for the primary builder.  Generating docs reads the source
+	// files used to build the primary builder, but that dependency will be picked up through
+	// the dependency on the primary builder itself.  There are no dependencies on the
+	// Blueprints files, as any relevant changes to the Blueprints files would have caused
+	// a rebuild of the primary builder.
+	bigbpDocs := ctx.Rule(pctx, "bigbpDocs",
+		blueprint.RuleParams{
+			Command: fmt.Sprintf("%s %s -b $buildDir --docs $out %s", primaryBuilderFile,
+				primaryBuilderExtraFlags, topLevelBlueprints),
+			CommandDeps: []string{primaryBuilderFile},
+			Description: fmt.Sprintf("%s docs $out", primaryBuilderName),
 		})
 
-		// Rebuild the bootstrap Ninja file using the minibp that we just built.
-		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:    generateBuildNinja,
-			Outputs: []string{bootstrapNinjaFileTemplate},
-			Inputs:  []string{topLevelBlueprints},
-			Args: map[string]string{
-				"builder": minibpFile,
-				"extra":   extraTestFlags,
-			},
-		})
+	ctx.Build(pctx, blueprint.BuildParams{
+		Rule:    bigbpDocs,
+		Outputs: []string{docsFile},
+	})
 
-		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:    bootstrap,
-			Outputs: []string{bootstrapNinjaFile},
-			Inputs:  []string{bootstrapNinjaFileTemplate},
-		})
+	// Add a way to rebuild the primary build.ninja so that globs works
+	ctx.Build(pctx, blueprint.BuildParams{
+		Rule:    generateBuildNinja,
+		Outputs: []string{primaryBuilderNinjaFile},
+		Inputs:  []string{topLevelBlueprints},
+		Args: map[string]string{
+			"builder": minibpFile,
+			"extra":   extraTestFlags,
+		},
+	})
 
-	case StagePrimary:
-		// We're generating a bootstrapper Ninja file, so we need to set things
-		// up to rebuild the build.ninja file using the primary builder.
-
-		// BuildDir must be different between the three stages, otherwise the
-		// cleanup process will remove files from the other builds.
-		ctx.SetNinjaBuildDir(pctx, bootstrapDir)
-
-		// Add a way to rebuild the primary build.ninja so that globs works
-		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:    generateBuildNinja,
-			Outputs: []string{primaryBuilderNinjaFile},
-			Inputs:  []string{topLevelBlueprints},
-			Args: map[string]string{
-				"builder":   minibpFile,
-				"extra":     "--build-primary" + extraTestFlags,
-				"generator": "true",
-			},
-		})
-
-		// Build the main build.ninja
-		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:    generateBuildNinja,
-			Outputs: []string{mainNinjaFile},
-			Inputs:  []string{topLevelBlueprints},
-			Args: map[string]string{
-				"builder": primaryBuilderFile,
-				"extra":   primaryBuilderExtraFlags,
-			},
-		})
-
-		// Generate build system docs for the primary builder.  Generating docs reads the source
-		// files used to build the primary builder, but that dependency will be picked up through
-		// the dependency on the primary builder itself.  There are no dependencies on the
-		// Blueprints files, as any relevant changes to the Blueprints files would have caused
-		// a rebuild of the primary builder.
-		bigbpDocs := ctx.Rule(pctx, "bigbpDocs",
-			blueprint.RuleParams{
-				Command: fmt.Sprintf("%s %s -b $buildDir --docs $out %s", primaryBuilderFile,
-					primaryBuilderExtraFlags, topLevelBlueprints),
-				CommandDeps: []string{primaryBuilderFile},
-				Description: fmt.Sprintf("%s docs $out", primaryBuilderName),
-			})
-
-		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:    bigbpDocs,
-			Outputs: []string{docsFile},
-		})
-
-	case StageMain:
-		ctx.SetNinjaBuildDir(pctx, "${buildDir}")
-
-		// Add a way to rebuild the main build.ninja in case it creates rules that
-		// it will depend on itself. (In Android, globs with soong_glob)
-		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:    generateBuildNinja,
-			Outputs: []string{mainNinjaFile},
-			Inputs:  []string{topLevelBlueprints},
-			Args: map[string]string{
-				"builder":   primaryBuilderFile,
-				"extra":     primaryBuilderExtraFlags,
-				"generator": "true",
-			},
-		})
-
+	if s.config.stage == StageMain {
 		if primaryBuilderName == "minibp" {
 			// This is a standalone Blueprint build, so we copy the minibp
 			// binary to the "bin" directory to make it easier to find.
