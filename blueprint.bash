@@ -10,6 +10,7 @@
 # documented below:
 #
 #   BUILDDIR
+#   NINJA
 #   SKIP_NINJA
 #
 # When run in a standalone Blueprint checkout, bootstrap.bash will install
@@ -38,29 +39,16 @@ fi
 
 # .blueprint.bootstrap provides saved values from the bootstrap.bash script:
 #
-#   BOOTSTRAP
-#   BOOTSTRAP_MANIFEST
+#   BLUEPRINT_BOOTSTRAP_VERSION
+#   BLUEPRINTDIR
+#   SRCDIR
+#   GOROOT
 #
 source "${BUILDDIR}/.blueprint.bootstrap"
 
-GEN_BOOTSTRAP_MANIFEST="${BUILDDIR}/.minibootstrap/build.ninja.in"
-if [ -f "${GEN_BOOTSTRAP_MANIFEST}" ]; then
-    if [ "${BOOTSTRAP_MANIFEST}" -nt "${GEN_BOOTSTRAP_MANIFEST}" ]; then
-        "${BOOTSTRAP}" -i "${BOOTSTRAP_MANIFEST}"
-    fi
-else
-    "${BOOTSTRAP}" -i "${BOOTSTRAP_MANIFEST}"
+if [ -z "$BLUEPRINTDIR" ]; then
+    echo "Please run bootstrap.bash (.blueprint.bootstrap outdated)" >&2
+    exit 1
 fi
 
-# Build minibp and the primary build.ninja
-"${NINJA}" -w dupbuild=err -f "${BUILDDIR}/.minibootstrap/build.ninja"
-
-# Build the primary builder and the main build.ninja
-"${NINJA}" -w dupbuild=err -f "${BUILDDIR}/.bootstrap/build.ninja"
-
-# SKIP_NINJA can be used by wrappers that wish to run ninja themselves.
-if [ -z "$SKIP_NINJA" ]; then
-    "${NINJA}" -w dupbuild=err -f "${BUILDDIR}/build.ninja" "$@"
-else
-    exit 0
-fi
+source "${BLUEPRINTDIR}/blueprint_impl.bash"

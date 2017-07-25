@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// The Blueprint bootstrapping mechanism is intended to enable building a source
-// tree using a Blueprint-based build system that is embedded (as source) in
-// that source tree.  The only prerequisites for performing such a build are:
+// The Blueprint bootstrapping mechanism is intended to enable building a
+// source tree with minimal prebuilts.  The only prerequisites for performing
+// such a build are:
 //
 //   1. A Ninja binary
 //   2. A script interpreter (e.g. Bash or Python)
@@ -77,8 +77,8 @@
 // the build bootstrapping:
 //
 //   1. The top-level Blueprints file
-//   2. The bootstrap Ninja file template
-//   3. The bootstrap script
+//   2. The bootstrap script
+//   3. The build wrapper script
 //
 // The top-level Blueprints file describes how the entire source tree should be
 // built.  It must have a 'subdirs' assignment that includes both the core
@@ -86,20 +86,10 @@
 // also include (either directly or through a subdirs entry) describe all the
 // modules to be built in the source tree.
 //
-// The bootstrap Ninja file template describes the build actions necessary to
-// build the primary builder for the source tree.  This template contains a set
-// of placeholder Ninja variable values that get filled in by the bootstrap
-// script to create a usable Ninja file.  It can be created by running the
-// minibp binary that gets created as part of the standalone Blueprint build.
-// Passing minibp the path to the top-level Blueprints file will cause it to
-// create a bootstrap Ninja file template named 'build.ninja.in'.
-//
-// The bootstrap script is a small script (or theoretically a compiled binary)
-// that is included in the source tree to begin the bootstrapping process.  It
-// is responsible for filling in the bootstrap Ninja file template with some
-// basic information about the Go build environemnt and the path to the root
-// source directory.  It does this by performing a simple string substitution on
-// the template file to produce a usable build.ninja file.
+// The bootstrap script is a small script to setup the build directory, writing
+// a couple configuration files (including the path the source directory,
+// information about the Go build environment, etc), then copying the build
+// wrapper into the build directory.
 //
 // The Bootstrapping Process
 //
@@ -109,53 +99,42 @@
 //
 // The bootstrapping process begins with the user running the bootstrap script
 // to initialize a new build directory.  The script is run from the build
-// directory, and when run with no arguments it copies the source bootstrap
-// Ninja file into the build directory as ".minibootstrap/build.ninja".  It
-// also performs a set of string substitutions on the file to configure it for
-// the user's build environment. Specifically, the following strings are
-// substituted in the file:
+// directory, and creates a ".minibootstrap/build.ninja" file that sets a few
+// variables then includes blueprint's "bootstrap/build.ninja". It also writes
+// out a ".blueprint.bootstrap" file that contains a few variables for later use:
 //
-//   @@SrcDir@@            - The path to the root source directory (either
-//                           absolute or relative to the build dir)
-//   @@BuildDir@@          - The path to the build directory
-//   @@GoRoot@@            - The path to the root directory of the Go toolchain
-//   @@GoCompile@@         - The path to the Go compiler (6g or compile)
-//   @@GoLink@@            - The path to the Go linker (6l or link)
-//   @@Bootstrap@@         - The path to the bootstrap script
-//   @@BootstrapManifest@@ - The path to the source bootstrap Ninja file
+//   BLUEPRINT_BOOTSTRAP_VERSION - Used to detect when a user needs to run
+//                                 bootstrap.bash again
+//
+//   SRCDIR         - The path to the source directory
+//   BLUEPRINTDIR   - The path to the blueprints directory (includes $SRCDIR)
+//   GOROOT         - The path to the root directory of the Go toolchain
+//   NINJA_BUILDDIR - The path to store .ninja_log, .ninja_deps
 //
 // Once the script completes the build directory is initialized and ready to run
 // a build. A wrapper script (blueprint.bash by default) has been installed in
 // order to run a build. It iterates through the three stages of the build:
 //
-//      - Checks to see if the source bootstrap Ninja file is newer than the
-//        one that is in the build directory, if so, update the build dir copy.
-//      - Run the Bootstrap stage
-//      - Run the Primary stage
-//      - Run the Main stage
+//      - Runs microfactory.bash to build minibp
+//      - Runs the .minibootstrap/build.ninja to build .bootstrap/build.ninja
+//      - Runs .bootstrap/build.ninja to build and run the primary builder
+//      - Runs build.ninja to build your code
 //
-// Previously, we were keeping track of the "state" of the build directory and
-// only going back to previous stages when something had changed. But that
-// added complexity, and failed when there was a build error in the Primary
-// stage that would have been fixed if the Bootstrap stage was re-run (we
-// would only evaluate which stages needed to be run at the end of the stage).
-// So now we always run through each stage, and the first two stages will do
-// nothing when nothing has changed.
+// Microfactory takes care of building an up to date version of `minibp` under
+// the .minibootstrap/ directory.
 //
-// During the Bootstrap stage, <builddir>/.minibootstrap/build.ninja, the
-// following actions are taken, if necessary:
+// During <builddir>/.minibootstrap/build.ninja, the following actions are
+// taken, if necessary:
 //
-//      - Build all bootstrap_core_go_binary rules, and dependencies --
-//        minibp and some test helpers.
 //      - Run minibp to generate .bootstrap/build.ninja (Primary stage)
-//      - Run minibp to generate .minibootstrap/build.ninja.in
-//      - Restart if .minibootstrap/build.ninja.in has changed
 //
-// During the Primary stage, <builddir>/.bootstrap/build.ninja, the following
-// actions are taken, if necessary:
+// During the <builddir>/.bootstrap/build.ninja, the following actions are
+// taken, if necessary:
 //
-//      - Build any bootstrap_go_binary rules and dependencies -- usually the
-//        primary builder and any build or runtime dependencies.
+//      - Rebuild .bootstrap/build.ninja, usually due to globs changing --
+//        other dependencies will trigger it to be built during minibootstrap
+//      - Build the primary builder, anything marked `default: true`, and
+//        any dependencies.
 //      - Run the primary builder to generate build.ninja
 //      - Run the primary builder to extract documentation
 //
@@ -163,16 +142,5 @@
 // rules generated by the primary builder. In addition, the bootstrap code
 // adds a phony rule "blueprint_tools" that depends on all blueprint_go_binary
 // rules (bpfmt, bpmodify, etc).
-//
-// Updating the Bootstrap Ninja File Template
-//
-// The main purpose of the bootstrap stage is to generate the Ninja file for the
-// primary stage.  The one additional thing it does is generate a new bootstrap
-// Ninja file template at .minibootstrap/build.ninja.in.  When generating this
-// file, minibp will compare the new bootstrap Ninja file contents with the
-// original (in the source tree).
-//
-// This scheme ensures that updates to the source tree are always incorporated
-// into the build process.
 //
 package bootstrap
