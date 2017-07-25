@@ -122,12 +122,6 @@ func globSingletonFactory(ctx *blueprint.Context) func() blueprint.Singleton {
 }
 
 func (s *globSingleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
-	if config, ok := ctx.Config().(ConfigInterface); ok && config.GeneratingBootstrapper() {
-		// Skip singleton for bootstrap.bash -r case to avoid putting unnecessary glob lines into
-		// the bootstrap manifest
-		return
-	}
-
 	for _, g := range s.globLister() {
 		fileListFile := filepath.Join(BuildDir, ".glob", g.Name)
 		depFile := fileListFile + ".d"

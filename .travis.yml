@@ -2,7 +2,6 @@ language: go
 
 go:
     - 1.8.3
-    - 1.7.6
 
 cache:
     directories:
@@ -18,10 +17,6 @@ before_script:
 script:
     - ./.travis.gofmt.sh
     - go test ./...
-    - mkdir stage
-    - cd stage
-    - ../bootstrap.bash
-    - ./blueprint.bash
-    - diff -us ../build.ninja.in .minibootstrap/build.ninja.in
-    - ../tests/test.sh
-    - ../tests/test_tree_tests.sh
+    - ./tests/test.sh
+    - ./tests/test_tree_tests.sh
+    - ./tests/test_tree_tests.sh -t
