@@ -1,0 +1,19 @@
+# Included by .minibootstrap/build.ninja, which is written by bootstrap.bash
+#
+# Expected input variables:
+#   topFile           - The path to the top-level Blueprints(etc) file
+#   extraArgs         - Any extra arguments to pass to minibp (-t)
+#   bootstrapBuildDir - The path to the build directory
+
+ninja_required_version = 1.7.0
+
+rule build.ninja
+    command = ${builder} ${extraArgs} -b ${bootstrapBuildDir} -n ${builddir} -d ${out}.d -o ${out} ${in}
+    depfile = ${out}.d
+    description = ${builder} ${out}
+
+bootstrapNinja = ${bootstrapBuildDir}/.bootstrap/build.ninja
+
+build ${bootstrapNinja}: build.ninja ${topFile} | ${builder}
+    builder = ${bootstrapBuildDir}/.minibootstrap/minibp
+default ${bootstrapNinja}
