@@ -16,6 +16,7 @@ before_script:
     - source .travis.fix-fork.sh
 
 script:
+    - export GOROOT=$(go env GOROOT)
     - ./.travis.gofmt.sh
     - go test ./...
     - ./tests/test.sh
