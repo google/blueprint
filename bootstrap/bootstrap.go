@@ -16,6 +16,7 @@ package bootstrap
 
 import (
 	"fmt"
+	"go/build"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -34,10 +35,20 @@ var (
 	goTestRunnerCmd = pctx.StaticVariable("goTestRunnerCmd", filepath.Join(bootstrapDir, "bin", "gotestrunner"))
 	pluginGenSrcCmd = pctx.StaticVariable("pluginGenSrcCmd", filepath.Join(bootstrapDir, "bin", "loadplugins"))
 
+	parallelCompile = pctx.StaticVariable("parallelCompile", func() string {
+		// Parallel compilation is only supported on >= go1.9
+		for _, r := range build.Default.ReleaseTags {
+			if r == "go1.9" {
+				return fmt.Sprintf("-c %d", runtime.NumCPU())
+			}
+		}
+		return ""
+	}())
+
 	compile = pctx.StaticRule("compile",
 		blueprint.RuleParams{
-			Command: "GOROOT='$goRoot' $compileCmd -o $out -p $pkgPath -complete " +
-				"$incFlags -pack $in",
+			Command: "GOROOT='$goRoot' $compileCmd $parallelCompile -o $out " +
+				"-p $pkgPath -complete $incFlags -pack $in",
 			CommandDeps: []string{"$compileCmd"},
 			Description: "compile $out",
 		},
