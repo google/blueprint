@@ -69,6 +69,7 @@ var (
 
 	goToolDir = filepath.Join(runtime.GOROOT(), "pkg", "tool", runtime.GOOS+"_"+runtime.GOARCH)
 	goVersion = findGoVersion()
+	isGo18    = strings.Contains(goVersion, "go1.8")
 )
 
 func findGoVersion() string {
@@ -276,6 +277,9 @@ func (p *GoPackage) Compile(outDir, trimPath string) error {
 		"-o", p.output,
 		"-p", p.Name,
 		"-complete", "-pack", "-nolocalimports")
+	if !isGo18 {
+		cmd.Args = append(cmd.Args, "-c", fmt.Sprintf("%d", runtime.NumCPU()))
+	}
 	if race {
 		cmd.Args = append(cmd.Args, "-race")
 		fmt.Fprintln(hash, "-race")

@@ -156,6 +156,10 @@ func (matchString) WriteProfileTo(string, io.Writer, int) error {
     panic("shouldn't get here")
 }
 
+func (matchString) ImportPath() string {
+	return "{{.Package}}"
+}
+
 func main() {
 {{if .MainStartTakesInterface}}
 	m := testing.MainStart(matchString{}, t, nil, nil)
