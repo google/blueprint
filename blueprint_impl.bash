@@ -3,6 +3,8 @@ if [ ! "${BLUEPRINT_BOOTSTRAP_VERSION}" -eq "1" ]; then
   exit 1
 fi
 
+export GOROOT
+
 source "${BLUEPRINTDIR}/microfactory/microfactory.bash"
 
 BUILDDIR="${BUILDDIR}/.minibootstrap" build_go minibp github.com/google/blueprint/bootstrap/minibp
