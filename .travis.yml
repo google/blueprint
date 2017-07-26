@@ -2,6 +2,7 @@ language: go
 
 go:
     - 1.8.3
+    - 1.9rc1
 
 cache:
     directories:
@@ -15,6 +16,7 @@ before_script:
     - source .travis.fix-fork.sh
 
 script:
+    - export GOROOT=$(go env GOROOT)
     - ./.travis.gofmt.sh
     - go test ./...
     - ./tests/test.sh
