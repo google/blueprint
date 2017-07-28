@@ -16,6 +16,7 @@ package blueprint
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -200,4 +201,82 @@ func TestWalkDeps(t *testing.T) {
 	if outputUp != "GFC" {
 		t.Fatalf("unexpected walkDeps behaviour: %s\nup should be: GFC", outputUp)
 	}
+}
+
+func TestCreateModule(t *testing.T) {
+	ctx := newContext()
+	ctx.MockFileSystem(map[string][]byte{
+		"Blueprints": []byte(`
+			foo_module {
+			    name: "A",
+			    deps: ["B", "C"],
+			}
+		`),
+	})
+
+	ctx.RegisterTopDownMutator("create", createTestMutator)
+	ctx.RegisterBottomUpMutator("deps", blueprintDepsMutator)
+
+	ctx.RegisterModuleType("foo_module", newFooModule)
+	ctx.RegisterModuleType("bar_module", newBarModule)
+	_, errs := ctx.ParseBlueprintsFiles("Blueprints")
+	if len(errs) > 0 {
+		t.Errorf("unexpected parse errors:")
+		for _, err := range errs {
+			t.Errorf("  %s", err)
+		}
+		t.FailNow()
+	}
+
+	errs = ctx.ResolveDependencies(nil)
+	if len(errs) > 0 {
+		t.Errorf("unexpected dep errors:")
+		for _, err := range errs {
+			t.Errorf("  %s", err)
+		}
+		t.FailNow()
+	}
+
+	a := ctx.modulesFromName("A")[0].logicModule.(*fooModule)
+	b := ctx.modulesFromName("B")[0].logicModule.(*barModule)
+	c := ctx.modulesFromName("C")[0].logicModule.(*barModule)
+	d := ctx.modulesFromName("D")[0].logicModule.(*fooModule)
+
+	checkDeps := func(m Module, expected string) {
+		var deps []string
+		ctx.VisitDirectDeps(m, func(m Module) {
+			deps = append(deps, ctx.ModuleName(m))
+		})
+		got := strings.Join(deps, ",")
+		if got != expected {
+			t.Errorf("unexpected %q dependencies, got %q expected %q",
+				ctx.ModuleName(m), got, expected)
+		}
+	}
+
+	checkDeps(a, "B,C")
+	checkDeps(b, "D")
+	checkDeps(c, "D")
+	checkDeps(d, "")
+}
+
+func createTestMutator(ctx TopDownMutatorContext) {
+	type props struct {
+		Name string
+		Deps []string
+	}
+
+	ctx.CreateModule(newBarModule, &props{
+		Name: "B",
+		Deps: []string{"D"},
+	})
+
+	ctx.CreateModule(newBarModule, &props{
+		Name: "C",
+		Deps: []string{"D"},
+	})
+
+	ctx.CreateModule(newFooModule, &props{
+		Name: "D",
+	})
 }

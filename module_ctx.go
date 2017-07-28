@@ -20,6 +20,7 @@ import (
 	"text/scanner"
 
 	"github.com/google/blueprint/pathtools"
+	"github.com/google/blueprint/proptools"
 )
 
 // A Module handles generating all of the Ninja build actions needed to build a
@@ -502,7 +503,8 @@ type mutatorContext struct {
 	reverseDeps   []reverseDep
 	rename        []rename
 	replace       []replace
-	newVariations []*moduleInfo
+	newVariations []*moduleInfo // new variants of existing modules
+	newModules    []*moduleInfo // brand new modules
 }
 
 type baseMutatorContext interface {
@@ -526,6 +528,8 @@ type TopDownMutatorContext interface {
 	OtherModuleName(m Module) string
 	OtherModuleErrorf(m Module, fmt string, args ...interface{})
 	OtherModuleDependencyTag(m Module) DependencyTag
+
+	CreateModule(ModuleFactory, ...interface{})
 
 	GetDirectDepWithTag(name string, tag DependencyTag) Module
 	GetDirectDep(name string) (Module, DependencyTag)
@@ -735,6 +739,21 @@ func (mctx *mutatorContext) OtherModuleExists(name string) bool {
 // AddDependency or OtherModuleName until after this mutator pass is complete.
 func (mctx *mutatorContext) Rename(name string) {
 	mctx.rename = append(mctx.rename, rename{mctx.module.group, name})
+}
+
+// Create a new module by calling the factory method for the specified moduleType, and apply
+// the specified property structs to it as if the properties were set in a blueprint file.
+func (mctx *mutatorContext) CreateModule(factory ModuleFactory, props ...interface{}) {
+	module := mctx.context.newModule(factory)
+
+	for _, p := range props {
+		err := proptools.AppendMatchingProperties(module.properties, p, nil)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	mctx.newModules = append(mctx.newModules, module)
 }
 
 // SimpleName is an embeddable object to implement the ModuleContext.Name method using a property

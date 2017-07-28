@@ -157,6 +157,7 @@ type moduleGroup struct {
 type moduleInfo struct {
 	// set during Parse
 	typeName          string
+	factory           ModuleFactory
 	relBlueprintsFile string
 	pos               scanner.Position
 	propertyPos       map[string]scanner.Position
@@ -260,12 +261,8 @@ type mutatorInfo struct {
 	parallel        bool
 }
 
-// NewContext creates a new Context object.  The created context initially has
-// no module or singleton factories registered, so the RegisterModuleFactory and
-// RegisterSingletonFactory methods must be called before it can do anything
-// useful.
-func NewContext() *Context {
-	ctx := &Context{
+func newContext() *Context {
+	return &Context{
 		moduleFactories:  make(map[string]ModuleFactory),
 		moduleNames:      make(map[string]*moduleGroup),
 		moduleInfo:       make(map[Module]*moduleInfo),
@@ -273,6 +270,14 @@ func NewContext() *Context {
 		globs:            make(map[string]GlobPath),
 		fs:               pathtools.OsFs,
 	}
+}
+
+// NewContext creates a new Context object.  The created context initially has
+// no module or singleton factories registered, so the RegisterModuleFactory and
+// RegisterSingletonFactory methods must be called before it can do anything
+// useful.
+func NewContext() *Context {
+	ctx := newContext()
 
 	ctx.RegisterBottomUpMutator("blueprint_deps", blueprintDepsMutator)
 
@@ -940,13 +945,7 @@ func getStringFromScope(scope *parser.Scope, v string) (string, scanner.Position
 // property values.  Any values stored in the module object that are not stored in properties
 // structs will be lost.
 func (c *Context) cloneLogicModule(origModule *moduleInfo) (Module, []interface{}) {
-	typeName := origModule.typeName
-	factory, ok := c.moduleFactories[typeName]
-	if !ok {
-		panic(fmt.Sprintf("unrecognized module type %q during cloning", typeName))
-	}
-
-	newLogicModule, newProperties := factory()
+	newLogicModule, newProperties := origModule.factory()
 
 	if len(newProperties) != len(origModule.properties) {
 		panic("mismatched properties array length in " + origModule.Name())
@@ -1062,6 +1061,19 @@ func (c *Context) prettyPrintVariant(variant variationMap) string {
 	return strings.Join(names, ", ")
 }
 
+func (c *Context) newModule(factory ModuleFactory) *moduleInfo {
+	logicModule, properties := factory()
+
+	module := &moduleInfo{
+		logicModule: logicModule,
+		factory:     factory,
+	}
+
+	module.properties = properties
+
+	return module
+}
+
 func (c *Context) processModuleDef(moduleDef *parser.Module,
 	relBlueprintsFile string) (*moduleInfo, []error) {
 
@@ -1079,17 +1091,12 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 		}
 	}
 
-	logicModule, properties := factory()
+	module := c.newModule(factory)
+	module.typeName = moduleDef.Type
 
-	module := &moduleInfo{
-		logicModule:       logicModule,
-		typeName:          moduleDef.Type,
-		relBlueprintsFile: relBlueprintsFile,
-	}
+	module.relBlueprintsFile = relBlueprintsFile
 
-	module.properties = properties
-
-	propertyMap, errs := unpackProperties(moduleDef.Properties, properties...)
+	propertyMap, errs := unpackProperties(moduleDef.Properties, module.properties...)
 	if len(errs) > 0 {
 		return nil, errs
 	}
@@ -1744,14 +1751,16 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 	}
 
 	type globalStateChange struct {
-		reverse []reverseDep
-		rename  []rename
-		replace []replace
+		reverse    []reverseDep
+		rename     []rename
+		replace    []replace
+		newModules []*moduleInfo
 	}
 
 	reverseDeps := make(map[*moduleInfo][]depInfo)
 	var rename []rename
 	var replace []replace
+	var newModules []*moduleInfo
 
 	errsCh := make(chan []error)
 	globalStateCh := make(chan globalStateChange)
@@ -1798,11 +1807,12 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 			newVariationsCh <- mctx.newVariations
 		}
 
-		if len(mctx.reverseDeps) > 0 || len(mctx.replace) > 0 || len(mctx.rename) > 0 {
+		if len(mctx.reverseDeps) > 0 || len(mctx.replace) > 0 || len(mctx.rename) > 0 || len(mctx.newModules) > 0 {
 			globalStateCh <- globalStateChange{
-				reverse: mctx.reverseDeps,
-				replace: mctx.replace,
-				rename:  mctx.rename,
+				reverse:    mctx.reverseDeps,
+				replace:    mctx.replace,
+				rename:     mctx.rename,
+				newModules: mctx.newModules,
 			}
 		}
 
@@ -1821,6 +1831,7 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 				}
 				replace = append(replace, globalStateChange.replace...)
 				rename = append(rename, globalStateChange.rename...)
+				newModules = append(newModules, globalStateChange.newModules...)
 			case newVariations := <-newVariationsCh:
 				for _, m := range newVariations {
 					newModuleInfo[m.logicModule] = m
@@ -1868,6 +1879,14 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 		sort.Sort(depSorter(deps))
 		module.directDeps = append(module.directDeps, deps...)
 		c.depsModified++
+	}
+
+	for _, module := range newModules {
+		errs = c.addModule(module)
+		if len(errs) > 0 {
+			return errs
+		}
+		atomic.AddUint32(&c.depsModified, 1)
 	}
 
 	errs = c.handleRenames(rename)
@@ -3007,8 +3026,7 @@ func (c *Context) writeAllModuleActions(nw *ninjaWriter) error {
 		relPos.Filename = module.relBlueprintsFile
 
 		// Get the name and location of the factory function for the module.
-		factory := c.moduleFactories[module.typeName]
-		factoryFunc := runtime.FuncForPC(reflect.ValueOf(factory).Pointer())
+		factoryFunc := runtime.FuncForPC(reflect.ValueOf(module.factory).Pointer())
 		factoryName := factoryFunc.Name()
 
 		infoMap := map[string]interface{}{
