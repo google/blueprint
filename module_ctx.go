@@ -498,11 +498,11 @@ func (m *moduleContext) GetMissingDependencies() []string {
 
 type mutatorContext struct {
 	baseModuleContext
-	name        string
-	reverseDeps []reverseDep
-	rename      []rename
-	replace     []replace
-	newModules  []*moduleInfo
+	name          string
+	reverseDeps   []reverseDep
+	rename        []rename
+	replace       []replace
+	newVariations []*moduleInfo
 }
 
 type baseMutatorContext interface {
@@ -620,10 +620,10 @@ func (mctx *mutatorContext) createVariations(variationNames []string, local bool
 		}
 	}
 
-	if mctx.newModules != nil {
+	if mctx.newVariations != nil {
 		panic("module already has variations from this mutator")
 	}
-	mctx.newModules = modules
+	mctx.newVariations = modules
 
 	if len(ret) != len(variationNames) {
 		panic("oops!")

@@ -1755,7 +1755,7 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 
 	errsCh := make(chan []error)
 	globalStateCh := make(chan globalStateChange)
-	newModulesCh := make(chan []*moduleInfo)
+	newVariationsCh := make(chan []*moduleInfo)
 	done := make(chan bool)
 
 	c.depsModified = 0
@@ -1794,8 +1794,8 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 			return true
 		}
 
-		if len(mctx.newModules) > 0 {
-			newModulesCh <- mctx.newModules
+		if len(mctx.newVariations) > 0 {
+			newVariationsCh <- mctx.newVariations
 		}
 
 		if len(mctx.reverseDeps) > 0 || len(mctx.replace) > 0 || len(mctx.rename) > 0 {
@@ -1821,8 +1821,8 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 				}
 				replace = append(replace, globalStateChange.replace...)
 				rename = append(rename, globalStateChange.rename...)
-			case newModules := <-newModulesCh:
-				for _, m := range newModules {
+			case newVariations := <-newVariationsCh:
+				for _, m := range newVariations {
 					newModuleInfo[m.logicModule] = m
 				}
 			case <-done:
