@@ -165,9 +165,9 @@ type moduleInfo struct {
 	variant           variationMap
 	dependencyVariant variationMap
 
-	logicModule      Module
-	group            *moduleGroup
-	moduleProperties []interface{}
+	logicModule Module
+	group       *moduleGroup
+	properties  []interface{}
 
 	// set during ResolveDependencies
 	directDeps  []depInfo
@@ -948,13 +948,13 @@ func (c *Context) cloneLogicModule(origModule *moduleInfo) (Module, []interface{
 
 	newLogicModule, newProperties := factory()
 
-	if len(newProperties) != len(origModule.moduleProperties) {
+	if len(newProperties) != len(origModule.properties) {
 		panic("mismatched properties array length in " + origModule.Name())
 	}
 
 	for i := range newProperties {
 		dst := reflect.ValueOf(newProperties[i]).Elem()
-		src := reflect.ValueOf(origModule.moduleProperties[i]).Elem()
+		src := reflect.ValueOf(origModule.properties[i]).Elem()
 
 		proptools.CopyProperties(dst, src)
 	}
@@ -982,7 +982,7 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 			// Reuse the existing module for the first new variant
 			// This both saves creating a new module, and causes the insertion in c.moduleInfo below
 			// with logicModule as the key to replace the original entry in c.moduleInfo
-			newLogicModule, newProperties = origModule.logicModule, origModule.moduleProperties
+			newLogicModule, newProperties = origModule.logicModule, origModule.properties
 		} else {
 			newLogicModule, newProperties = c.cloneLogicModule(origModule)
 		}
@@ -996,7 +996,7 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 		newModule.logicModule = newLogicModule
 		newModule.variant = newVariant
 		newModule.dependencyVariant = origModule.dependencyVariant.clone()
-		newModule.moduleProperties = newProperties
+		newModule.properties = newProperties
 
 		if variationName != "" {
 			if newModule.variantName == "" {
@@ -1087,7 +1087,7 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 		relBlueprintsFile: relBlueprintsFile,
 	}
 
-	module.moduleProperties = properties
+	module.properties = properties
 
 	propertyMap, errs := unpackProperties(moduleDef.Properties, properties...)
 	if len(errs) > 0 {
@@ -1903,7 +1903,7 @@ func (c *Context) cloneModules() {
 	for _, m := range c.modulesSorted {
 		go func(m *moduleInfo) {
 			origLogicModule := m.logicModule
-			m.logicModule, m.moduleProperties = c.cloneLogicModule(m)
+			m.logicModule, m.properties = c.cloneLogicModule(m)
 			ch <- update{origLogicModule, m}
 		}(m)
 	}
