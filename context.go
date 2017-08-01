@@ -1152,21 +1152,21 @@ func (c *Context) addModule(module *moduleInfo) []error {
 // modules defined in the parsed Blueprints files are valid.  This means that
 // the modules depended upon are defined and that no circular dependencies
 // exist.
-func (c *Context) ResolveDependencies(config interface{}) []error {
-	errs := c.updateDependencies()
+func (c *Context) ResolveDependencies(config interface{}) (deps []string, errs []error) {
+	errs = c.updateDependencies()
 	if len(errs) > 0 {
-		return errs
+		return nil, errs
 	}
 
-	errs = c.runMutators(config)
+	deps, errs = c.runMutators(config)
 	if len(errs) > 0 {
-		return errs
+		return nil, errs
 	}
 
 	c.cloneModules()
 
 	c.dependenciesReady = true
-	return nil
+	return deps, nil
 }
 
 // Default dependencies handling.  If the module implements the (deprecated)
@@ -1633,10 +1633,11 @@ func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs [
 	c.buildActionsReady = false
 
 	if !c.dependenciesReady {
-		errs := c.ResolveDependencies(config)
+		extraDeps, errs := c.ResolveDependencies(config)
 		if len(errs) > 0 {
 			return nil, errs
 		}
+		deps = append(deps, extraDeps...)
 	}
 
 	liveGlobals := newLiveTracker(config)
@@ -1653,7 +1654,8 @@ func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs [
 		return nil, errs
 	}
 
-	deps = append(depsModules, depsSingletons...)
+	deps = append(deps, depsModules...)
+	deps = append(deps, depsSingletons...)
 
 	if c.ninjaBuildDir != nil {
 		liveGlobals.addNinjaStringDeps(c.ninjaBuildDir)
@@ -1676,26 +1678,28 @@ func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs [
 	return deps, nil
 }
 
-func (c *Context) runMutators(config interface{}) (errs []error) {
+func (c *Context) runMutators(config interface{}) (deps []string, errs []error) {
 	var mutators []*mutatorInfo
 
 	mutators = append(mutators, c.earlyMutatorInfo...)
 	mutators = append(mutators, c.mutatorInfo...)
 
 	for _, mutator := range mutators {
+		var newDeps []string
 		if mutator.topDownMutator != nil {
-			errs = c.runMutator(config, mutator, topDownMutator)
+			newDeps, errs = c.runMutator(config, mutator, topDownMutator)
 		} else if mutator.bottomUpMutator != nil {
-			errs = c.runMutator(config, mutator, bottomUpMutator)
+			newDeps, errs = c.runMutator(config, mutator, bottomUpMutator)
 		} else {
 			panic("no mutator set on " + mutator.name)
 		}
 		if len(errs) > 0 {
-			return errs
+			return nil, errs
 		}
+		deps = append(deps, newDeps...)
 	}
 
-	return nil
+	return deps, nil
 }
 
 type mutatorDirection interface {
@@ -1743,7 +1747,7 @@ type reverseDep struct {
 }
 
 func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
-	direction mutatorDirection) (errs []error) {
+	direction mutatorDirection) (deps []string, errs []error) {
 
 	newModuleInfo := make(map[Module]*moduleInfo)
 	for k, v := range c.moduleInfo {
@@ -1755,6 +1759,7 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 		rename     []rename
 		replace    []replace
 		newModules []*moduleInfo
+		deps       []string
 	}
 
 	reverseDeps := make(map[*moduleInfo][]depInfo)
@@ -1813,6 +1818,7 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 				replace:    mctx.replace,
 				rename:     mctx.rename,
 				newModules: mctx.newModules,
+				deps:       mctx.ninjaFileDeps,
 			}
 		}
 
@@ -1832,6 +1838,7 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 				replace = append(replace, globalStateChange.replace...)
 				rename = append(rename, globalStateChange.rename...)
 				newModules = append(newModules, globalStateChange.newModules...)
+				deps = append(deps, globalStateChange.deps...)
 			case newVariations := <-newVariationsCh:
 				for _, m := range newVariations {
 					newModuleInfo[m.logicModule] = m
@@ -1851,7 +1858,7 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 	done <- true
 
 	if len(errs) > 0 {
-		return errs
+		return nil, errs
 	}
 
 	c.moduleInfo = newModuleInfo
@@ -1884,29 +1891,29 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 	for _, module := range newModules {
 		errs = c.addModule(module)
 		if len(errs) > 0 {
-			return errs
+			return nil, errs
 		}
 		atomic.AddUint32(&c.depsModified, 1)
 	}
 
 	errs = c.handleRenames(rename)
 	if len(errs) > 0 {
-		return errs
+		return nil, errs
 	}
 
 	errs = c.handleReplacements(replace)
 	if len(errs) > 0 {
-		return errs
+		return nil, errs
 	}
 
 	if c.depsModified > 0 {
 		errs = c.updateDependencies()
 		if len(errs) > 0 {
-			return errs
+			return nil, errs
 		}
 	}
 
-	return errs
+	return deps, errs
 }
 
 // Replaces every build logic module with a clone of itself.  Prevents introducing problems where

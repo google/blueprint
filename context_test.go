@@ -105,7 +105,7 @@ func TestContextParse(t *testing.T) {
 		t.FailNow()
 	}
 
-	errs = ctx.ResolveDependencies(nil)
+	_, errs = ctx.ResolveDependencies(nil)
 	if len(errs) > 0 {
 		t.Errorf("unexpected dep errors:")
 		for _, err := range errs {
@@ -170,7 +170,7 @@ func TestWalkDeps(t *testing.T) {
 		t.FailNow()
 	}
 
-	errs = ctx.ResolveDependencies(nil)
+	_, errs = ctx.ResolveDependencies(nil)
 	if len(errs) > 0 {
 		t.Errorf("unexpected dep errors:")
 		for _, err := range errs {
@@ -228,7 +228,7 @@ func TestCreateModule(t *testing.T) {
 		t.FailNow()
 	}
 
-	errs = ctx.ResolveDependencies(nil)
+	_, errs = ctx.ResolveDependencies(nil)
 	if len(errs) > 0 {
 		t.Errorf("unexpected dep errors:")
 		for _, err := range errs {

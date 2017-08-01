@@ -138,6 +138,7 @@ type BaseModuleContext interface {
 	GlobWithDeps(pattern string, excludes []string) ([]string, error)
 
 	Fs() pathtools.FileSystem
+	AddNinjaFileDeps(deps ...string)
 
 	moduleInfo() *moduleInfo
 	error(err error)
@@ -167,8 +168,6 @@ type ModuleContext interface {
 	Rule(pctx PackageContext, name string, params RuleParams, argNames ...string) Rule
 	Build(pctx PackageContext, params BuildParams)
 
-	AddNinjaFileDeps(deps ...string)
-
 	PrimaryModule() Module
 	FinalModule() Module
 	VisitAllModuleVariants(visit func(Module))
@@ -185,6 +184,7 @@ type baseModuleContext struct {
 	errs           []error
 	visitingParent *moduleInfo
 	visitingDep    depInfo
+	ninjaFileDeps  []string
 }
 
 func (d *baseModuleContext) moduleInfo() *moduleInfo {
@@ -274,7 +274,6 @@ var _ ModuleContext = (*moduleContext)(nil)
 type moduleContext struct {
 	baseModuleContext
 	scope              *localScope
-	ninjaFileDeps      []string
 	actionDefs         localBuildActions
 	handledMissingDeps bool
 }
@@ -431,6 +430,10 @@ func (m *baseModuleContext) WalkDeps(visit func(Module, Module) bool) {
 	m.visitingDep = depInfo{}
 }
 
+func (m *baseModuleContext) AddNinjaFileDeps(deps ...string) {
+	m.ninjaFileDeps = append(m.ninjaFileDeps, deps...)
+}
+
 func (m *moduleContext) ModuleSubDir() string {
 	return m.module.variantName
 }
@@ -470,10 +473,6 @@ func (m *moduleContext) Build(pctx PackageContext, params BuildParams) {
 	}
 
 	m.actionDefs.buildDefs = append(m.actionDefs.buildDefs, def)
-}
-
-func (m *moduleContext) AddNinjaFileDeps(deps ...string) {
-	m.ninjaFileDeps = append(m.ninjaFileDeps, deps...)
 }
 
 func (m *moduleContext) PrimaryModule() Module {
