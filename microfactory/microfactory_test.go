@@ -28,7 +28,7 @@ import (
 func TestSimplePackagePathMap(t *testing.T) {
 	t.Parallel()
 
-	var pkgMap pkgPathMapping
+	pkgMap := pkgPathMappingVar{&Config{}}
 	flags := flag.NewFlagSet("", flag.ContinueOnError)
 	flags.Var(&pkgMap, "m", "")
 	err := flags.Parse([]string{
@@ -73,7 +73,7 @@ func TestSimplePackagePathMap(t *testing.T) {
 func TestBadPackagePathMap(t *testing.T) {
 	t.Parallel()
 
-	var pkgMap pkgPathMapping
+	pkgMap := pkgPathMappingVar{&Config{}}
 	if _, _, err := pkgMap.Path("testing"); err == nil {
 		t.Error("Expected error if no maps are specified")
 	}
@@ -97,17 +97,17 @@ func TestBadPackagePathMap(t *testing.T) {
 func TestSingleBuild(t *testing.T) {
 	t.Parallel()
 
-	setupDir(t, func(dir string, loadPkg loadPkgFunc) {
+	setupDir(t, func(config *Config, dir string, loadPkg loadPkgFunc) {
 		// The output binary
 		out := filepath.Join(dir, "out", "test")
 
 		pkg := loadPkg()
 
-		if err := pkg.Compile(filepath.Join(dir, "out"), ""); err != nil {
+		if err := pkg.Compile(config, filepath.Join(dir, "out")); err != nil {
 			t.Fatalf("Got error when compiling:", err)
 		}
 
-		if err := pkg.Link(out); err != nil {
+		if err := pkg.Link(config, out); err != nil {
 			t.Fatal("Got error when linking:", err)
 		}
 
@@ -122,22 +122,22 @@ func TestSingleBuild(t *testing.T) {
 // to rebuild anything based on the shouldRebuild argument.
 func testBuildAgain(t *testing.T,
 	shouldRecompile, shouldRelink bool,
-	modify func(dir string, loadPkg loadPkgFunc),
+	modify func(config *Config, dir string, loadPkg loadPkgFunc),
 	after func(pkg *GoPackage)) {
 
 	t.Parallel()
 
-	setupDir(t, func(dir string, loadPkg loadPkgFunc) {
+	setupDir(t, func(config *Config, dir string, loadPkg loadPkgFunc) {
 		// The output binary
 		out := filepath.Join(dir, "out", "test")
 
 		pkg := loadPkg()
 
-		if err := pkg.Compile(filepath.Join(dir, "out"), ""); err != nil {
+		if err := pkg.Compile(config, filepath.Join(dir, "out")); err != nil {
 			t.Fatal("Got error when compiling:", err)
 		}
 
-		if err := pkg.Link(out); err != nil {
+		if err := pkg.Link(config, out); err != nil {
 			t.Fatal("Got error when linking:", err)
 		}
 
@@ -155,11 +155,11 @@ func testBuildAgain(t *testing.T,
 			time.Sleep(1100 * time.Millisecond)
 		}
 
-		modify(dir, loadPkg)
+		modify(config, dir, loadPkg)
 
 		pkg = loadPkg()
 
-		if err := pkg.Compile(filepath.Join(dir, "out"), ""); err != nil {
+		if err := pkg.Compile(config, filepath.Join(dir, "out")); err != nil {
 			t.Fatal("Got error when compiling:", err)
 		}
 		if shouldRecompile {
@@ -172,7 +172,7 @@ func testBuildAgain(t *testing.T,
 			}
 		}
 
-		if err := pkg.Link(out); err != nil {
+		if err := pkg.Link(config, out); err != nil {
 			t.Fatal("Got error while linking:", err)
 		}
 		if shouldRelink {
@@ -208,14 +208,14 @@ func testBuildAgain(t *testing.T,
 // TestRebuildAfterNoChanges ensures that we don't rebuild if nothing
 // changes
 func TestRebuildAfterNoChanges(t *testing.T) {
-	testBuildAgain(t, false, false, func(dir string, loadPkg loadPkgFunc) {}, func(pkg *GoPackage) {})
+	testBuildAgain(t, false, false, func(config *Config, dir string, loadPkg loadPkgFunc) {}, func(pkg *GoPackage) {})
 }
 
 // TestRebuildAfterTimestamp ensures that we don't rebuild because
 // timestamps of important files have changed. We should only rebuild if the
 // content hashes are different.
 func TestRebuildAfterTimestampChange(t *testing.T) {
-	testBuildAgain(t, false, false, func(dir string, loadPkg loadPkgFunc) {
+	testBuildAgain(t, false, false, func(config *Config, dir string, loadPkg loadPkgFunc) {
 		// Ensure that we've spent some amount of time asleep
 		time.Sleep(100 * time.Millisecond)
 
@@ -231,7 +231,7 @@ func TestRebuildAfterTimestampChange(t *testing.T) {
 // TestRebuildAfterGoChange ensures that we rebuild after a content change
 // to a package's go file.
 func TestRebuildAfterGoChange(t *testing.T) {
-	testBuildAgain(t, true, true, func(dir string, loadPkg loadPkgFunc) {
+	testBuildAgain(t, true, true, func(config *Config, dir string, loadPkg loadPkgFunc) {
 		if err := ioutil.WriteFile(filepath.Join(dir, "a", "a.go"), []byte(go_a_a+"\n"), 0666); err != nil {
 			t.Fatal("Error writing a/a.go:", err)
 		}
@@ -248,7 +248,7 @@ func TestRebuildAfterGoChange(t *testing.T) {
 // TestRebuildAfterMainChange ensures that we don't rebuild any dependencies
 // if only the main package's go files are touched.
 func TestRebuildAfterMainChange(t *testing.T) {
-	testBuildAgain(t, true, true, func(dir string, loadPkg loadPkgFunc) {
+	testBuildAgain(t, true, true, func(config *Config, dir string, loadPkg loadPkgFunc) {
 		if err := ioutil.WriteFile(filepath.Join(dir, "main", "main.go"), []byte(go_main_main+"\n"), 0666); err != nil {
 			t.Fatal("Error writing main/main.go:", err)
 		}
@@ -265,7 +265,7 @@ func TestRebuildAfterMainChange(t *testing.T) {
 // TestRebuildAfterRemoveOut ensures that we rebuild if the output file is
 // missing, even if everything else doesn't need rebuilding.
 func TestRebuildAfterRemoveOut(t *testing.T) {
-	testBuildAgain(t, false, true, func(dir string, loadPkg loadPkgFunc) {
+	testBuildAgain(t, false, true, func(config *Config, dir string, loadPkg loadPkgFunc) {
 		if err := os.Remove(filepath.Join(dir, "out", "test")); err != nil {
 			t.Fatal("Failed to remove output:", err)
 		}
@@ -275,14 +275,14 @@ func TestRebuildAfterRemoveOut(t *testing.T) {
 // TestRebuildAfterPartialBuild ensures that even if the build was interrupted
 // between the recompile and relink stages, we'll still relink when we run again.
 func TestRebuildAfterPartialBuild(t *testing.T) {
-	testBuildAgain(t, false, true, func(dir string, loadPkg loadPkgFunc) {
+	testBuildAgain(t, false, true, func(config *Config, dir string, loadPkg loadPkgFunc) {
 		if err := ioutil.WriteFile(filepath.Join(dir, "main", "main.go"), []byte(go_main_main+"\n"), 0666); err != nil {
 			t.Fatal("Error writing main/main.go:", err)
 		}
 
 		pkg := loadPkg()
 
-		if err := pkg.Compile(filepath.Join(dir, "out"), ""); err != nil {
+		if err := pkg.Compile(config, filepath.Join(dir, "out")); err != nil {
 			t.Fatal("Got error when compiling:", err)
 		}
 		if !pkg.rebuilt {
@@ -295,13 +295,13 @@ func TestRebuildAfterPartialBuild(t *testing.T) {
 // inputs).
 func BenchmarkInitialBuild(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		setupDir(b, func(dir string, loadPkg loadPkgFunc) {
+		setupDir(b, func(config *Config, dir string, loadPkg loadPkgFunc) {
 			pkg := loadPkg()
-			if err := pkg.Compile(filepath.Join(dir, "out"), ""); err != nil {
+			if err := pkg.Compile(config, filepath.Join(dir, "out")); err != nil {
 				b.Fatal("Got error when compiling:", err)
 			}
 
-			if err := pkg.Link(filepath.Join(dir, "out", "test")); err != nil {
+			if err := pkg.Link(config, filepath.Join(dir, "out", "test")); err != nil {
 				b.Fatal("Got error when linking:", err)
 			}
 		})
@@ -311,14 +311,14 @@ func BenchmarkInitialBuild(b *testing.B) {
 // BenchmarkMinIncrementalBuild computes how long an incremental build that
 // doesn't actually need to build anything takes.
 func BenchmarkMinIncrementalBuild(b *testing.B) {
-	setupDir(b, func(dir string, loadPkg loadPkgFunc) {
+	setupDir(b, func(config *Config, dir string, loadPkg loadPkgFunc) {
 		pkg := loadPkg()
 
-		if err := pkg.Compile(filepath.Join(dir, "out"), ""); err != nil {
+		if err := pkg.Compile(config, filepath.Join(dir, "out")); err != nil {
 			b.Fatal("Got error when compiling:", err)
 		}
 
-		if err := pkg.Link(filepath.Join(dir, "out", "test")); err != nil {
+		if err := pkg.Link(config, filepath.Join(dir, "out", "test")); err != nil {
 			b.Fatal("Got error when linking:", err)
 		}
 
@@ -327,11 +327,11 @@ func BenchmarkMinIncrementalBuild(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			pkg := loadPkg()
 
-			if err := pkg.Compile(filepath.Join(dir, "out"), ""); err != nil {
+			if err := pkg.Compile(config, filepath.Join(dir, "out")); err != nil {
 				b.Fatal("Got error when compiling:", err)
 			}
 
-			if err := pkg.Link(filepath.Join(dir, "out", "test")); err != nil {
+			if err := pkg.Link(config, filepath.Join(dir, "out", "test")); err != nil {
 				b.Fatal("Got error when linking:", err)
 			}
 
@@ -381,7 +381,7 @@ type T interface {
 
 type loadPkgFunc func() *GoPackage
 
-func setupDir(t T, test func(dir string, loadPkg loadPkgFunc)) {
+func setupDir(t T, test func(config *Config, dir string, loadPkg loadPkgFunc)) {
 	dir, err := ioutil.TempDir("", "test")
 	if err != nil {
 		t.Fatalf("Error creating temporary directory: %#v", err)
@@ -406,17 +406,18 @@ func setupDir(t T, test func(dir string, loadPkg loadPkgFunc)) {
 	writeFile("a/b.go", go_a_b)
 	writeFile("b/a.go", go_b_a)
 
+	config := &Config{}
+	config.Map("android/soong", dir)
+
 	loadPkg := func() *GoPackage {
 		pkg := &GoPackage{
 			Name: "main",
 		}
-		pkgMap := &pkgPathMapping{}
-		pkgMap.Set("android/soong=" + dir)
-		if err := pkg.FindDeps(filepath.Join(dir, "main"), pkgMap); err != nil {
+		if err := pkg.FindDeps(config, filepath.Join(dir, "main")); err != nil {
 			t.Fatalf("Error finding deps: %v", err)
 		}
 		return pkg
 	}
 
-	test(dir, loadPkg)
+	test(config, dir, loadPkg)
 }
