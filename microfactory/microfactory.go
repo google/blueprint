@@ -35,10 +35,10 @@
 // paths.
 //
 // If you don't have a previously built version of Microfactory, when used with
-// -s <microfactory_src_dir> -b <microfactory_bin_file>, Microfactory can
-// rebuild itself as necessary. Combined with a shell script like soong_ui.bash
-// that uses `go run` to run Microfactory for the first time, go programs can be
-// quickly bootstrapped entirely from source (and a standard go distribution).
+// -b <microfactory_bin_file>, Microfactory can rebuild itself as necessary.
+// Combined with a shell script like microfactory.bash that uses `go run` to
+// run Microfactory for the first time, go programs can be quickly bootstrapped
+// entirely from source (and a standard go distribution).
 package main
 
 import (
@@ -429,10 +429,20 @@ func (p *GoPackage) Link(out string) error {
 // rebuildMicrofactory checks to see if microfactory itself needs to be rebuilt,
 // and if does, it will launch a new copy and return true. Otherwise it will return
 // false to continue executing.
-func rebuildMicrofactory(mybin, mysrc string, pkgMap *pkgPathMapping) bool {
+func rebuildMicrofactory(mybin string, pkgMap *pkgPathMapping) bool {
+	mysrc, ok, err := pkgMap.Path("github.com/google/blueprint/microfactory")
+	if err != nil {
+		fmt.Println(os.Stderr, "Error finding microfactory source:", err)
+		os.Exit(1)
+	}
+	if !ok {
+		fmt.Println(os.Stderr, "Could not find microfactory source")
+		os.Exit(1)
+	}
+
 	intermediates := filepath.Join(filepath.Dir(mybin), "."+filepath.Base(mybin)+"_intermediates")
 
-	err := os.MkdirAll(intermediates, 0777)
+	err = os.MkdirAll(intermediates, 0777)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Failed to create intermediates directory: %v", err)
 		os.Exit(1)
@@ -492,14 +502,13 @@ func un(f func()) {
 }
 
 func main() {
-	var output, mysrc, mybin, trimPath string
+	var output, mybin, trimPath string
 	var pkgMap pkgPathMapping
 
 	flags := flag.NewFlagSet("", flag.ExitOnError)
 	flags.BoolVar(&race, "race", false, "enable data race detection.")
 	flags.BoolVar(&verbose, "v", false, "Verbose")
 	flags.StringVar(&output, "o", "", "Output file")
-	flags.StringVar(&mysrc, "s", "", "Microfactory source directory (for rebuilding microfactory if necessary)")
 	flags.StringVar(&mybin, "b", "", "Microfactory binary location")
 	flags.StringVar(&trimPath, "trimpath", "", "remove prefix from recorded source file paths")
 	flags.Var(&pkgMap, "pkg-path", "Mapping of package prefixes to file paths")
@@ -522,8 +531,8 @@ func main() {
 		defer un(trace("microfactory <unknown>"))
 	}
 
-	if mybin != "" && mysrc != "" {
-		if rebuildMicrofactory(mybin, mysrc, &pkgMap) {
+	if mybin != "" {
+		if rebuildMicrofactory(mybin, &pkgMap) {
 			return
 		}
 	}

@@ -31,7 +31,7 @@ function build_go
 {
     # Increment when microfactory changes enough that it cannot rebuild itself.
     # For example, if we use a new command line argument that doesn't work on older versions.
-    local mf_version=2
+    local mf_version=3
 
     local mf_src="${BLUEPRINTDIR}/microfactory"
     local mf_bin="${BUILDDIR}/microfactory_$(uname)"
@@ -54,13 +54,13 @@ function build_go
 
     rm -f "${BUILDDIR}/.$1.trace"
     # GOROOT must be absolute because `go run` changes the local directory
-    GOROOT=$(cd $GOROOT; pwd) ${mf_cmd} -s "${mf_src}" -b "${mf_bin}" \
+    GOROOT=$(cd $GOROOT; pwd) ${mf_cmd} -b "${mf_bin}" \
             -pkg-path "github.com/google/blueprint=${BLUEPRINTDIR}" \
             -trimpath "${SRCDIR}" \
             ${EXTRA_ARGS} \
             -o "${built_bin}" $2
 
-    if [ $from_src -eq 1 ]; then
+    if [ $? -eq 0 ] && [ $from_src -eq 1 ]; then
         echo "${mf_version}" >"${mf_version_file}"
     fi
 }
