@@ -520,17 +520,18 @@ func (c *Context) SetAllowMissingDependencies(allowMissingDependencies bool) {
 	c.allowMissingDependencies = allowMissingDependencies
 }
 
-// Parse parses a single Blueprints file from r, creating Module objects for
-// each of the module definitions encountered.  If the Blueprints file contains
-// an assignment to the "subdirs" variable, then the subdirectories listed are
-// searched for Blueprints files returned in the subBlueprints return value.
-// If the Blueprints file contains an assignment to the "build" variable, then
-// the file listed are returned in the subBlueprints return value.
+// parseOne parses a single Blueprints file from the given reader, creating Module
+// objects for each of the module definitions encountered.  If the Blueprints
+// file contains an assignment to the "subdirs" variable, then the
+// subdirectories listed are searched for Blueprints files returned in the
+// subBlueprints return value.  If the Blueprints file contains an assignment
+// to the "build" variable, then the file listed are returned in the
+// subBlueprints return value.
 //
 // rootDir specifies the path to the root directory of the source tree, while
 // filename specifies the path to the Blueprints file.  These paths are used for
 // error reporting and for determining the module's directory.
-func (c *Context) parse(rootDir, filename string, r io.Reader,
+func (c *Context) parseOne(rootDir, filename string, reader io.Reader,
 	scope *parser.Scope) (file *parser.File, subBlueprints []stringAndScope, errs []error) {
 
 	relBlueprintsFile, err := filepath.Rel(rootDir, filename)
@@ -542,7 +543,7 @@ func (c *Context) parse(rootDir, filename string, r io.Reader,
 	scope.Remove("subdirs")
 	scope.Remove("optional_subdirs")
 	scope.Remove("build")
-	file, errs = parser.ParseAndEval(filename, r, scope)
+	file, errs = parser.ParseAndEval(filename, reader, scope)
 	if len(errs) > 0 {
 		for i, err := range errs {
 			if parseErr, ok := err.(*parser.ParseError); ok {
@@ -634,7 +635,7 @@ func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string,
 	var numGoroutines int32
 
 	// handler must be reentrant
-	handler := func(file *parser.File) {
+	handleOneFile := func(file *parser.File) {
 		if atomic.LoadUint32(&numErrs) > maxErrors {
 			return
 		}
@@ -667,7 +668,7 @@ func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string,
 	atomic.AddInt32(&numGoroutines, 1)
 	go func() {
 		var errs []error
-		deps, errs = c.WalkBlueprintsFiles(rootFile, handler)
+		deps, errs = c.WalkBlueprintsFiles(rootFile, handleOneFile)
 		if len(errs) > 0 {
 			errsCh <- errs
 		}
@@ -697,7 +698,7 @@ loop:
 
 type FileHandler func(*parser.File)
 
-// Walk a set of Blueprints files starting with the file at rootFile, calling handler on each.
+// Walk a set of Blueprints files starting with the file at rootFile, calling <visitor> on each.
 // When it encounters a Blueprints file with a set of subdirs listed it recursively parses any
 // Blueprints files found in those subdirectories.  handler will be called from a goroutine, so
 // it must be reentrant.
@@ -706,34 +707,35 @@ type FileHandler func(*parser.File)
 // which the future output will depend is returned.  This list will include both
 // Blueprints file paths as well as directory paths for cases where wildcard
 // subdirs are found.
-func (c *Context) WalkBlueprintsFiles(rootFile string, handler FileHandler) (deps []string,
+func (c *Context) WalkBlueprintsFiles(rootFile string, visitor FileHandler) (deps []string,
 	errs []error) {
 
 	rootDir := filepath.Dir(rootFile)
 
 	blueprintsSet := make(map[string]bool)
 
-	// Channels to receive data back from parseBlueprintsFile goroutines
+	// Channels to receive data back from parseOneAsync goroutines
 	blueprintsCh := make(chan stringAndScope)
 	errsCh := make(chan []error)
 	fileCh := make(chan *parser.File)
 	depsCh := make(chan string)
 
-	// Channel to notify main loop that a parseBlueprintsFile goroutine has finished
+	// Channel to notify main loop that a parseOneAsync goroutine has finished
 	doneCh := make(chan struct{})
 
 	// Number of outstanding goroutines to wait for
-	count := 0
+	activeCount := 0
 
 	startParseBlueprintsFile := func(blueprint stringAndScope) {
 		if blueprintsSet[blueprint.string] {
 			return
 		}
 		blueprintsSet[blueprint.string] = true
-		count++
+		activeCount++
 		go func() {
-			c.parseBlueprintsFile(blueprint.string, blueprint.Scope, rootDir,
+			c.parseOneAsync(blueprint.string, blueprint.Scope, rootDir,
 				errsCh, fileCh, blueprintsCh, depsCh)
+
 			doneCh <- struct{}{}
 		}()
 	}
@@ -756,25 +758,25 @@ loop:
 		case dep := <-depsCh:
 			deps = append(deps, dep)
 		case file := <-fileCh:
-			handler(file)
+			visitor(file)
 		case blueprint := <-blueprintsCh:
 			if tooManyErrors {
 				continue
 			}
 			// Limit concurrent calls to parseBlueprintFiles to 200
 			// Darwin has a default limit of 256 open files
-			if count >= 200 {
+			if activeCount >= 200 {
 				pending = append(pending, blueprint)
 				continue
 			}
 			startParseBlueprintsFile(blueprint)
 		case <-doneCh:
-			count--
+			activeCount--
 			if len(pending) > 0 {
 				startParseBlueprintsFile(pending[len(pending)-1])
 				pending = pending[:len(pending)-1]
 			}
-			if count == 0 {
+			if activeCount == 0 {
 				break loop
 			}
 		}
@@ -789,11 +791,15 @@ func (c *Context) MockFileSystem(files map[string][]byte) {
 	c.fs = pathtools.MockFs(files)
 }
 
-// parseBlueprintFile parses a single Blueprints file, returning any errors through
-// errsCh, any defined modules through modulesCh, any sub-Blueprints files through
-// blueprintsCh, and any dependencies on Blueprints files or directories through
-// depsCh.
-func (c *Context) parseBlueprintsFile(filename string, scope *parser.Scope, rootDir string,
+// parseOneAsync parses a single Blueprints file, and sends results through the provided channels
+//
+// Errors are returned through errsCh.
+// Any defined modules are returned through modulesCh.
+// Any sub-Blueprints files are returned through blueprintsCh.
+// Any dependencies on Blueprints files or directories are returned through depsCh.
+// When processing completes (and all other channel responses have been sent successfully),
+// an empty struct is passed into doneCh.
+func (c *Context) parseOneAsync(filename string, scope *parser.Scope, rootDir string,
 	errsCh chan<- []error, fileCh chan<- *parser.File, blueprintsCh chan<- stringAndScope,
 	depsCh chan<- string) {
 
@@ -826,7 +832,7 @@ func (c *Context) parseBlueprintsFile(filename string, scope *parser.Scope, root
 		}
 	}()
 
-	file, subBlueprints, errs := c.parse(rootDir, filename, f, scope)
+	file, subBlueprints, errs := c.parseOne(rootDir, filename, f, scope)
 	if len(errs) > 0 {
 		errsCh <- errs
 	} else {
