@@ -520,95 +520,6 @@ func (c *Context) SetAllowMissingDependencies(allowMissingDependencies bool) {
 	c.allowMissingDependencies = allowMissingDependencies
 }
 
-// parseOne parses a single Blueprints file from the given reader, creating Module
-// objects for each of the module definitions encountered.  If the Blueprints
-// file contains an assignment to the "subdirs" variable, then the
-// subdirectories listed are searched for Blueprints files returned in the
-// subBlueprints return value.  If the Blueprints file contains an assignment
-// to the "build" variable, then the file listed are returned in the
-// subBlueprints return value.
-//
-// rootDir specifies the path to the root directory of the source tree, while
-// filename specifies the path to the Blueprints file.  These paths are used for
-// error reporting and for determining the module's directory.
-func (c *Context) parseOne(rootDir, filename string, reader io.Reader,
-	scope *parser.Scope) (file *parser.File, subBlueprints []stringAndScope, errs []error) {
-
-	relBlueprintsFile, err := filepath.Rel(rootDir, filename)
-	if err != nil {
-		return nil, nil, []error{err}
-	}
-
-	scope = parser.NewScope(scope)
-	scope.Remove("subdirs")
-	scope.Remove("optional_subdirs")
-	scope.Remove("build")
-	file, errs = parser.ParseAndEval(filename, reader, scope)
-	if len(errs) > 0 {
-		for i, err := range errs {
-			if parseErr, ok := err.(*parser.ParseError); ok {
-				err = &BlueprintError{
-					Err: parseErr.Err,
-					Pos: parseErr.Pos,
-				}
-				errs[i] = err
-			}
-		}
-
-		// If there were any parse errors don't bother trying to interpret the
-		// result.
-		return nil, nil, errs
-	}
-	file.Name = relBlueprintsFile
-
-	subdirs, subdirsPos, err := getLocalStringListFromScope(scope, "subdirs")
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	optionalSubdirs, optionalSubdirsPos, err := getLocalStringListFromScope(scope, "optional_subdirs")
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	build, buildPos, err := getLocalStringListFromScope(scope, "build")
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	subBlueprintsName, _, err := getStringFromScope(scope, "subname")
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	if subBlueprintsName == "" {
-		subBlueprintsName = "Blueprints"
-	}
-
-	var blueprints []string
-
-	newBlueprints, newErrs := c.findBuildBlueprints(filepath.Dir(filename), build, buildPos)
-	blueprints = append(blueprints, newBlueprints...)
-	errs = append(errs, newErrs...)
-
-	newBlueprints, newErrs = c.findSubdirBlueprints(filepath.Dir(filename), subdirs, subdirsPos,
-		subBlueprintsName, false)
-	blueprints = append(blueprints, newBlueprints...)
-	errs = append(errs, newErrs...)
-
-	newBlueprints, newErrs = c.findSubdirBlueprints(filepath.Dir(filename), optionalSubdirs,
-		optionalSubdirsPos, subBlueprintsName, true)
-	blueprints = append(blueprints, newBlueprints...)
-	errs = append(errs, newErrs...)
-
-	subBlueprintsAndScope := make([]stringAndScope, len(blueprints))
-	for i, b := range blueprints {
-		subBlueprintsAndScope[i] = stringAndScope{b, scope}
-	}
-
-	return file, subBlueprintsAndScope, errs
-}
-
 type stringAndScope struct {
 	string
 	*parser.Scope
@@ -843,6 +754,95 @@ func (c *Context) parseOneAsync(filename string, scope *parser.Scope, rootDir st
 		blueprintsCh <- b
 		depsCh <- b.string
 	}
+}
+
+// parseOne parses a single Blueprints file from the given reader, creating Module
+// objects for each of the module definitions encountered.  If the Blueprints
+// file contains an assignment to the "subdirs" variable, then the
+// subdirectories listed are searched for Blueprints files returned in the
+// subBlueprints return value.  If the Blueprints file contains an assignment
+// to the "build" variable, then the file listed are returned in the
+// subBlueprints return value.
+//
+// rootDir specifies the path to the root directory of the source tree, while
+// filename specifies the path to the Blueprints file.  These paths are used for
+// error reporting and for determining the module's directory.
+func (c *Context) parseOne(rootDir, filename string, reader io.Reader,
+	scope *parser.Scope) (file *parser.File, subBlueprints []stringAndScope, errs []error) {
+
+	relBlueprintsFile, err := filepath.Rel(rootDir, filename)
+	if err != nil {
+		return nil, nil, []error{err}
+	}
+
+	scope = parser.NewScope(scope)
+	scope.Remove("subdirs")
+	scope.Remove("optional_subdirs")
+	scope.Remove("build")
+	file, errs = parser.ParseAndEval(filename, reader, scope)
+	if len(errs) > 0 {
+		for i, err := range errs {
+			if parseErr, ok := err.(*parser.ParseError); ok {
+				err = &BlueprintError{
+					Err: parseErr.Err,
+					Pos: parseErr.Pos,
+				}
+				errs[i] = err
+			}
+		}
+
+		// If there were any parse errors don't bother trying to interpret the
+		// result.
+		return nil, nil, errs
+	}
+	file.Name = relBlueprintsFile
+
+	subdirs, subdirsPos, err := getLocalStringListFromScope(scope, "subdirs")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	optionalSubdirs, optionalSubdirsPos, err := getLocalStringListFromScope(scope, "optional_subdirs")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	build, buildPos, err := getLocalStringListFromScope(scope, "build")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	subBlueprintsName, _, err := getStringFromScope(scope, "subname")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	if subBlueprintsName == "" {
+		subBlueprintsName = "Blueprints"
+	}
+
+	var blueprints []string
+
+	newBlueprints, newErrs := c.findBuildBlueprints(filepath.Dir(filename), build, buildPos)
+	blueprints = append(blueprints, newBlueprints...)
+	errs = append(errs, newErrs...)
+
+	newBlueprints, newErrs = c.findSubdirBlueprints(filepath.Dir(filename), subdirs, subdirsPos,
+		subBlueprintsName, false)
+	blueprints = append(blueprints, newBlueprints...)
+	errs = append(errs, newErrs...)
+
+	newBlueprints, newErrs = c.findSubdirBlueprints(filepath.Dir(filename), optionalSubdirs,
+		optionalSubdirsPos, subBlueprintsName, true)
+	blueprints = append(blueprints, newBlueprints...)
+	errs = append(errs, newErrs...)
+
+	subBlueprintsAndScope := make([]stringAndScope, len(blueprints))
+	for i, b := range blueprints {
+		subBlueprintsAndScope[i] = stringAndScope{b, scope}
+	}
+
+	return file, subBlueprintsAndScope, errs
 }
 
 func (c *Context) findBuildBlueprints(dir string, build []string,
