@@ -88,6 +88,8 @@ type Config struct {
 
 	TrimPath string
 
+	TraceFunc func(name string) func()
+
 	pkgs  []string
 	paths map[string]string
 }
@@ -123,6 +125,18 @@ func (c *Config) Path(pkg string) (string, bool, error) {
 	}
 
 	return "", false, nil
+}
+
+func (c *Config) trace(format string, a ...interface{}) func() {
+	if c.TraceFunc == nil {
+		return func() {}
+	}
+	s := strings.TrimSpace(fmt.Sprintf(format, a...))
+	return c.TraceFunc(s)
+}
+
+func un(f func()) {
+	f()
 }
 
 type GoPackage struct {
@@ -174,7 +188,7 @@ func (s *linkedDepSet) ignore(name string) {
 // for import dependencies that exist in pkgMap, then recursively does the
 // same for all of those dependencies.
 func (p *GoPackage) FindDeps(config *Config, path string) error {
-	defer un(trace("findDeps"))
+	defer un(config.trace("findDeps"))
 
 	depSet := newDepSet()
 	err := p.findDeps(config, path, depSet)
@@ -304,7 +318,7 @@ func (p *GoPackage) Compile(config *Config, outDir string) error {
 		}
 	}
 
-	endTrace := trace("check compile %s", p.Name)
+	endTrace := config.trace("check compile %s", p.Name)
 
 	p.pkgDir = filepath.Join(outDir, strings.Replace(p.Name, "/", "-", -1))
 	p.output = filepath.Join(p.pkgDir, p.Name) + ".a"
@@ -371,7 +385,7 @@ func (p *GoPackage) Compile(config *Config, outDir string) error {
 	if !rebuild {
 		return nil
 	}
-	defer un(trace("compile %s", p.Name))
+	defer un(config.trace("compile %s", p.Name))
 
 	err := os.RemoveAll(p.pkgDir)
 	if err != nil {
@@ -416,7 +430,7 @@ func (p *GoPackage) Link(config *Config, out string) error {
 	if p.Name != "main" {
 		return fmt.Errorf("Can only link main package")
 	}
-	endTrace := trace("check link %s", p.Name)
+	endTrace := config.trace("check link %s", p.Name)
 
 	shaFile := filepath.Join(filepath.Dir(out), "."+filepath.Base(out)+"_hash")
 
@@ -433,7 +447,7 @@ func (p *GoPackage) Link(config *Config, out string) error {
 	if !p.rebuilt {
 		return nil
 	}
-	defer un(trace("link %s", p.Name))
+	defer un(config.trace("link %s", p.Name))
 
 	err := os.Remove(shaFile)
 	if err != nil && !os.IsNotExist(err) {
@@ -520,23 +534,6 @@ func rebuildMicrofactory(config *Config, mybin string) bool {
 	return true
 }
 
-var traceFile *os.File
-
-func trace(format string, a ...interface{}) func() {
-	if traceFile == nil {
-		return func() {}
-	}
-	s := strings.TrimSpace(fmt.Sprintf(format, a...))
-	fmt.Fprintf(traceFile, "%d B %s\n", time.Now().UnixNano()/1000, s)
-	return func() {
-		fmt.Fprintf(traceFile, "%d E %s\n", time.Now().UnixNano()/1000, s)
-	}
-}
-
-func un(f func()) {
-	f()
-}
-
 // microfactory.bash will make a copy of this file renamed into the main package for use with `go run`
 func main() { Main() }
 func Main() {
@@ -560,14 +557,19 @@ func Main() {
 	}
 
 	tracePath := filepath.Join(filepath.Dir(output), "."+filepath.Base(output)+".trace")
-	traceFile, err = os.OpenFile(tracePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		traceFile = nil
+	if traceFile, err := os.OpenFile(tracePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666); err == nil {
+		defer traceFile.Close()
+		config.TraceFunc = func(name string) func() {
+			fmt.Fprintf(traceFile, "%d B %s\n", time.Now().UnixNano()/1000, name)
+			return func() {
+				fmt.Fprintf(traceFile, "%d E %s\n", time.Now().UnixNano()/1000, name)
+			}
+		}
 	}
 	if executable, err := os.Executable(); err == nil {
-		defer un(trace("microfactory %s", executable))
+		defer un(config.trace("microfactory %s", executable))
 	} else {
-		defer un(trace("microfactory <unknown>"))
+		defer un(config.trace("microfactory <unknown>"))
 	}
 
 	if mybin != "" {
