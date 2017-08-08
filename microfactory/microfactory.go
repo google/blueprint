@@ -39,7 +39,7 @@
 // Combined with a shell script like microfactory.bash that uses `go run` to
 // run Microfactory for the first time, go programs can be quickly bootstrapped
 // entirely from source (and a standard go distribution).
-package main
+package microfactory
 
 import (
 	"bytes"
@@ -430,7 +430,7 @@ func (p *GoPackage) Link(out string) error {
 // and if does, it will launch a new copy and return true. Otherwise it will return
 // false to continue executing.
 func rebuildMicrofactory(mybin string, pkgMap *pkgPathMapping) bool {
-	mysrc, ok, err := pkgMap.Path("github.com/google/blueprint/microfactory")
+	mysrc, ok, err := pkgMap.Path("github.com/google/blueprint/microfactory/main")
 	if err != nil {
 		fmt.Println(os.Stderr, "Error finding microfactory source:", err)
 		os.Exit(1)
@@ -501,7 +501,9 @@ func un(f func()) {
 	f()
 }
 
-func main() {
+// microfactory.bash will make a copy of this file renamed into the main package for use with `go run`
+func main() { Main() }
+func Main() {
 	var output, mybin, trimPath string
 	var pkgMap pkgPathMapping
 

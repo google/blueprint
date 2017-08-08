@@ -47,7 +47,12 @@ function build_go
 
     local mf_cmd
     if [ $from_src -eq 1 ]; then
-        mf_cmd="${GOROOT}/bin/go run ${mf_src}/microfactory.go"
+        # `go run` requires a single main package, so create one
+        local gen_src_dir="${BUILDDIR}/.microfactory_$(uname)_intermediates/src"
+        mkdir -p "${gen_src_dir}"
+        sed "s/^package microfactory/package main/" "${mf_src}/microfactory.go" >"${gen_src_dir}/microfactory.go"
+
+        mf_cmd="${GOROOT}/bin/go run ${gen_src_dir}/microfactory.go"
     else
         mf_cmd="${mf_bin}"
     fi
