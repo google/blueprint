@@ -35,11 +35,11 @@
 // paths.
 //
 // If you don't have a previously built version of Microfactory, when used with
-// -s <microfactory_src_dir> -b <microfactory_bin_file>, Microfactory can
-// rebuild itself as necessary. Combined with a shell script like soong_ui.bash
-// that uses `go run` to run Microfactory for the first time, go programs can be
-// quickly bootstrapped entirely from source (and a standard go distribution).
-package main
+// -b <microfactory_bin_file>, Microfactory can rebuild itself as necessary.
+// Combined with a shell script like microfactory.bash that uses `go run` to
+// run Microfactory for the first time, go programs can be quickly bootstrapped
+// entirely from source (and a standard go distribution).
+package microfactory
 
 import (
 	"bytes"
@@ -64,9 +64,6 @@ import (
 )
 
 var (
-	race    = false
-	verbose = false
-
 	goToolDir = filepath.Join(runtime.GOROOT(), "pkg", "tool", runtime.GOOS+"_"+runtime.GOARCH)
 	goVersion = findGoVersion()
 	isGo18    = strings.Contains(goVersion, "go1.8")
@@ -83,6 +80,63 @@ func findGoVersion() string {
 	} else {
 		panic(fmt.Sprintf("Unable to discover go version: %v", err))
 	}
+}
+
+type Config struct {
+	Race    bool
+	Verbose bool
+
+	TrimPath string
+
+	TraceFunc func(name string) func()
+
+	pkgs  []string
+	paths map[string]string
+}
+
+func (c *Config) Map(pkgPrefix, pathPrefix string) error {
+	if c.paths == nil {
+		c.paths = make(map[string]string)
+	}
+	if _, ok := c.paths[pkgPrefix]; ok {
+		return fmt.Errorf("Duplicate package prefix: %q", pkgPrefix)
+	}
+
+	c.pkgs = append(c.pkgs, pkgPrefix)
+	c.paths[pkgPrefix] = pathPrefix
+
+	return nil
+}
+
+// Path takes a package name, applies the path mappings and returns the resulting path.
+//
+// If the package isn't mapped, we'll return false to prevent compilation attempts.
+func (c *Config) Path(pkg string) (string, bool, error) {
+	if c == nil || c.paths == nil {
+		return "", false, fmt.Errorf("No package mappings")
+	}
+
+	for _, pkgPrefix := range c.pkgs {
+		if pkg == pkgPrefix {
+			return c.paths[pkgPrefix], true, nil
+		} else if strings.HasPrefix(pkg, pkgPrefix+"/") {
+			return filepath.Join(c.paths[pkgPrefix], strings.TrimPrefix(pkg, pkgPrefix+"/")), true, nil
+		}
+	}
+
+	return "", false, nil
+}
+
+func (c *Config) trace(format string, a ...interface{}) func() {
+	if c.TraceFunc == nil {
+		return func() {}
+	}
+	s := strings.TrimSpace(fmt.Sprintf(format, a...))
+	return c.TraceFunc(s)
+}
+
+func un(f func()) {
+	f()
 }
 
 type GoPackage struct {
@@ -133,11 +187,11 @@ func (s *linkedDepSet) ignore(name string) {
 // FindDeps searches all applicable go files in `path`, parses all of them
 // for import dependencies that exist in pkgMap, then recursively does the
 // same for all of those dependencies.
-func (p *GoPackage) FindDeps(path string, pkgMap *pkgPathMapping) error {
-	defer un(trace("findDeps"))
+func (p *GoPackage) FindDeps(config *Config, path string) error {
+	defer un(config.trace("findDeps"))
 
 	depSet := newDepSet()
-	err := p.findDeps(path, pkgMap, depSet)
+	err := p.findDeps(config, path, depSet)
 	if err != nil {
 		return err
 	}
@@ -148,7 +202,7 @@ func (p *GoPackage) FindDeps(path string, pkgMap *pkgPathMapping) error {
 // findDeps is the recursive version of FindDeps. allPackages is the map of
 // all locally defined packages so that the same dependency of two different
 // packages is only resolved once.
-func (p *GoPackage) findDeps(path string, pkgMap *pkgPathMapping, allPackages *linkedDepSet) error {
+func (p *GoPackage) findDeps(config *Config, path string, allPackages *linkedDepSet) error {
 	// If this ever becomes too slow, we can look at reading the files once instead of twice
 	// But that just complicates things today, and we're already really fast.
 	foundPkgs, err := parser.ParseDir(token.NewFileSet(), path, func(fi os.FileInfo) bool {
@@ -201,7 +255,7 @@ func (p *GoPackage) findDeps(path string, pkgMap *pkgPathMapping, allPackages *l
 			}
 
 			var pkgPath string
-			if path, ok, err := pkgMap.Path(name); err != nil {
+			if path, ok, err := config.Path(name); err != nil {
 				return err
 			} else if !ok {
 				// Probably in the stdlib, but if not, then the compiler will fail with a reasonable error message
@@ -219,7 +273,7 @@ func (p *GoPackage) findDeps(path string, pkgMap *pkgPathMapping, allPackages *l
 			allPackages.add(name, pkg)
 			localDeps[name] = true
 
-			if err := pkg.findDeps(pkgPath, pkgMap, allPackages); err != nil {
+			if err := pkg.findDeps(config, pkgPath, allPackages); err != nil {
 				return err
 			}
 		}
@@ -227,7 +281,7 @@ func (p *GoPackage) findDeps(path string, pkgMap *pkgPathMapping, allPackages *l
 
 	sort.Strings(p.files)
 
-	if verbose {
+	if config.Verbose {
 		fmt.Fprintf(os.Stderr, "Package %q depends on %v\n", p.Name, deps)
 	}
 
@@ -239,7 +293,7 @@ func (p *GoPackage) findDeps(path string, pkgMap *pkgPathMapping, allPackages *l
 	return nil
 }
 
-func (p *GoPackage) Compile(outDir, trimPath string) error {
+func (p *GoPackage) Compile(config *Config, outDir string) error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	if p.compiled {
@@ -253,7 +307,7 @@ func (p *GoPackage) Compile(outDir, trimPath string) error {
 		wg.Add(1)
 		go func(dep *GoPackage) {
 			defer wg.Done()
-			dep.Compile(outDir, trimPath)
+			dep.Compile(config, outDir)
 		}(dep)
 	}
 	wg.Wait()
@@ -264,7 +318,7 @@ func (p *GoPackage) Compile(outDir, trimPath string) error {
 		}
 	}
 
-	endTrace := trace("check compile %s", p.Name)
+	endTrace := config.trace("check compile %s", p.Name)
 
 	p.pkgDir = filepath.Join(outDir, strings.Replace(p.Name, "/", "-", -1))
 	p.output = filepath.Join(p.pkgDir, p.Name) + ".a"
@@ -280,13 +334,13 @@ func (p *GoPackage) Compile(outDir, trimPath string) error {
 	if !isGo18 {
 		cmd.Args = append(cmd.Args, "-c", fmt.Sprintf("%d", runtime.NumCPU()))
 	}
-	if race {
+	if config.Race {
 		cmd.Args = append(cmd.Args, "-race")
 		fmt.Fprintln(hash, "-race")
 	}
-	if trimPath != "" {
-		cmd.Args = append(cmd.Args, "-trimpath", trimPath)
-		fmt.Fprintln(hash, trimPath)
+	if config.TrimPath != "" {
+		cmd.Args = append(cmd.Args, "-trimpath", config.TrimPath)
+		fmt.Fprintln(hash, config.TrimPath)
 	}
 	for _, dep := range p.directDeps {
 		cmd.Args = append(cmd.Args, "-I", dep.pkgDir)
@@ -331,7 +385,7 @@ func (p *GoPackage) Compile(outDir, trimPath string) error {
 	if !rebuild {
 		return nil
 	}
-	defer un(trace("compile %s", p.Name))
+	defer un(config.trace("compile %s", p.Name))
 
 	err := os.RemoveAll(p.pkgDir)
 	if err != nil {
@@ -350,7 +404,7 @@ func (p *GoPackage) Compile(outDir, trimPath string) error {
 	cmd.Stdin = nil
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if verbose {
+	if config.Verbose {
 		fmt.Fprintln(os.Stderr, cmd.Args)
 	}
 	err = cmd.Run()
@@ -372,11 +426,11 @@ func (p *GoPackage) Compile(outDir, trimPath string) error {
 	return nil
 }
 
-func (p *GoPackage) Link(out string) error {
+func (p *GoPackage) Link(config *Config, out string) error {
 	if p.Name != "main" {
 		return fmt.Errorf("Can only link main package")
 	}
-	endTrace := trace("check link %s", p.Name)
+	endTrace := config.trace("check link %s", p.Name)
 
 	shaFile := filepath.Join(filepath.Dir(out), "."+filepath.Base(out)+"_hash")
 
@@ -393,7 +447,7 @@ func (p *GoPackage) Link(out string) error {
 	if !p.rebuilt {
 		return nil
 	}
-	defer un(trace("link %s", p.Name))
+	defer un(config.trace("link %s", p.Name))
 
 	err := os.Remove(shaFile)
 	if err != nil && !os.IsNotExist(err) {
@@ -405,7 +459,7 @@ func (p *GoPackage) Link(out string) error {
 	}
 
 	cmd := exec.Command(filepath.Join(goToolDir, "link"), "-o", out)
-	if race {
+	if config.Race {
 		cmd.Args = append(cmd.Args, "-race")
 	}
 	for _, dep := range p.allDeps {
@@ -415,7 +469,7 @@ func (p *GoPackage) Link(out string) error {
 	cmd.Stdin = nil
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if verbose {
+	if config.Verbose {
 		fmt.Fprintln(os.Stderr, cmd.Args)
 	}
 	err = cmd.Run()
@@ -426,38 +480,44 @@ func (p *GoPackage) Link(out string) error {
 	return ioutil.WriteFile(shaFile, p.hashResult, 0666)
 }
 
-// rebuildMicrofactory checks to see if microfactory itself needs to be rebuilt,
-// and if does, it will launch a new copy and return true. Otherwise it will return
-// false to continue executing.
-func rebuildMicrofactory(mybin, mysrc string, pkgMap *pkgPathMapping) bool {
-	intermediates := filepath.Join(filepath.Dir(mybin), "."+filepath.Base(mybin)+"_intermediates")
-
-	err := os.MkdirAll(intermediates, 0777)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Failed to create intermediates directory: %v", err)
-		os.Exit(1)
-	}
-
-	pkg := &GoPackage{
+func Build(config *Config, out, pkg string) (*GoPackage, error) {
+	p := &GoPackage{
 		Name: "main",
 	}
 
-	if err := pkg.FindDeps(mysrc, pkgMap); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	path, ok, err := config.Path(pkg)
+	if err != nil {
+		return nil, fmt.Errorf("Error finding package %q for main: %v", pkg, err)
+	}
+	if !ok {
+		return nil, fmt.Errorf("Could not find package %q", pkg)
 	}
 
-	if err := pkg.Compile(intermediates, mysrc); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	intermediates := filepath.Join(filepath.Dir(out), "."+filepath.Base(out)+"_intermediates")
+	if err := os.MkdirAll(intermediates, 0777); err != nil {
+		return nil, fmt.Errorf("Failed to create intermediates directory: %v", err)
 	}
 
-	if err := pkg.Link(mybin); err != nil {
+	if err := p.FindDeps(config, path); err != nil {
+		return nil, fmt.Errorf("Failed to find deps: %v", err)
+	}
+	if err := p.Compile(config, intermediates); err != nil {
+		return nil, fmt.Errorf("Failed to compile: %v", err)
+	}
+	if err := p.Link(config, out); err != nil {
+		return nil, fmt.Errorf("Failed to link: %v", err)
+	}
+	return p, nil
+}
+
+// rebuildMicrofactory checks to see if microfactory itself needs to be rebuilt,
+// and if does, it will launch a new copy and return true. Otherwise it will return
+// false to continue executing.
+func rebuildMicrofactory(config *Config, mybin string) bool {
+	if pkg, err := Build(config, mybin, "github.com/google/blueprint/microfactory/main"); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
-	}
-
-	if !pkg.rebuilt {
+	} else if !pkg.rebuilt {
 		return false
 	}
 
@@ -474,34 +534,19 @@ func rebuildMicrofactory(mybin, mysrc string, pkgMap *pkgPathMapping) bool {
 	return true
 }
 
-var traceFile *os.File
-
-func trace(format string, a ...interface{}) func() {
-	if traceFile == nil {
-		return func() {}
-	}
-	s := strings.TrimSpace(fmt.Sprintf(format, a...))
-	fmt.Fprintf(traceFile, "%d B %s\n", time.Now().UnixNano()/1000, s)
-	return func() {
-		fmt.Fprintf(traceFile, "%d E %s\n", time.Now().UnixNano()/1000, s)
-	}
-}
-
-func un(f func()) {
-	f()
-}
-
-func main() {
-	var output, mysrc, mybin, trimPath string
-	var pkgMap pkgPathMapping
+// microfactory.bash will make a copy of this file renamed into the main package for use with `go run`
+func main() { Main() }
+func Main() {
+	var output, mybin string
+	var config Config
+	pkgMap := pkgPathMappingVar{&config}
 
 	flags := flag.NewFlagSet("", flag.ExitOnError)
-	flags.BoolVar(&race, "race", false, "enable data race detection.")
-	flags.BoolVar(&verbose, "v", false, "Verbose")
+	flags.BoolVar(&config.Race, "race", false, "enable data race detection.")
+	flags.BoolVar(&config.Verbose, "v", false, "Verbose")
 	flags.StringVar(&output, "o", "", "Output file")
-	flags.StringVar(&mysrc, "s", "", "Microfactory source directory (for rebuilding microfactory if necessary)")
 	flags.StringVar(&mybin, "b", "", "Microfactory binary location")
-	flags.StringVar(&trimPath, "trimpath", "", "remove prefix from recorded source file paths")
+	flags.StringVar(&config.TrimPath, "trimpath", "", "remove prefix from recorded source file paths")
 	flags.Var(&pkgMap, "pkg-path", "Mapping of package prefixes to file paths")
 	err := flags.Parse(os.Args[1:])
 
@@ -512,72 +557,42 @@ func main() {
 	}
 
 	tracePath := filepath.Join(filepath.Dir(output), "."+filepath.Base(output)+".trace")
-	traceFile, err = os.OpenFile(tracePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		traceFile = nil
+	if traceFile, err := os.OpenFile(tracePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666); err == nil {
+		defer traceFile.Close()
+		config.TraceFunc = func(name string) func() {
+			fmt.Fprintf(traceFile, "%d B %s\n", time.Now().UnixNano()/1000, name)
+			return func() {
+				fmt.Fprintf(traceFile, "%d E %s\n", time.Now().UnixNano()/1000, name)
+			}
+		}
 	}
 	if executable, err := os.Executable(); err == nil {
-		defer un(trace("microfactory %s", executable))
+		defer un(config.trace("microfactory %s", executable))
 	} else {
-		defer un(trace("microfactory <unknown>"))
+		defer un(config.trace("microfactory <unknown>"))
 	}
 
-	if mybin != "" && mysrc != "" {
-		if rebuildMicrofactory(mybin, mysrc, &pkgMap) {
+	if mybin != "" {
+		if rebuildMicrofactory(&config, mybin) {
 			return
 		}
 	}
 
-	mainPackage := &GoPackage{
-		Name: "main",
-	}
-
-	if path, ok, err := pkgMap.Path(flags.Arg(0)); err != nil {
-		fmt.Fprintln(os.Stderr, "Error finding main path:", err)
-		os.Exit(1)
-	} else if !ok {
-		fmt.Fprintln(os.Stderr, "Cannot find path for", flags.Arg(0))
-	} else {
-		if err := mainPackage.FindDeps(path, &pkgMap); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-	}
-
-	intermediates := filepath.Join(filepath.Dir(output), "."+filepath.Base(output)+"_intermediates")
-
-	err = os.MkdirAll(intermediates, 0777)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Failed to create intermediates directory: %ve", err)
-		os.Exit(1)
-	}
-
-	err = mainPackage.Compile(intermediates, trimPath)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Failed to compile:", err)
-		os.Exit(1)
-	}
-
-	err = mainPackage.Link(output)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "microfactory.go failed to link:", err)
+	if _, err := Build(&config, output, flags.Arg(0)); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
 // pkgPathMapping can be used with flag.Var to parse -pkg-path arguments of
 // <package-prefix>=<path-prefix> mappings.
-type pkgPathMapping struct {
-	pkgs []string
+type pkgPathMappingVar struct{ *Config }
 
-	paths map[string]string
-}
-
-func (pkgPathMapping) String() string {
+func (pkgPathMappingVar) String() string {
 	return "<package-prefix>=<path-prefix>"
 }
 
-func (p *pkgPathMapping) Set(value string) error {
+func (p *pkgPathMappingVar) Set(value string) error {
 	equalPos := strings.Index(value, "=")
 	if equalPos == -1 {
 		return fmt.Errorf("Argument must be in the form of: %q", p.String())
@@ -586,34 +601,5 @@ func (p *pkgPathMapping) Set(value string) error {
 	pkgPrefix := strings.TrimSuffix(value[:equalPos], "/")
 	pathPrefix := strings.TrimSuffix(value[equalPos+1:], "/")
 
-	if p.paths == nil {
-		p.paths = make(map[string]string)
-	}
-	if _, ok := p.paths[pkgPrefix]; ok {
-		return fmt.Errorf("Duplicate package prefix: %q", pkgPrefix)
-	}
-
-	p.pkgs = append(p.pkgs, pkgPrefix)
-	p.paths[pkgPrefix] = pathPrefix
-
-	return nil
-}
-
-// Path takes a package name, applies the path mappings and returns the resulting path.
-//
-// If the package isn't mapped, we'll return false to prevent compilation attempts.
-func (p *pkgPathMapping) Path(pkg string) (string, bool, error) {
-	if p.paths == nil {
-		return "", false, fmt.Errorf("No package mappings")
-	}
-
-	for _, pkgPrefix := range p.pkgs {
-		if pkg == pkgPrefix {
-			return p.paths[pkgPrefix], true, nil
-		} else if strings.HasPrefix(pkg, pkgPrefix+"/") {
-			return filepath.Join(p.paths[pkgPrefix], strings.TrimPrefix(pkg, pkgPrefix+"/")), true, nil
-		}
-	}
-
-	return "", false, nil
+	return p.Map(pkgPrefix, pathPrefix)
 }
