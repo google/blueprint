@@ -176,6 +176,13 @@ bootstrap_go_binary{
 
 blueprint_go_binary {
     name: "microfactory",
+    deps: ["blueprint-microfactory"],
+    srcs: ["microfactory/main/main.go"],
+}
+
+bootstrap_go_package {
+    name: "blueprint-microfactory",
+    pkgPath: "github.com/google/blueprint/microfactory",
     srcs: ["microfactory/microfactory.go"],
     testSrcs: ["microfactory/microfactory_test.go"],
 }
