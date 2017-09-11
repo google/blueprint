@@ -878,16 +878,6 @@ func (c *Context) parseOne(rootDir, filename string, reader io.Reader,
 	}
 	file.Name = relBlueprintsFile
 
-	subdirs, subdirsPos, err := getLocalStringListFromScope(scope, "subdirs")
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	optionalSubdirs, optionalSubdirsPos, err := getLocalStringListFromScope(scope, "optional_subdirs")
-	if err != nil {
-		errs = append(errs, err)
-	}
-
 	build, buildPos, err := getLocalStringListFromScope(scope, "build")
 	if err != nil {
 		errs = append(errs, err)
@@ -905,16 +895,6 @@ func (c *Context) parseOne(rootDir, filename string, reader io.Reader,
 	var blueprints []string
 
 	newBlueprints, newErrs := c.findBuildBlueprints(filepath.Dir(filename), build, buildPos)
-	blueprints = append(blueprints, newBlueprints...)
-	errs = append(errs, newErrs...)
-
-	newBlueprints, newErrs = c.findSubdirBlueprints(filepath.Dir(filename), subdirs, subdirsPos,
-		subBlueprintsName, false)
-	blueprints = append(blueprints, newBlueprints...)
-	errs = append(errs, newErrs...)
-
-	newBlueprints, newErrs = c.findSubdirBlueprints(filepath.Dir(filename), optionalSubdirs,
-		optionalSubdirsPos, subBlueprintsName, true)
 	blueprints = append(blueprints, newBlueprints...)
 	errs = append(errs, newErrs...)
 
