@@ -21,7 +21,7 @@ mkdir "${OUTDIR}"
 
 export SRCDIR="${TEMPDIR}/src"
 cp -r tests/test_tree "${SRCDIR}"
-ln -s "${TOP}" "${SRCDIR}/blueprint"
+cp -r "${TOP}" "${SRCDIR}/blueprint"
 
 cd "${OUTDIR}"
 export BLUEPRINTDIR=${SRCDIR}/blueprint
