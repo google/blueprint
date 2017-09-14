@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -793,6 +794,23 @@ func (c *Context) parseBlueprintsFile(filename string, scope *parser.Scope, root
 
 	f, err := c.fs.Open(filename)
 	if err != nil {
+		// couldn't open the file; see if we can provide a clearer error than "could not open file"
+		stats, statErr := c.fs.Lstat(filename)
+		if statErr == nil {
+			isSymlink := stats.Mode()&os.ModeSymlink != 0
+			if isSymlink {
+				err = fmt.Errorf("could not open symlink %v : %v", filename, err)
+				target, readlinkErr := os.Readlink(filename)
+				if readlinkErr == nil {
+					_, targetStatsErr := c.fs.Lstat(target)
+					if targetStatsErr != nil {
+						err = fmt.Errorf("could not open symlink %v; its target (%v) cannot be opened", filename, target)
+					}
+				}
+			} else {
+				err = fmt.Errorf("%v exists but could not be opened: %v", filename, err)
+			}
+		}
 		errsCh <- []error{err}
 		return
 	}
