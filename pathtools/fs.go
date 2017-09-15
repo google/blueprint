@@ -16,6 +16,7 @@ package pathtools
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -61,6 +62,7 @@ type FileSystem interface {
 	Glob(pattern string, excludes []string) (matches, dirs []string, err error)
 	glob(pattern string) (matches []string, err error)
 	IsDir(name string) (bool, error)
+	Lstat(name string) (os.FileInfo, error)
 }
 
 // osFs implements FileSystem using the local disk.
@@ -92,6 +94,10 @@ func (fs osFs) Glob(pattern string, excludes []string) (matches, dirs []string, 
 
 func (osFs) glob(pattern string) ([]string, error) {
 	return filepath.Glob(pattern)
+}
+
+func (osFs) Lstat(path string) (stats os.FileInfo, err error) {
+	return os.Lstat(path)
 }
 
 type mockFs struct {
@@ -149,4 +155,8 @@ func (m *mockFs) glob(pattern string) ([]string, error) {
 		}
 	}
 	return matches, nil
+}
+
+func (m *mockFs) Lstat(path string) (stats os.FileInfo, err error) {
+	return nil, errors.New("Lstat is not yet implemented in MockFs")
 }
