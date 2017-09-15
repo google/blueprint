@@ -5,19 +5,25 @@ function mtime() {
 }
 
 # Go to top of blueprint tree
-TOP=$(dirname ${BASH_SOURCE[0]})/..
-cd ${TOP}
+cd $(dirname ${BASH_SOURCE[0]})/..
+TOP=${PWD}
 
-rm -rf out.test
-mkdir out.test
+export TEMPDIR=$(mktemp -d -t blueprint.test.XXX)
 
-rm -rf src.test
-mkdir src.test
-cp -r tests/test_tree src.test/test_tree
-ln -s ../.. src.test/test_tree/blueprint
+function cleanup() {
+    cd "${TOP}"
+    rm -rf "${TEMPDIR}"
+}
+trap cleanup EXIT
 
-cd out.test
-export SRCDIR=../src.test/test_tree
+export OUTDIR="${TEMPDIR}/out"
+mkdir "${OUTDIR}"
+
+export SRCDIR="${TEMPDIR}/src"
+cp -r tests/test_tree "${SRCDIR}"
+ln -s "${TOP}" "${SRCDIR}/blueprint"
+
+cd "${OUTDIR}"
 export BLUEPRINTDIR=${SRCDIR}/blueprint
 ${SRCDIR}/blueprint/bootstrap.bash $@
 ./blueprint.bash
