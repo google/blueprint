@@ -127,21 +127,39 @@ var (
 		},
 		"depfile")
 
-	binDir = pctx.StaticVariable("BinDir", filepath.Join(bootstrapDir, "bin"))
+	_ = pctx.VariableFunc("BinDir", func(config interface{}) (string, error) {
+		return binDir(), nil
+	})
+
+	_ = pctx.VariableFunc("ToolDir", func(config interface{}) (string, error) {
+		return toolDir(config), nil
+	})
 
 	docsDir = filepath.Join(bootstrapDir, "docs")
-	toolDir = pctx.VariableFunc("ToolDir", func(config interface{}) (string, error) {
-		if c, ok := config.(ConfigBlueprintToolLocation); ok {
-			return c.BlueprintToolLocation(), nil
-		}
-		return filepath.Join("$buildDir", "bin"), nil
-	})
 
 	bootstrapDir     = filepath.Join("$buildDir", bootstrapSubDir)
 	miniBootstrapDir = filepath.Join("$buildDir", miniBootstrapSubDir)
 
 	minibpFile = filepath.Join(miniBootstrapDir, "minibp")
 )
+
+type GoBinaryTool interface {
+	InstallPath() string
+
+	// So that other packages can't implement this interface
+	isGoBinary()
+}
+
+func binDir() string {
+	return filepath.Join(BuildDir, bootstrapSubDir, "bin")
+}
+
+func toolDir(config interface{}) string {
+	if c, ok := config.(ConfigBlueprintToolLocation); ok {
+		return filepath.Join(c.BlueprintToolLocation())
+	}
+	return filepath.Join(BuildDir, "bin")
+}
 
 func pluginDeps(ctx blueprint.BottomUpMutatorContext) {
 	if pkg, ok := ctx.Module().(*goPackage); ok {
@@ -332,9 +350,13 @@ type goBinary struct {
 		Tool_dir bool `blueprint:mutated`
 	}
 
+	installPath string
+
 	// The bootstrap Config
 	config *Config
 }
+
+var _ GoBinaryTool = (*goBinary)(nil)
 
 func newGoBinaryModuleFactory(config *Config, tooldir bool) func() (blueprint.Module, []interface{}) {
 	return func() (blueprint.Module, []interface{}) {
@@ -350,11 +372,9 @@ func (g *goBinary) DynamicDependencies(ctx blueprint.DynamicDependerModuleContex
 	return g.properties.Deps
 }
 
+func (g *goBinary) isGoBinary() {}
 func (g *goBinary) InstallPath() string {
-	if g.properties.Tool_dir {
-		return "$ToolDir"
-	}
-	return "$BinDir"
+	return g.installPath
 }
 
 func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
@@ -364,11 +384,16 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 		archiveFile     = filepath.Join(objDir, name+".a")
 		testArchiveFile = filepath.Join(testRoot(ctx), name+".a")
 		aoutFile        = filepath.Join(objDir, "a.out")
-		binaryFile      = filepath.Join(g.InstallPath(), name)
 		hasPlugins      = false
 		pluginSrc       = ""
 		genSrcs         = []string{}
 	)
+
+	if g.properties.Tool_dir {
+		g.installPath = filepath.Join(toolDir(ctx.Config()), name)
+	} else {
+		g.installPath = filepath.Join(binDir(), name)
+	}
 
 	ctx.VisitDepsDepthFirstIf(isGoPluginFor(name),
 		func(module blueprint.Module) { hasPlugins = true })
@@ -423,7 +448,7 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 
 	ctx.Build(pctx, blueprint.BuildParams{
 		Rule:      cp,
-		Outputs:   []string{binaryFile},
+		Outputs:   []string{g.installPath},
 		Inputs:    []string{aoutFile},
 		OrderOnly: deps,
 		Optional:  !g.properties.Default,
@@ -588,11 +613,9 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	ctx.VisitAllModulesIf(isBootstrapBinaryModule,
 		func(module blueprint.Module) {
 			binaryModule := module.(*goBinary)
-			binaryModuleName := ctx.ModuleName(binaryModule)
-			installPath := filepath.Join(binaryModule.InstallPath(), binaryModuleName)
 
 			if binaryModule.properties.Tool_dir {
-				blueprintTools = append(blueprintTools, installPath)
+				blueprintTools = append(blueprintTools, binaryModule.InstallPath())
 			}
 			if binaryModule.properties.PrimaryBuilder {
 				primaryBuilders = append(primaryBuilders, binaryModule)
