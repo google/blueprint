@@ -20,6 +20,7 @@ import (
 	"text/scanner"
 
 	"github.com/google/blueprint/pathtools"
+	"github.com/google/blueprint/proptools"
 )
 
 // A Module handles generating all of the Ninja build actions needed to build a
@@ -137,6 +138,7 @@ type BaseModuleContext interface {
 	GlobWithDeps(pattern string, excludes []string) ([]string, error)
 
 	Fs() pathtools.FileSystem
+	AddNinjaFileDeps(deps ...string)
 
 	moduleInfo() *moduleInfo
 	error(err error)
@@ -166,8 +168,6 @@ type ModuleContext interface {
 	Rule(pctx PackageContext, name string, params RuleParams, argNames ...string) Rule
 	Build(pctx PackageContext, params BuildParams)
 
-	AddNinjaFileDeps(deps ...string)
-
 	PrimaryModule() Module
 	FinalModule() Module
 	VisitAllModuleVariants(visit func(Module))
@@ -184,6 +184,7 @@ type baseModuleContext struct {
 	errs           []error
 	visitingParent *moduleInfo
 	visitingDep    depInfo
+	ninjaFileDeps  []string
 }
 
 func (d *baseModuleContext) moduleInfo() *moduleInfo {
@@ -273,7 +274,6 @@ var _ ModuleContext = (*moduleContext)(nil)
 type moduleContext struct {
 	baseModuleContext
 	scope              *localScope
-	ninjaFileDeps      []string
 	actionDefs         localBuildActions
 	handledMissingDeps bool
 }
@@ -430,6 +430,10 @@ func (m *baseModuleContext) WalkDeps(visit func(Module, Module) bool) {
 	m.visitingDep = depInfo{}
 }
 
+func (m *baseModuleContext) AddNinjaFileDeps(deps ...string) {
+	m.ninjaFileDeps = append(m.ninjaFileDeps, deps...)
+}
+
 func (m *moduleContext) ModuleSubDir() string {
 	return m.module.variantName
 }
@@ -471,10 +475,6 @@ func (m *moduleContext) Build(pctx PackageContext, params BuildParams) {
 	m.actionDefs.buildDefs = append(m.actionDefs.buildDefs, def)
 }
 
-func (m *moduleContext) AddNinjaFileDeps(deps ...string) {
-	m.ninjaFileDeps = append(m.ninjaFileDeps, deps...)
-}
-
 func (m *moduleContext) PrimaryModule() Module {
 	return m.module.group.modules[0].logicModule
 }
@@ -498,11 +498,12 @@ func (m *moduleContext) GetMissingDependencies() []string {
 
 type mutatorContext struct {
 	baseModuleContext
-	name        string
-	reverseDeps []reverseDep
-	rename      []rename
-	replace     []replace
-	newModules  []*moduleInfo
+	name          string
+	reverseDeps   []reverseDep
+	rename        []rename
+	replace       []replace
+	newVariations []*moduleInfo // new variants of existing modules
+	newModules    []*moduleInfo // brand new modules
 }
 
 type baseMutatorContext interface {
@@ -526,6 +527,8 @@ type TopDownMutatorContext interface {
 	OtherModuleName(m Module) string
 	OtherModuleErrorf(m Module, fmt string, args ...interface{})
 	OtherModuleDependencyTag(m Module) DependencyTag
+
+	CreateModule(ModuleFactory, ...interface{})
 
 	GetDirectDepWithTag(name string, tag DependencyTag) Module
 	GetDirectDep(name string) (Module, DependencyTag)
@@ -620,10 +623,10 @@ func (mctx *mutatorContext) createVariations(variationNames []string, local bool
 		}
 	}
 
-	if mctx.newModules != nil {
+	if mctx.newVariations != nil {
 		panic("module already has variations from this mutator")
 	}
-	mctx.newModules = modules
+	mctx.newVariations = modules
 
 	if len(ret) != len(variationNames) {
 		panic("oops!")
@@ -735,6 +738,21 @@ func (mctx *mutatorContext) OtherModuleExists(name string) bool {
 // AddDependency or OtherModuleName until after this mutator pass is complete.
 func (mctx *mutatorContext) Rename(name string) {
 	mctx.rename = append(mctx.rename, rename{mctx.module.group, name})
+}
+
+// Create a new module by calling the factory method for the specified moduleType, and apply
+// the specified property structs to it as if the properties were set in a blueprint file.
+func (mctx *mutatorContext) CreateModule(factory ModuleFactory, props ...interface{}) {
+	module := mctx.context.newModule(factory)
+
+	for _, p := range props {
+		err := proptools.AppendMatchingProperties(module.properties, p, nil)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	mctx.newModules = append(mctx.newModules, module)
 }
 
 // SimpleName is an embeddable object to implement the ModuleContext.Name method using a property

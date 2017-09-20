@@ -498,6 +498,49 @@ var validUnpackTestCases = []struct {
 			},
 		},
 	},
+
+	// Factory set properties
+	{
+		input: `
+			m {
+				string: "abc",
+				string_ptr: "abc",
+				bool: false,
+				bool_ptr: false,
+				list: ["a", "b", "c"],
+			}
+		`,
+		output: []interface{}{
+			struct {
+				String     string
+				String_ptr *string
+				Bool       bool
+				Bool_ptr   *bool
+				List       []string
+			}{
+				String:     "012abc",
+				String_ptr: proptools.StringPtr("abc"),
+				Bool:       true,
+				Bool_ptr:   proptools.BoolPtr(false),
+				List:       []string{"0", "1", "2", "a", "b", "c"},
+			},
+		},
+		empty: []interface{}{
+			&struct {
+				String     string
+				String_ptr *string
+				Bool       bool
+				Bool_ptr   *bool
+				List       []string
+			}{
+				String:     "012",
+				String_ptr: proptools.StringPtr("012"),
+				Bool:       true,
+				Bool_ptr:   proptools.BoolPtr(true),
+				List:       []string{"0", "1", "2"},
+			},
+		},
+	},
 }
 
 type EmbeddedStruct struct{ Name string }
