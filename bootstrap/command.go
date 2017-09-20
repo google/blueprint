@@ -128,10 +128,11 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	// Add extra ninja file dependencies
 	deps = append(deps, extraNinjaFileDeps...)
 
-	errs = ctx.ResolveDependencies(config)
+	extraDeps, errs := ctx.ResolveDependencies(config)
 	if len(errs) > 0 {
 		fatalErrors(errs)
 	}
+	deps = append(deps, extraDeps...)
 
 	if docFile != "" {
 		err := writeDocs(ctx, filepath.Dir(bootstrapConfig.topLevelBlueprintsFile), docFile)
@@ -141,7 +142,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		return
 	}
 
-	extraDeps, errs := ctx.PrepareBuildActions(config)
+	extraDeps, errs = ctx.PrepareBuildActions(config)
 	if len(errs) > 0 {
 		fatalErrors(errs)
 	}

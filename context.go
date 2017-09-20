@@ -158,6 +158,7 @@ type moduleGroup struct {
 type moduleInfo struct {
 	// set during Parse
 	typeName          string
+	factory           ModuleFactory
 	relBlueprintsFile string
 	pos               scanner.Position
 	propertyPos       map[string]scanner.Position
@@ -166,9 +167,9 @@ type moduleInfo struct {
 	variant           variationMap
 	dependencyVariant variationMap
 
-	logicModule      Module
-	group            *moduleGroup
-	moduleProperties []interface{}
+	logicModule Module
+	group       *moduleGroup
+	properties  []interface{}
 
 	// set during ResolveDependencies
 	directDeps  []depInfo
@@ -261,12 +262,8 @@ type mutatorInfo struct {
 	parallel        bool
 }
 
-// NewContext creates a new Context object.  The created context initially has
-// no module or singleton factories registered, so the RegisterModuleFactory and
-// RegisterSingletonFactory methods must be called before it can do anything
-// useful.
-func NewContext() *Context {
-	ctx := &Context{
+func newContext() *Context {
+	return &Context{
 		moduleFactories:  make(map[string]ModuleFactory),
 		moduleNames:      make(map[string]*moduleGroup),
 		moduleInfo:       make(map[Module]*moduleInfo),
@@ -274,6 +271,14 @@ func NewContext() *Context {
 		globs:            make(map[string]GlobPath),
 		fs:               pathtools.OsFs,
 	}
+}
+
+// NewContext creates a new Context object.  The created context initially has
+// no module or singleton factories registered, so the RegisterModuleFactory and
+// RegisterSingletonFactory methods must be called before it can do anything
+// useful.
+func NewContext() *Context {
+	ctx := newContext()
 
 	ctx.RegisterBottomUpMutator("blueprint_deps", blueprintDepsMutator)
 
@@ -958,21 +963,15 @@ func getStringFromScope(scope *parser.Scope, v string) (string, scanner.Position
 // property values.  Any values stored in the module object that are not stored in properties
 // structs will be lost.
 func (c *Context) cloneLogicModule(origModule *moduleInfo) (Module, []interface{}) {
-	typeName := origModule.typeName
-	factory, ok := c.moduleFactories[typeName]
-	if !ok {
-		panic(fmt.Sprintf("unrecognized module type %q during cloning", typeName))
-	}
+	newLogicModule, newProperties := origModule.factory()
 
-	newLogicModule, newProperties := factory()
-
-	if len(newProperties) != len(origModule.moduleProperties) {
+	if len(newProperties) != len(origModule.properties) {
 		panic("mismatched properties array length in " + origModule.Name())
 	}
 
 	for i := range newProperties {
 		dst := reflect.ValueOf(newProperties[i]).Elem()
-		src := reflect.ValueOf(origModule.moduleProperties[i]).Elem()
+		src := reflect.ValueOf(origModule.properties[i]).Elem()
 
 		proptools.CopyProperties(dst, src)
 	}
@@ -1000,7 +999,7 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 			// Reuse the existing module for the first new variant
 			// This both saves creating a new module, and causes the insertion in c.moduleInfo below
 			// with logicModule as the key to replace the original entry in c.moduleInfo
-			newLogicModule, newProperties = origModule.logicModule, origModule.moduleProperties
+			newLogicModule, newProperties = origModule.logicModule, origModule.properties
 		} else {
 			newLogicModule, newProperties = c.cloneLogicModule(origModule)
 		}
@@ -1014,7 +1013,7 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 		newModule.logicModule = newLogicModule
 		newModule.variant = newVariant
 		newModule.dependencyVariant = origModule.dependencyVariant.clone()
-		newModule.moduleProperties = newProperties
+		newModule.properties = newProperties
 
 		if variationName != "" {
 			if newModule.variantName == "" {
@@ -1080,6 +1079,19 @@ func (c *Context) prettyPrintVariant(variant variationMap) string {
 	return strings.Join(names, ", ")
 }
 
+func (c *Context) newModule(factory ModuleFactory) *moduleInfo {
+	logicModule, properties := factory()
+
+	module := &moduleInfo{
+		logicModule: logicModule,
+		factory:     factory,
+	}
+
+	module.properties = properties
+
+	return module
+}
+
 func (c *Context) processModuleDef(moduleDef *parser.Module,
 	relBlueprintsFile string) (*moduleInfo, []error) {
 
@@ -1097,17 +1109,12 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 		}
 	}
 
-	logicModule, properties := factory()
+	module := c.newModule(factory)
+	module.typeName = moduleDef.Type
 
-	module := &moduleInfo{
-		logicModule:       logicModule,
-		typeName:          moduleDef.Type,
-		relBlueprintsFile: relBlueprintsFile,
-	}
+	module.relBlueprintsFile = relBlueprintsFile
 
-	module.moduleProperties = properties
-
-	propertyMap, errs := unpackProperties(moduleDef.Properties, properties...)
+	propertyMap, errs := unpackProperties(moduleDef.Properties, module.properties...)
 	if len(errs) > 0 {
 		return nil, errs
 	}
@@ -1163,21 +1170,21 @@ func (c *Context) addModule(module *moduleInfo) []error {
 // modules defined in the parsed Blueprints files are valid.  This means that
 // the modules depended upon are defined and that no circular dependencies
 // exist.
-func (c *Context) ResolveDependencies(config interface{}) []error {
-	errs := c.updateDependencies()
+func (c *Context) ResolveDependencies(config interface{}) (deps []string, errs []error) {
+	errs = c.updateDependencies()
 	if len(errs) > 0 {
-		return errs
+		return nil, errs
 	}
 
-	errs = c.runMutators(config)
+	deps, errs = c.runMutators(config)
 	if len(errs) > 0 {
-		return errs
+		return nil, errs
 	}
 
 	c.cloneModules()
 
 	c.dependenciesReady = true
-	return nil
+	return deps, nil
 }
 
 // Default dependencies handling.  If the module implements the (deprecated)
@@ -1644,10 +1651,11 @@ func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs [
 	c.buildActionsReady = false
 
 	if !c.dependenciesReady {
-		errs := c.ResolveDependencies(config)
+		extraDeps, errs := c.ResolveDependencies(config)
 		if len(errs) > 0 {
 			return nil, errs
 		}
+		deps = append(deps, extraDeps...)
 	}
 
 	liveGlobals := newLiveTracker(config)
@@ -1664,7 +1672,8 @@ func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs [
 		return nil, errs
 	}
 
-	deps = append(depsModules, depsSingletons...)
+	deps = append(deps, depsModules...)
+	deps = append(deps, depsSingletons...)
 
 	if c.ninjaBuildDir != nil {
 		liveGlobals.addNinjaStringDeps(c.ninjaBuildDir)
@@ -1687,26 +1696,28 @@ func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs [
 	return deps, nil
 }
 
-func (c *Context) runMutators(config interface{}) (errs []error) {
+func (c *Context) runMutators(config interface{}) (deps []string, errs []error) {
 	var mutators []*mutatorInfo
 
 	mutators = append(mutators, c.earlyMutatorInfo...)
 	mutators = append(mutators, c.mutatorInfo...)
 
 	for _, mutator := range mutators {
+		var newDeps []string
 		if mutator.topDownMutator != nil {
-			errs = c.runMutator(config, mutator, topDownMutator)
+			newDeps, errs = c.runMutator(config, mutator, topDownMutator)
 		} else if mutator.bottomUpMutator != nil {
-			errs = c.runMutator(config, mutator, bottomUpMutator)
+			newDeps, errs = c.runMutator(config, mutator, bottomUpMutator)
 		} else {
 			panic("no mutator set on " + mutator.name)
 		}
 		if len(errs) > 0 {
-			return errs
+			return nil, errs
 		}
+		deps = append(deps, newDeps...)
 	}
 
-	return nil
+	return deps, nil
 }
 
 type mutatorDirection interface {
@@ -1754,7 +1765,7 @@ type reverseDep struct {
 }
 
 func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
-	direction mutatorDirection) (errs []error) {
+	direction mutatorDirection) (deps []string, errs []error) {
 
 	newModuleInfo := make(map[Module]*moduleInfo)
 	for k, v := range c.moduleInfo {
@@ -1762,18 +1773,21 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 	}
 
 	type globalStateChange struct {
-		reverse []reverseDep
-		rename  []rename
-		replace []replace
+		reverse    []reverseDep
+		rename     []rename
+		replace    []replace
+		newModules []*moduleInfo
+		deps       []string
 	}
 
 	reverseDeps := make(map[*moduleInfo][]depInfo)
 	var rename []rename
 	var replace []replace
+	var newModules []*moduleInfo
 
 	errsCh := make(chan []error)
 	globalStateCh := make(chan globalStateChange)
-	newModulesCh := make(chan []*moduleInfo)
+	newVariationsCh := make(chan []*moduleInfo)
 	done := make(chan bool)
 
 	c.depsModified = 0
@@ -1812,15 +1826,17 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 			return true
 		}
 
-		if len(mctx.newModules) > 0 {
-			newModulesCh <- mctx.newModules
+		if len(mctx.newVariations) > 0 {
+			newVariationsCh <- mctx.newVariations
 		}
 
-		if len(mctx.reverseDeps) > 0 || len(mctx.replace) > 0 || len(mctx.rename) > 0 {
+		if len(mctx.reverseDeps) > 0 || len(mctx.replace) > 0 || len(mctx.rename) > 0 || len(mctx.newModules) > 0 {
 			globalStateCh <- globalStateChange{
-				reverse: mctx.reverseDeps,
-				replace: mctx.replace,
-				rename:  mctx.rename,
+				reverse:    mctx.reverseDeps,
+				replace:    mctx.replace,
+				rename:     mctx.rename,
+				newModules: mctx.newModules,
+				deps:       mctx.ninjaFileDeps,
 			}
 		}
 
@@ -1839,8 +1855,10 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 				}
 				replace = append(replace, globalStateChange.replace...)
 				rename = append(rename, globalStateChange.rename...)
-			case newModules := <-newModulesCh:
-				for _, m := range newModules {
+				newModules = append(newModules, globalStateChange.newModules...)
+				deps = append(deps, globalStateChange.deps...)
+			case newVariations := <-newVariationsCh:
+				for _, m := range newVariations {
 					newModuleInfo[m.logicModule] = m
 				}
 			case <-done:
@@ -1858,7 +1876,7 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 	done <- true
 
 	if len(errs) > 0 {
-		return errs
+		return nil, errs
 	}
 
 	c.moduleInfo = newModuleInfo
@@ -1888,24 +1906,32 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 		c.depsModified++
 	}
 
+	for _, module := range newModules {
+		errs = c.addModule(module)
+		if len(errs) > 0 {
+			return nil, errs
+		}
+		atomic.AddUint32(&c.depsModified, 1)
+	}
+
 	errs = c.handleRenames(rename)
 	if len(errs) > 0 {
-		return errs
+		return nil, errs
 	}
 
 	errs = c.handleReplacements(replace)
 	if len(errs) > 0 {
-		return errs
+		return nil, errs
 	}
 
 	if c.depsModified > 0 {
 		errs = c.updateDependencies()
 		if len(errs) > 0 {
-			return errs
+			return nil, errs
 		}
 	}
 
-	return errs
+	return deps, errs
 }
 
 // Replaces every build logic module with a clone of itself.  Prevents introducing problems where
@@ -1921,7 +1947,7 @@ func (c *Context) cloneModules() {
 	for _, m := range c.modulesSorted {
 		go func(m *moduleInfo) {
 			origLogicModule := m.logicModule
-			m.logicModule, m.moduleProperties = c.cloneLogicModule(m)
+			m.logicModule, m.properties = c.cloneLogicModule(m)
 			ch <- update{origLogicModule, m}
 		}(m)
 	}
@@ -3025,8 +3051,7 @@ func (c *Context) writeAllModuleActions(nw *ninjaWriter) error {
 		relPos.Filename = module.relBlueprintsFile
 
 		// Get the name and location of the factory function for the module.
-		factory := c.moduleFactories[module.typeName]
-		factoryFunc := runtime.FuncForPC(reflect.ValueOf(factory).Pointer())
+		factoryFunc := runtime.FuncForPC(reflect.ValueOf(module.factory).Pointer())
 		factoryName := factoryFunc.Name()
 
 		infoMap := map[string]interface{}{
