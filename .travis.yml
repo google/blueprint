@@ -19,6 +19,7 @@ script:
     - export GOROOT=$(go env GOROOT)
     - ./.travis.gofmt.sh
     - go test ./...
+    - go test -race -short ./...
     - ./tests/test.sh
     - ./tests/test_tree_tests.sh
     - ./tests/test_tree_tests.sh -t
