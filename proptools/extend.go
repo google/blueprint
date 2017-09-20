@@ -238,7 +238,7 @@ func extendMatchingProperties(dst []interface{}, src interface{}, filter ExtendP
 
 func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value,
 	prefix string, filter ExtendPropertyFilterFunc, sameTypes bool,
-	order ExtendPropertyOrderFunc) error {
+	orderFunc ExtendPropertyOrderFunc) error {
 
 	srcType := srcValue.Type()
 	for i, srcField := range typeFields(srcType) {
@@ -373,9 +373,10 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 				}
 			}
 
-			prepend := false
-			if order != nil {
-				b, err := order(propertyName, dstField, srcField,
+			order := Append
+			if orderFunc != nil {
+				var err error
+				order, err = orderFunc(propertyName, dstField, srcField,
 					dstFieldInterface, srcFieldInterface)
 				if err != nil {
 					return &ExtendPropertyError{
@@ -383,69 +384,14 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 						Err:      err,
 					}
 				}
-				prepend = b == Prepend
 			}
 
-			switch srcFieldValue.Kind() {
-			case reflect.Bool:
-				// Boolean OR
-				dstFieldValue.Set(reflect.ValueOf(srcFieldValue.Bool() || dstFieldValue.Bool()))
-			case reflect.String:
-				// Append the extension string.
-				if prepend {
-					dstFieldValue.SetString(srcFieldValue.String() +
-						dstFieldValue.String())
-				} else {
-					dstFieldValue.SetString(dstFieldValue.String() +
-						srcFieldValue.String())
-				}
-			case reflect.Slice:
-				if srcFieldValue.IsNil() {
-					break
-				}
-
-				newSlice := reflect.MakeSlice(srcFieldValue.Type(), 0,
-					dstFieldValue.Len()+srcFieldValue.Len())
-				if prepend {
-					newSlice = reflect.AppendSlice(newSlice, srcFieldValue)
-					newSlice = reflect.AppendSlice(newSlice, dstFieldValue)
-				} else {
-					newSlice = reflect.AppendSlice(newSlice, dstFieldValue)
-					newSlice = reflect.AppendSlice(newSlice, srcFieldValue)
-				}
-				dstFieldValue.Set(newSlice)
-			case reflect.Ptr:
-				if srcFieldValue.IsNil() {
-					break
-				}
-
-				switch ptrKind := srcFieldValue.Type().Elem().Kind(); ptrKind {
-				case reflect.Bool:
-					if prepend {
-						if dstFieldValue.IsNil() {
-							dstFieldValue.Set(reflect.ValueOf(BoolPtr(srcFieldValue.Elem().Bool())))
-						}
-					} else {
-						// For append, replace the original value.
-						dstFieldValue.Set(reflect.ValueOf(BoolPtr(srcFieldValue.Elem().Bool())))
-					}
-				case reflect.String:
-					if prepend {
-						if dstFieldValue.IsNil() {
-							dstFieldValue.Set(reflect.ValueOf(StringPtr(srcFieldValue.Elem().String())))
-						}
-					} else {
-						// For append, replace the original value.
-						dstFieldValue.Set(reflect.ValueOf(StringPtr(srcFieldValue.Elem().String())))
-					}
-				default:
-					panic(fmt.Errorf("unexpected pointer kind %s", ptrKind))
-				}
-			}
+			ExtendBasicType(dstFieldValue, srcFieldValue, order)
 		}
+
 		if len(recurse) > 0 {
 			err := extendPropertiesRecursive(recurse, srcFieldValue,
-				propertyName+".", filter, sameTypes, order)
+				propertyName+".", filter, sameTypes, orderFunc)
 			if err != nil {
 				return err
 			}
@@ -455,6 +401,66 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 	}
 
 	return nil
+}
+
+func ExtendBasicType(dstFieldValue, srcFieldValue reflect.Value, order Order) {
+	prepend := order == Prepend
+
+	switch srcFieldValue.Kind() {
+	case reflect.Bool:
+		// Boolean OR
+		dstFieldValue.Set(reflect.ValueOf(srcFieldValue.Bool() || dstFieldValue.Bool()))
+	case reflect.String:
+		if prepend {
+			dstFieldValue.SetString(srcFieldValue.String() +
+				dstFieldValue.String())
+		} else {
+			dstFieldValue.SetString(dstFieldValue.String() +
+				srcFieldValue.String())
+		}
+	case reflect.Slice:
+		if srcFieldValue.IsNil() {
+			break
+		}
+
+		newSlice := reflect.MakeSlice(srcFieldValue.Type(), 0,
+			dstFieldValue.Len()+srcFieldValue.Len())
+		if prepend {
+			newSlice = reflect.AppendSlice(newSlice, srcFieldValue)
+			newSlice = reflect.AppendSlice(newSlice, dstFieldValue)
+		} else {
+			newSlice = reflect.AppendSlice(newSlice, dstFieldValue)
+			newSlice = reflect.AppendSlice(newSlice, srcFieldValue)
+		}
+		dstFieldValue.Set(newSlice)
+	case reflect.Ptr:
+		if srcFieldValue.IsNil() {
+			break
+		}
+
+		switch ptrKind := srcFieldValue.Type().Elem().Kind(); ptrKind {
+		case reflect.Bool:
+			if prepend {
+				if dstFieldValue.IsNil() {
+					dstFieldValue.Set(reflect.ValueOf(BoolPtr(srcFieldValue.Elem().Bool())))
+				}
+			} else {
+				// For append, replace the original value.
+				dstFieldValue.Set(reflect.ValueOf(BoolPtr(srcFieldValue.Elem().Bool())))
+			}
+		case reflect.String:
+			if prepend {
+				if dstFieldValue.IsNil() {
+					dstFieldValue.Set(reflect.ValueOf(StringPtr(srcFieldValue.Elem().String())))
+				}
+			} else {
+				// For append, replace the original value.
+				dstFieldValue.Set(reflect.ValueOf(StringPtr(srcFieldValue.Elem().String())))
+			}
+		default:
+			panic(fmt.Errorf("unexpected pointer kind %s", ptrKind))
+		}
+	}
 }
 
 type getStructEmptyError struct{}

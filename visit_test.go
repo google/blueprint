@@ -126,7 +126,7 @@ func setupVisitTest(t *testing.T) *Context {
 		t.FailNow()
 	}
 
-	errs = ctx.ResolveDependencies(nil)
+	_, errs = ctx.ResolveDependencies(nil)
 	if len(errs) > 0 {
 		t.Errorf("unexpected dep errors:")
 		for _, err := range errs {
