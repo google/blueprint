@@ -240,27 +240,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 
 		var newErrs []error
 
-		switch kind := fieldValue.Kind(); kind {
-		case reflect.Bool:
-			newErrs = unpackBool(fieldValue, packedProperty.property)
-		case reflect.String:
-			newErrs = unpackString(fieldValue, packedProperty.property)
-		case reflect.Slice:
-			newErrs = unpackSlice(fieldValue, packedProperty.property)
-		case reflect.Ptr:
-			switch ptrKind := fieldValue.Type().Elem().Kind(); ptrKind {
-			case reflect.Bool:
-				newValue := reflect.New(fieldValue.Type().Elem())
-				newErrs = unpackBool(newValue.Elem(), packedProperty.property)
-				fieldValue.Set(newValue)
-			case reflect.String:
-				newValue := reflect.New(fieldValue.Type().Elem())
-				newErrs = unpackString(newValue.Elem(), packedProperty.property)
-				fieldValue.Set(newValue)
-			default:
-				panic(fmt.Errorf("unexpected pointer kind %s", ptrKind))
-			}
-		case reflect.Struct:
+		if fieldValue.Kind() == reflect.Struct {
 			localFilterKey, localFilterValue := filterKey, filterValue
 			if k, v, err := HasFilter(field.Tag); err != nil {
 				errs = append(errs, err)
@@ -280,66 +260,87 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			}
 			newErrs = unpackStruct(propertyName+".", fieldValue,
 				packedProperty.property, propertyMap, localFilterKey, localFilterValue)
-		default:
-			panic(fmt.Errorf("unexpected kind %s", kind))
+
+			errs = append(errs, newErrs...)
+			if len(errs) >= maxErrors {
+				return errs
+			}
+
+			continue
 		}
-		errs = append(errs, newErrs...)
-		if len(errs) >= maxErrors {
-			return errs
+
+		// Handle basic types and pointers to basic types
+
+		propertyValue, err := propertyToValue(fieldValue.Type(), packedProperty.property)
+		if err != nil {
+			errs = append(errs, err)
+			if len(errs) >= maxErrors {
+				return errs
+			}
 		}
+
+		proptools.ExtendBasicType(fieldValue, propertyValue, proptools.Append)
 	}
 
 	return errs
 }
 
-func unpackBool(boolValue reflect.Value, property *parser.Property) []error {
-	b, ok := property.Value.Eval().(*parser.Bool)
-	if !ok {
-		return []error{
-			fmt.Errorf("%s: can't assign %s value to bool property %q",
-				property.Value.Pos(), property.Value.Type(), property.Name),
-		}
-	}
-	boolValue.SetBool(b.Value)
-	return nil
-}
+func propertyToValue(typ reflect.Type, property *parser.Property) (reflect.Value, error) {
+	var value reflect.Value
 
-func unpackString(stringValue reflect.Value,
-	property *parser.Property) []error {
-
-	s, ok := property.Value.Eval().(*parser.String)
-	if !ok {
-		return []error{
-			fmt.Errorf("%s: can't assign %s value to string property %q",
-				property.Value.Pos(), property.Value.Type(), property.Name),
-		}
-	}
-	stringValue.SetString(s.Value)
-	return nil
-}
-
-func unpackSlice(sliceValue reflect.Value, property *parser.Property) []error {
-
-	l, ok := property.Value.Eval().(*parser.List)
-	if !ok {
-		return []error{
-			fmt.Errorf("%s: can't assign %s value to list property %q",
-				property.Value.Pos(), property.Value.Type(), property.Name),
-		}
+	var ptr bool
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+		ptr = true
 	}
 
-	list := make([]string, len(l.Values))
-	for i, value := range l.Values {
-		s, ok := value.Eval().(*parser.String)
+	switch kind := typ.Kind(); kind {
+	case reflect.Bool:
+		b, ok := property.Value.Eval().(*parser.Bool)
 		if !ok {
-			// The parser should not produce this.
-			panic(fmt.Errorf("non-string value %q found in list", value))
+			return value, fmt.Errorf("%s: can't assign %s value to bool property %q",
+				property.Value.Pos(), property.Value.Type(), property.Name)
 		}
-		list[i] = s.Value
+		value = reflect.ValueOf(b.Value)
+
+	case reflect.String:
+		s, ok := property.Value.Eval().(*parser.String)
+		if !ok {
+			return value, fmt.Errorf("%s: can't assign %s value to string property %q",
+				property.Value.Pos(), property.Value.Type(), property.Name)
+		}
+		value = reflect.ValueOf(s.Value)
+
+	case reflect.Slice:
+		l, ok := property.Value.Eval().(*parser.List)
+		if !ok {
+			return value, fmt.Errorf("%s: can't assign %s value to list property %q",
+				property.Value.Pos(), property.Value.Type(), property.Name)
+		}
+
+		list := make([]string, len(l.Values))
+		for i, value := range l.Values {
+			s, ok := value.Eval().(*parser.String)
+			if !ok {
+				// The parser should not produce this.
+				panic(fmt.Errorf("non-string value %q found in list", value))
+			}
+			list[i] = s.Value
+		}
+
+		value = reflect.ValueOf(list)
+
+	default:
+		panic(fmt.Errorf("unexpected kind %s", kind))
 	}
 
-	sliceValue.Set(reflect.ValueOf(list))
-	return nil
+	if ptr {
+		ptrValue := reflect.New(value.Type())
+		ptrValue.Elem().Set(value)
+		value = ptrValue
+	}
+
+	return value, nil
 }
 
 func unpackStruct(namePrefix string, structValue reflect.Value,
