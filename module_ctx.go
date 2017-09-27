@@ -59,7 +59,7 @@ import (
 //       LibraryFileName() string
 //   }
 //
-//   func IsLibraryProducer(module blueprint.Module) {
+//   func IsLibraryProducer(module blueprint.Module) bool {
 //       _, ok := module.(LibraryProducer)
 //       return ok
 //   }
@@ -82,7 +82,7 @@ import (
 //
 // GenerateBuildActions may be called from multiple threads.  It is guaranteed to
 // be called after it has finished being called on all dependencies and on all
-// variants of that appear earlier in the ModuleContext.VisitAllModuleVariants list.
+// variants that appear earlier in the ModuleContext.VisitAllModuleVariants list.
 // Any accesses to global variables or to Module objects that are not dependencies
 // or variants of the current Module must be synchronized by the implementation of
 // GenerateBuildActions.
@@ -98,15 +98,16 @@ type Module interface {
 	Name() string
 
 	// GenerateBuildActions is called by the Context that created the Module
-	// during its generate phase.  This call should generate all Ninja build
-	// actions (rules, pools, and build statements) needed to build the module.
+	// during the Context's generate phase.  This call should generate all Ninja
+	// build actions (rules, pools, and build statements) needed to build the
+	// module.
 	GenerateBuildActions(ModuleContext)
 }
 
 // A DynamicDependerModule is a Module that may add dependencies that do not
 // appear in its "deps" property.  Any Module that implements this interface
 // will have its DynamicDependencies method called by the Context that created
-// it during generate phase.
+// it during the Context's generate phase.
 //
 // Deprecated, use a BottomUpMutator instead
 type DynamicDependerModule interface {
@@ -149,6 +150,9 @@ type DynamicDependerModuleContext BottomUpMutatorContext
 type ModuleContext interface {
 	BaseModuleContext
 
+	// OtherModuleName returns the name of another module.
+	// (although it'd be nice to call this ModuleName(Module), the ModuleName function
+	// is already declared on BaseModuleContext)
 	OtherModuleName(m Module) string
 	OtherModuleErrorf(m Module, fmt string, args ...interface{})
 	OtherModuleDependencyTag(m Module) DependencyTag
@@ -278,6 +282,7 @@ type moduleContext struct {
 	handledMissingDeps bool
 }
 
+// TODO: expain how this differs from logicModule.Name() : does this relativize/contextualize paths?
 func (m *baseModuleContext) OtherModuleName(logicModule Module) string {
 	module := m.context.moduleInfo[logicModule]
 	return module.Name()
@@ -323,8 +328,8 @@ func (m *baseModuleContext) GetDirectDep(name string) (Module, DependencyTag) {
 	return nil, nil
 }
 
-// GetDirectDepWithTag returns the Module the direct dependency with the specified name, or nil if
-// none exists.  It panics if the dependency does not have the specified tag.
+// GetDirectDepWithTag returns the Module for the direct dependency with the specified name, or
+// nil if none exists.  It panics if the dependency exists but does not have the specified tag.
 func (m *baseModuleContext) GetDirectDepWithTag(name string, tag DependencyTag) Module {
 	for _, dep := range m.module.directDeps {
 		if dep.module.Name() == name {
@@ -560,17 +565,17 @@ type BottomUpMutatorContext interface {
 // after parsing all Blueprint files, but before generating any build rules,
 // and is always called on dependencies before being called on the depending module.
 //
-// The Mutator function should only modify members of properties structs, and not
+// The Mutator function should only modify members of Properties structs, and not
 // members of the module struct itself, to ensure the modified values are copied
 // if a second Mutator chooses to split the module a second time.
 type TopDownMutator func(mctx TopDownMutatorContext)
 type BottomUpMutator func(mctx BottomUpMutatorContext)
 type EarlyMutator func(mctx EarlyMutatorContext)
 
-// DependencyTag is an interface to an arbitrary object that embeds BaseDependencyTag.  It can be
-// used to transfer information on a dependency between the mutator that called AddDependency
-// and the GenerateBuildActions method.  Variants created by CreateVariations have a copy of the
-// interface (pointing to the same concrete object) from their original module.
+// The DependencyTag interface is implemented by types that embed BaseDependencyTag. Structs of
+// those types can be used to transfer information on a dependency between the mutator that called
+// AddDependency and the GenerateBuildActions method.  Variants created by CreateVariations will
+// contain the same BaseDependencyTag as their original module.
 type DependencyTag interface {
 	dependencyTag(DependencyTag)
 }
@@ -583,7 +588,7 @@ func (BaseDependencyTag) dependencyTag(DependencyTag) {
 
 var _ DependencyTag = BaseDependencyTag{}
 
-// Split a module into mulitple variants, one for each name in the variationNames
+// Split a module into multiple variants, one for each name in the variationNames
 // parameter.  It returns a list of new modules in the same order as the variationNames
 // list.
 //
@@ -598,7 +603,7 @@ func (mctx *mutatorContext) CreateVariations(variationNames ...string) []Module 
 	return mctx.createVariations(variationNames, false)
 }
 
-// Split a module into mulitple variants, one for each name in the variantNames
+// Split a module into multiple variants, one for each name in the variantNames
 // parameter.  It returns a list of new modules in the same order as the variantNames
 // list.
 //
@@ -679,10 +684,10 @@ func (mctx *mutatorContext) AddReverseDependency(module Module, tag DependencyTa
 	})
 }
 
-// AddVariationDependencies adds deps as dependencies of the current module, but uses the variations
-// argument to select which variant of the dependency to use.  A variant of the dependency must
-// exist that matches the all of the non-local variations of the current module, plus the variations
-// argument.
+// AddVariationDependencies adds deps as dependencies of the current module, but uses the
+// variations argument to select which variant of the dependency to use.  The dependency must
+// provide a a variant whose Variation coordinates match each non-local Variation coordinate of the current module and each coordinate
+// in the variations argument.
 func (mctx *mutatorContext) AddVariationDependencies(variations []Variation, tag DependencyTag,
 	deps ...string) {
 
@@ -695,12 +700,12 @@ func (mctx *mutatorContext) AddVariationDependencies(variations []Variation, tag
 }
 
 // AddFarVariationDependencies adds deps as dependencies of the current module, but uses the
-// variations argument to select which variant of the dependency to use.  A variant of the
-// dependency must exist that matches the variations argument, but may also have other variations.
-// For any unspecified variation the first variant will be used.
+// variations argument to select which variant of the dependency to use.  The dependency must
+// provide a variant having coordinates that match the variations argument (it may provide other
+// variation coordinates too, which are ignored).
 //
 // Unlike AddVariationDependencies, the variations of the current module are ignored - the
-// depdendency only needs to match the supplied variations.
+// dependency only needs to match the supplied variations.
 func (mctx *mutatorContext) AddFarVariationDependencies(variations []Variation, tag DependencyTag,
 	deps ...string) {
 

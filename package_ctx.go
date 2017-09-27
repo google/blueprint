@@ -24,11 +24,11 @@ import (
 )
 
 // A PackageContext provides a way to create package-scoped Ninja pools,
-// rules, and variables.  A Go package should create a single unexported
-// package-scoped PackageContext variable that it uses to create all package-
-// scoped Ninja object definitions.  This PackageContext object should then be
-// passed to all calls to define module- or singleton-specific Ninja
-// definitions.  For example:
+// rules, and variables, which can later be written to a Ninja file.
+// A Go package should create a single unexported package-scoped PackageContext
+// variable that it uses to create all package-scoped Ninja object definitions.
+// This PackageContext object should then be passed to all calls to define
+// module- or singleton-specific Ninja definitions.  For example:
 //
 //     package blah
 //
@@ -39,9 +39,13 @@ import (
 //     var (
 //         pctx = NewPackageContext("path/to/blah")
 //
+//         // Should appear in the generated ninja file as "g.path.to.blah.myPrivateVar = abcdef"
 //         myPrivateVar = pctx.StaticVariable("myPrivateVar", "abcdef")
+//
+//         // Should appear in the generated ninja file as "g.path.to.blah.MyExportedVar = ${myPrivateVar} 123456!"
 //         MyExportedVar = pctx.StaticVariable("MyExportedVar", "$myPrivateVar 123456!")
 //
+//         // Should appear in the generated ninja file too
 //         SomeRule = pctx.StaticRule(...)
 //     )
 //
@@ -88,9 +92,9 @@ func (p *packageContext) getScope() *basicScope {
 
 var packageContexts = map[string]*packageContext{}
 
-// NewPackageContext creates a PackageContext object for a given package.  The
+// NewPackageContext creates a PackageContext object for a given Go package.  The
 // pkgPath argument should always be set to the full path used to import the
-// package.  This function may only be called from a Go package's init()
+// package.  This function may only be called from the Go package's init()
 // function or as part of a package-scoped variable initialization.
 func NewPackageContext(pkgPath string) PackageContext {
 	checkCalledFromInit()
@@ -162,7 +166,7 @@ func callerName(skip int) (pkgPath, funcName string, ok bool) {
 	}
 
 	if fullName[lastDotIndex-1] == ')' {
-		// The caller is a method on some type, so it's name looks like
+		// The caller is a method on some type, so its name looks like
 		// "pkg/path.(type).method".  We need to go back one dot farther to get
 		// to the package name.
 		lastDotIndex = strings.LastIndex(fullName[:lastDotIndex], ".")
@@ -175,7 +179,7 @@ func callerName(skip int) (pkgPath, funcName string, ok bool) {
 }
 
 // pkgPathToName makes a Ninja-friendly name out of a Go package name by
-// replaceing all the '/' characters with '.'.  We assume the results are
+// replacing all the '/' characters with '.'.  We assume the results are
 // unique, though this is not 100% guaranteed for Go package names that
 // already contain '.' characters. Disallowing package names with '.' isn't
 // reasonable since many package names contain the name of the hosting site
@@ -185,22 +189,27 @@ func pkgPathToName(pkgPath string) string {
 	return strings.Replace(pkgPath, "/", ".", -1)
 }
 
-// Import enables access to the exported Ninja pools, rules, and variables
-// that are defined at the package scope of another Go package.  Go's
-// visibility rules apply to these references - capitalized names indicate
-// that something is exported.  It may only be called from a Go package's
-// init() function.  The Go package path passed to Import must have already
-// been imported into the Go package using a Go import statement.  The
-// imported variables may then be accessed from Ninja strings as
+// Import enables access to Ninja pools, rules, and variables that are defined
+// at the package scope of another Go package and are exported (have
+// capitalized names).
+//
+// Import may only be called from a Go package's init() function.
+//
+// The Go package path passed to Import must have already
+// been imported into the Go package using a Go import statement.
+//
+// The imported variables may then be accessed from Ninja strings as
 // "${pkg.Variable}", while the imported rules can simply be accessed as
 // exported Go variables from the package.  For example:
+//
+//     package blah
 //
 //     import (
 //         "blueprint"
 //         "foo/bar"
 //     )
 //
-//     var pctx = NewPackagePath("blah")
+//     var pctx = NewPackageContext("blah")
 //
 //     func init() {
 //         pctx.Import("foo/bar")
@@ -316,9 +325,9 @@ type variableFunc struct {
 	value_ func(interface{}) (string, error)
 }
 
-// VariableFunc returns a Variable whose value is determined by a function that
+// VariableFunc returns a Variable whose value is determined by a function (which
 // takes a config object as input and returns either the variable value or an
-// error.  It may only be called during a Go package's initialization - either
+// error).  It may only be called during a Go package's initialization - either
 // from the init() function or as part of a package-scoped variable's
 // initialization.
 //
@@ -347,8 +356,8 @@ func (p *packageContext) VariableFunc(name string,
 }
 
 // VariableConfigMethod returns a Variable whose value is determined by calling
-// a method on the config object.  The method must take no arguments and return
-// a single string that will be the variable's value.  It may only be called
+// a method on the config object (the method must take no other arguments and return
+// a single string that will be the variable's value).  It may only be called
 // during a Go package's initialization - either from the init() function or as
 // part of a package-scoped variable's initialization.
 //
@@ -729,10 +738,11 @@ type ruleFunc struct {
 	sync.Mutex // protects scope_ during lazy creation
 }
 
-// RuleFunc returns a Rule whose value is determined by a function that takes a
-// config object as input and returns either the rule parameters or an error. It
-// may only be called during a Go package's initialization - either from the
-// init() function or as part of a package-scoped variable's initialization.
+// RuleFunc returns a Rule whose value is determined by a function (which takes
+// a config object as input and returns either the rule parameters or an
+// error). It may only be called during a Go package's initialization - either
+// from the init() function or as part of a package-scoped variable's
+// initialization.
 //
 // This function is usually used to initialize a package-scoped Go variable that
 // represents a Ninja rule that will be output.  The name argument should
