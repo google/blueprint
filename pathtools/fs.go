@@ -22,6 +22,8 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 )
 
 // Based on Andrew Gerrand's "10 things you (probably) dont' know about Go"
@@ -53,6 +55,8 @@ func MockFs(files map[string][]byte) FileSystem {
 		fs.all = append(fs.all, d)
 	}
 
+	sort.Strings(fs.all)
+
 	return fs
 }
 
@@ -63,6 +67,7 @@ type FileSystem interface {
 	glob(pattern string) (matches []string, err error)
 	IsDir(name string) (bool, error)
 	Lstat(name string) (os.FileInfo, error)
+	ListDirsRecursive(name string) (dirs []string, err error)
 }
 
 // osFs implements FileSystem using the local disk.
@@ -98,6 +103,27 @@ func (osFs) glob(pattern string) ([]string, error) {
 
 func (osFs) Lstat(path string) (stats os.FileInfo, err error) {
 	return os.Lstat(path)
+}
+
+// Returns a list of all directories under dir
+func (osFs) ListDirsRecursive(name string) (dirs []string, err error) {
+	err = filepath.Walk(name, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.Mode().IsDir() {
+			name := info.Name()
+			if name[0] == '.' && name != "." {
+				return filepath.SkipDir
+			}
+
+			dirs = append(dirs, path)
+		}
+		return nil
+	})
+
+	return dirs, err
 }
 
 type mockFs struct {
@@ -150,6 +176,10 @@ func (m *mockFs) glob(pattern string) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
+		if f == "." && f != pattern {
+			// filepath.Glob won't return "." unless the pattern was "."
+			match = false
+		}
 		if match {
 			matches = append(matches, f)
 		}
@@ -159,4 +189,24 @@ func (m *mockFs) glob(pattern string) ([]string, error) {
 
 func (m *mockFs) Lstat(path string) (stats os.FileInfo, err error) {
 	return nil, errors.New("Lstat is not yet implemented in MockFs")
+}
+
+func (m *mockFs) ListDirsRecursive(name string) (dirs []string, err error) {
+	name = filepath.Clean(name)
+	dirs = append(dirs, name)
+	if name == "." {
+		name = ""
+	} else if name != "/" {
+		name = name + "/"
+	}
+	for _, f := range m.all {
+		if _, isDir := m.dirs[f]; isDir && filepath.Base(f)[0] != '.' {
+			if strings.HasPrefix(f, name) &&
+				strings.HasPrefix(f, "/") == strings.HasPrefix(name, "/") {
+				dirs = append(dirs, f)
+			}
+		}
+	}
+
+	return dirs, nil
 }

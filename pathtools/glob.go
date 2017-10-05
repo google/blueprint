@@ -121,7 +121,7 @@ func glob(fs FileSystem, pattern string, hasRecursive bool) (matches, dirs []str
 			return nil, nil, fmt.Errorf("unexpected error after glob: %s", err)
 		} else if isDir {
 			if file == "**" {
-				recurseDirs, err := walkAllDirs(m)
+				recurseDirs, err := fs.ListDirsRecursive(m)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -164,27 +164,6 @@ func saneSplit(path string) (dir, file string) {
 
 func isWild(pattern string) bool {
 	return strings.ContainsAny(pattern, "*?[")
-}
-
-// Returns a list of all directories under dir
-func walkAllDirs(dir string) (dirs []string, err error) {
-	err = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if info.Mode().IsDir() {
-			name := info.Name()
-			if name[0] == '.' && name != "." {
-				return filepath.SkipDir
-			}
-
-			dirs = append(dirs, path)
-		}
-		return nil
-	})
-
-	return dirs, err
 }
 
 // Filters the strings in matches based on the glob patterns in excludes.  Hierarchical (a/*) and
