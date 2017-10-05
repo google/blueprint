@@ -18,18 +18,21 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"testing"
 )
 
 var pwd, _ = os.Getwd()
 
-var globTestCases = []struct {
+type globTestCase struct {
 	pattern  string
 	matches  []string
 	excludes []string
 	deps     []string
 	err      error
-}{
+}
+
+var globTestCases = []globTestCase{
 	// Current directory tests
 	{
 		pattern: "*",
@@ -441,37 +444,75 @@ var globTestCases = []struct {
 	},
 }
 
+func TestMockGlob(t *testing.T) {
+	files := []string{
+		"a/a/a",
+		"a/b/b",
+		"b/a",
+		"c/c",
+		"c/f/f.ext",
+		"c/g/g.ext",
+		"c/h/h",
+		"d.ext",
+		"e.ext",
+		".test/a",
+		".testing",
+		".test/.ing",
+	}
+
+	mockFiles := make(map[string][]byte)
+
+	for _, f := range files {
+		mockFiles[f] = nil
+		mockFiles[filepath.Join(pwd, "testdata", f)] = nil
+	}
+
+	mock := MockFs(mockFiles)
+
+	for i, testCase := range globTestCases {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			testGlob(t, mock, testCase)
+		})
+	}
+}
+
 func TestGlob(t *testing.T) {
 	os.Chdir("testdata")
 	defer os.Chdir("..")
-	for _, testCase := range globTestCases {
-		matches, deps, err := Glob(testCase.pattern, testCase.excludes)
-		if err != testCase.err {
-			t.Errorf(" pattern: %q", testCase.pattern)
-			if testCase.excludes != nil {
-				t.Errorf("excludes: %q", testCase.excludes)
-			}
-			t.Errorf("   error: %s", err)
-			continue
-		}
+	for i, testCase := range globTestCases {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			testGlob(t, OsFs, testCase)
+		})
+	}
+}
 
-		if !reflect.DeepEqual(matches, testCase.matches) {
-			t.Errorf("incorrect matches list:")
-			t.Errorf(" pattern: %q", testCase.pattern)
-			if testCase.excludes != nil {
-				t.Errorf("excludes: %q", testCase.excludes)
-			}
-			t.Errorf("     got: %#v", matches)
-			t.Errorf("expected: %#v", testCase.matches)
+func testGlob(t *testing.T, fs FileSystem, testCase globTestCase) {
+	matches, deps, err := fs.Glob(testCase.pattern, testCase.excludes)
+	if err != testCase.err {
+		t.Errorf(" pattern: %q", testCase.pattern)
+		if testCase.excludes != nil {
+			t.Errorf("excludes: %q", testCase.excludes)
 		}
-		if !reflect.DeepEqual(deps, testCase.deps) {
-			t.Errorf("incorrect deps list:")
-			t.Errorf(" pattern: %q", testCase.pattern)
-			if testCase.excludes != nil {
-				t.Errorf("excludes: %q", testCase.excludes)
-			}
-			t.Errorf("     got: %#v", deps)
-			t.Errorf("expected: %#v", testCase.deps)
+		t.Errorf("   error: %s", err)
+		return
+	}
+
+	if !reflect.DeepEqual(matches, testCase.matches) {
+		t.Errorf("incorrect matches list:")
+		t.Errorf(" pattern: %q", testCase.pattern)
+		if testCase.excludes != nil {
+			t.Errorf("excludes: %q", testCase.excludes)
 		}
+		t.Errorf("     got: %#v", matches)
+		t.Errorf("expected: %#v", testCase.matches)
+	}
+	if !reflect.DeepEqual(deps, testCase.deps) {
+		t.Errorf("incorrect deps list:")
+		t.Errorf(" pattern: %q", testCase.pattern)
+		if testCase.excludes != nil {
+			t.Errorf("excludes: %q", testCase.excludes)
+		}
+		t.Errorf("     got: %#v", deps)
+		t.Errorf("expected: %#v", testCase.deps)
 	}
 }
