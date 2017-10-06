@@ -9,12 +9,13 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"github.com/google/blueprint/parser"
 	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/google/blueprint/parser"
 )
 
 var (
@@ -40,17 +41,17 @@ func usage() {
 	os.Exit(2)
 }
 
-// If in == nil, the source is the contents of the file with the given filename.
-func processFile(filename string, in io.Reader, out io.Writer) error {
-	if in == nil {
-		f, err := os.Open(filename)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		in = f
+func processFile(filename string, out io.Writer) error {
+	f, err := os.Open(filename)
+	if err != nil {
+		return err
 	}
+	defer f.Close()
 
+	return processReader(filename, f, out)
+}
+
+func processReader(filename string, in io.Reader, out io.Writer) error {
 	src, err := ioutil.ReadAll(in)
 	if err != nil {
 		return err
@@ -103,17 +104,17 @@ func processFile(filename string, in io.Reader, out io.Writer) error {
 	return err
 }
 
-func visitFile(path string, f os.FileInfo, err error) error {
-	if err == nil && f.Name() == "Blueprints" {
-		err = processFile(path, nil, os.Stdout)
-	}
-	if err != nil {
-		report(err)
-	}
-	return nil
-}
-
 func walkDir(path string) {
+	visitFile := func(path string, f os.FileInfo, err error) error {
+		if err == nil && f.Name() == "Blueprints" {
+			err = processFile(path, os.Stdout)
+		}
+		if err != nil {
+			report(err)
+		}
+		return nil
+	}
+
 	filepath.Walk(path, visitFile)
 }
 
@@ -126,7 +127,7 @@ func main() {
 			exitCode = 2
 			return
 		}
-		if err := processFile("<standard input>", os.Stdin, os.Stdout); err != nil {
+		if err := processReader("<standard input>", os.Stdin, os.Stdout); err != nil {
 			report(err)
 		}
 		return
@@ -140,7 +141,7 @@ func main() {
 		case dir.IsDir():
 			walkDir(path)
 		default:
-			if err := processFile(path, nil, os.Stdout); err != nil {
+			if err := processFile(path, os.Stdout); err != nil {
 				report(err)
 			}
 		}
