@@ -20,10 +20,11 @@ import (
 
 var (
 	// main operation modes
-	list      = flag.Bool("l", false, "list files whose formatting differs from bpfmt's")
-	write     = flag.Bool("w", false, "write result to (source) file instead of stdout")
-	doDiff    = flag.Bool("d", false, "display diffs instead of rewriting files")
-	sortLists = flag.Bool("s", false, "sort arrays")
+	list                = flag.Bool("l", false, "list files whose formatting differs from bpfmt's")
+	overwriteSourceFile = flag.Bool("w", false, "write result to (source) file")
+	writeToStout        = flag.Bool("o", false, "write result to stdout")
+	doDiff              = flag.Bool("d", false, "display diffs instead of rewriting files")
+	sortLists           = flag.Bool("s", false, "sort arrays")
 )
 
 var (
@@ -36,6 +37,11 @@ func report(err error) {
 }
 
 func usage() {
+	usageViolation("")
+}
+
+func usageViolation(violation string) {
+	fmt.Fprintln(os.Stderr, violation)
 	fmt.Fprintf(os.Stderr, "usage: bpfmt [flags] [path ...]\n")
 	flag.PrintDefaults()
 	os.Exit(2)
@@ -81,7 +87,7 @@ func processReader(filename string, in io.Reader, out io.Writer) error {
 		if *list {
 			fmt.Fprintln(out, filename)
 		}
-		if *write {
+		if *overwriteSourceFile {
 			err = ioutil.WriteFile(filename, res, 0644)
 			if err != nil {
 				return err
@@ -97,7 +103,7 @@ func processReader(filename string, in io.Reader, out io.Writer) error {
 		}
 	}
 
-	if !*list && !*write && !*doDiff {
+	if !*list && !*overwriteSourceFile && !*doDiff {
 		_, err = out.Write(res)
 	}
 
@@ -121,8 +127,13 @@ func walkDir(path string) {
 func main() {
 	flag.Parse()
 
+	if !*writeToStout && !*overwriteSourceFile && !*doDiff && !*list {
+		usageViolation("one of -d, -l, -o, or -w is required")
+	}
+
 	if flag.NArg() == 0 {
-		if *write {
+		// file to parse is stdin
+		if *overwriteSourceFile {
 			fmt.Fprintln(os.Stderr, "error: cannot use -w with standard input")
 			exitCode = 2
 			return
