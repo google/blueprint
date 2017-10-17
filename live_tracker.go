@@ -109,6 +109,11 @@ func (l *liveTracker) addRule(r Rule) (def *ruleDef, err error) {
 			return nil, err
 		}
 
+		err = l.addNinjaStringListDeps(def.CommandOrderOnly)
+		if err != nil {
+			return nil, err
+		}
+
 		for _, value := range def.Variables {
 			err = l.addNinjaStringDeps(value)
 			if err != nil {

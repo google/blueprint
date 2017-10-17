@@ -67,8 +67,9 @@ type RuleParams struct {
 	RspfileContent string // The response file content.
 
 	// These fields are used internally in Blueprint
-	CommandDeps []string // Command-specific implicit dependencies to prepend to builds
-	Comment     string   // The comment that will appear above the definition.
+	CommandDeps      []string // Command-specific implicit dependencies to prepend to builds
+	CommandOrderOnly []string // Command-specific order-only dependencies to prepend to builds
+	Comment          string   // The comment that will appear above the definition.
 }
 
 // A BuildParams object contains the set of parameters that make up a Ninja
@@ -127,10 +128,11 @@ func (p *poolDef) WriteTo(nw *ninjaWriter, name string) error {
 // A ruleDef describes a rule definition.  It does not include the name of the
 // rule.
 type ruleDef struct {
-	CommandDeps []*ninjaString
-	Comment     string
-	Pool        Pool
-	Variables   map[string]*ninjaString
+	CommandDeps      []*ninjaString
+	CommandOrderOnly []*ninjaString
+	Comment          string
+	Pool             Pool
+	Variables        map[string]*ninjaString
 }
 
 func parseRuleParams(scope scope, params *RuleParams) (*ruleDef,
@@ -203,6 +205,11 @@ func parseRuleParams(scope scope, params *RuleParams) (*ruleDef,
 	}
 
 	r.CommandDeps, err = parseNinjaStrings(scope, params.CommandDeps)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing CommandDeps param: %s", err)
+	}
+
+	r.CommandOrderOnly, err = parseNinjaStrings(scope, params.CommandOrderOnly)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing CommandDeps param: %s", err)
 	}
@@ -370,6 +377,7 @@ func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*packageContext]string)
 
 	if b.RuleDef != nil {
 		implicitDeps = append(valueList(b.RuleDef.CommandDeps, pkgNames, inputEscaper), implicitDeps...)
+		orderOnlyDeps = append(valueList(b.RuleDef.CommandOrderOnly, pkgNames, inputEscaper), orderOnlyDeps...)
 	}
 
 	err := nw.Build(comment, rule, outputs, implicitOuts, explicitDeps, implicitDeps, orderOnlyDeps)
