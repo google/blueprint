@@ -7,13 +7,15 @@ import (
 	"go/doc"
 	"go/parser"
 	"go/token"
+	"html/template"
 	"io/ioutil"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
-	"text/template"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/blueprint"
 	"github.com/google/blueprint/proptools"
@@ -101,8 +103,8 @@ type Property struct {
 	OtherNames []string
 	Type       string
 	Tag        reflect.StructTag
-	Text       string
-	OtherTexts []string
+	Text       template.HTML
+	OtherTexts []template.HTML
 	Properties []Property
 	Default    string
 }
@@ -131,7 +133,7 @@ func (p *Property) Equal(other Property) bool {
 	return p.Name == other.Name && p.Type == other.Type && p.Tag == other.Tag &&
 		p.Text == other.Text && p.Default == other.Default &&
 		stringArrayEqual(p.OtherNames, other.OtherNames) &&
-		stringArrayEqual(p.OtherTexts, other.OtherTexts) &&
+		htmlArrayEqual(p.OtherTexts, other.OtherTexts) &&
 		p.SameSubProperties(other)
 }
 
@@ -172,6 +174,20 @@ func setDefaults(properties []Property, defaults reflect.Value) {
 }
 
 func stringArrayEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+func htmlArrayEqual(a, b []template.HTML) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -287,11 +303,30 @@ func structProperties(structType *ast.StructType) (props []Property, err error) 
 				typ = fmt.Sprintf("%T", f.Type)
 			}
 
+			var html template.HTML
+
+			lines := strings.Split(text, "\n")
+			preformatted := false
+			for _, line := range lines {
+				r, _ := utf8.DecodeRuneInString(line)
+				indent := unicode.IsSpace(r)
+				if indent && !preformatted {
+					html += "<pre>\n"
+				} else if !indent && preformatted {
+					html += "</pre>\n"
+				}
+				preformatted = indent
+				html += template.HTML(template.HTMLEscapeString(line)) + "\n"
+			}
+			if preformatted {
+				html += "</pre>\n"
+			}
+
 			props = append(props, Property{
 				Name:       name,
 				Type:       typ,
 				Tag:        reflect.StructTag(tag),
-				Text:       text,
+				Text:       html,
 				Properties: innerProps,
 			})
 		}
