@@ -9,20 +9,22 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"github.com/google/blueprint/parser"
 	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/google/blueprint/parser"
 )
 
 var (
 	// main operation modes
-	list      = flag.Bool("l", false, "list files whose formatting differs from bpfmt's")
-	write     = flag.Bool("w", false, "write result to (source) file instead of stdout")
-	doDiff    = flag.Bool("d", false, "display diffs instead of rewriting files")
-	sortLists = flag.Bool("s", false, "sort arrays")
+	list                = flag.Bool("l", false, "list files whose formatting differs from bpfmt's")
+	overwriteSourceFile = flag.Bool("w", false, "write result to (source) file")
+	writeToStout        = flag.Bool("o", false, "write result to stdout")
+	doDiff              = flag.Bool("d", false, "display diffs instead of rewriting files")
+	sortLists           = flag.Bool("s", false, "sort arrays")
 )
 
 var (
@@ -35,22 +37,27 @@ func report(err error) {
 }
 
 func usage() {
+	usageViolation("")
+}
+
+func usageViolation(violation string) {
+	fmt.Fprintln(os.Stderr, violation)
 	fmt.Fprintf(os.Stderr, "usage: bpfmt [flags] [path ...]\n")
 	flag.PrintDefaults()
 	os.Exit(2)
 }
 
-// If in == nil, the source is the contents of the file with the given filename.
-func processFile(filename string, in io.Reader, out io.Writer) error {
-	if in == nil {
-		f, err := os.Open(filename)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		in = f
+func processFile(filename string, out io.Writer) error {
+	f, err := os.Open(filename)
+	if err != nil {
+		return err
 	}
+	defer f.Close()
 
+	return processReader(filename, f, out)
+}
+
+func processReader(filename string, in io.Reader, out io.Writer) error {
 	src, err := ioutil.ReadAll(in)
 	if err != nil {
 		return err
@@ -80,7 +87,7 @@ func processFile(filename string, in io.Reader, out io.Writer) error {
 		if *list {
 			fmt.Fprintln(out, filename)
 		}
-		if *write {
+		if *overwriteSourceFile {
 			err = ioutil.WriteFile(filename, res, 0644)
 			if err != nil {
 				return err
@@ -96,37 +103,42 @@ func processFile(filename string, in io.Reader, out io.Writer) error {
 		}
 	}
 
-	if !*list && !*write && !*doDiff {
+	if !*list && !*overwriteSourceFile && !*doDiff {
 		_, err = out.Write(res)
 	}
 
 	return err
 }
 
-func visitFile(path string, f os.FileInfo, err error) error {
-	if err == nil && f.Name() == "Blueprints" {
-		err = processFile(path, nil, os.Stdout)
-	}
-	if err != nil {
-		report(err)
-	}
-	return nil
-}
-
 func walkDir(path string) {
+	visitFile := func(path string, f os.FileInfo, err error) error {
+		if err == nil && f.Name() == "Blueprints" {
+			err = processFile(path, os.Stdout)
+		}
+		if err != nil {
+			report(err)
+		}
+		return nil
+	}
+
 	filepath.Walk(path, visitFile)
 }
 
 func main() {
 	flag.Parse()
 
+	if !*writeToStout && !*overwriteSourceFile && !*doDiff && !*list {
+		usageViolation("one of -d, -l, -o, or -w is required")
+	}
+
 	if flag.NArg() == 0 {
-		if *write {
+		// file to parse is stdin
+		if *overwriteSourceFile {
 			fmt.Fprintln(os.Stderr, "error: cannot use -w with standard input")
 			exitCode = 2
 			return
 		}
-		if err := processFile("<standard input>", os.Stdin, os.Stdout); err != nil {
+		if err := processReader("<standard input>", os.Stdin, os.Stdout); err != nil {
 			report(err)
 		}
 		return
@@ -140,7 +152,7 @@ func main() {
 		case dir.IsDir():
 			walkDir(path)
 		default:
-			if err := processFile(path, nil, os.Stdout); err != nil {
+			if err := processFile(path, os.Stdout); err != nil {
 				report(err)
 			}
 		}
