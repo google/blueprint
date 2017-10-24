@@ -35,15 +35,15 @@
 // the module type looks like a function call, and the properties of the module
 // look like optional arguments.  For example, a simple module might look like:
 //
-//   cc_library(
-//       name = "cmd",
-//       srcs = [
+//   cc_library {
+//       name: "cmd",
+//       srcs: [
 //           "main.c",
 //       ],
-//       deps = [
+//       deps: [
 //           "libc",
 //       ],
-//   )
+//   }
 //
 //   subdirs = ["subdir1", "subdir2"]
 //
