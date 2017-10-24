@@ -68,6 +68,14 @@ func Print(file *File) ([]byte, error) {
 	return p.output, nil
 }
 
+func PrintExpression(expression Expression) ([]byte, error) {
+	dummyFile := &File{}
+	p := newPrinter(dummyFile)
+	p.printExpression(expression)
+	p.flush()
+	return p.output, nil
+}
+
 func (p *printer) Print() ([]byte, error) {
 	for _, def := range p.defs {
 		p.printDef(def)
