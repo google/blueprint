@@ -485,6 +485,18 @@ func Build(config *Config, out, pkg string) (*GoPackage, error) {
 		Name: "main",
 	}
 
+	lockFileName := filepath.Join(filepath.Dir(out), "."+filepath.Base(out)+".lock")
+	lockFile, err := os.OpenFile(lockFileName, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		return nil, fmt.Errorf("Error creating lock file (%q): %v", lockFileName, err)
+	}
+	defer lockFile.Close()
+
+	err = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX)
+	if err != nil {
+		return nil, fmt.Errorf("Error locking file (%q): %v", lockFileName, err)
+	}
+
 	path, ok, err := config.Path(pkg)
 	if err != nil {
 		return nil, fmt.Errorf("Error finding package %q for main: %v", pkg, err)
