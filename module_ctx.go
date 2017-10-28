@@ -745,6 +745,9 @@ func (mctx *mutatorContext) Rename(name string) {
 func (mctx *mutatorContext) CreateModule(factory ModuleFactory, props ...interface{}) {
 	module := mctx.context.newModule(factory)
 
+	module.relBlueprintsFile = mctx.module.relBlueprintsFile
+	module.pos = mctx.module.pos
+
 	for _, p := range props {
 		err := proptools.AppendMatchingProperties(module.properties, p, nil)
 		if err != nil {
