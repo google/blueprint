@@ -55,6 +55,12 @@ func BoolPtr(b bool) *bool {
 	return &b
 }
 
+// Int64Ptr returns a pointer to a new int64 containing the given value.
+func Int64Ptr(i int64) *int64 {
+	b := int64(i)
+	return &(b)
+}
+
 // StringPtr returns a pointer to a new string containing the given value.
 func StringPtr(s string) *string {
 	return &s
