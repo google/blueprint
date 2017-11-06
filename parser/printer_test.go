@@ -33,11 +33,12 @@ foo {}
 	},
 	{
 		input: `
-foo{name= "abc",}
+foo{name= "abc",num= 4,}
 `,
 		output: `
 foo {
     name: "abc",
+    num: 4,
 }
 `,
 	},
@@ -108,7 +109,8 @@ foo {
 		foo {
 			stuff: {
 				isGood: true,
-				name: "bar"
+				name: "bar",
+				num: 4,
 			}
 		}
 		`,
@@ -117,6 +119,7 @@ foo {
     stuff: {
         isGood: true,
         name: "bar",
+        num: 4,
     },
 }
 `,
@@ -141,19 +144,23 @@ foo {
 		input: `
 foo {
 	name: "abc",
+	num: 4,
 }
 
 bar  {
 	name: "def",
+	num: 5,
 }
 		`,
 		output: `
 foo {
     name: "abc",
+    num: 4,
 }
 
 bar {
     name: "def",
+    num: 5,
 }
 `,
 	},
@@ -166,6 +173,20 @@ baz += foo
 `,
 		output: `
 foo = "stuff"
+bar = foo
+baz = foo + bar
+baz += foo
+`,
+	},
+	{
+		input: `
+foo = 100
+bar = foo
+baz = foo + bar
+baz += foo
+`,
+		output: `
+foo = 100
 bar = foo
 baz = foo + bar
 baz += foo

@@ -123,6 +123,8 @@ func (p *printer) printExpression(value Expression) {
 			s = "false"
 		}
 		p.printToken(s, v.LiteralPos)
+	case *Int64:
+		p.printToken(strconv.FormatInt(v.Value, 10), v.LiteralPos)
 	case *String:
 		p.printToken(strconv.Quote(v.Value), v.LiteralPos)
 	case *List:
