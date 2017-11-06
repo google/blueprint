@@ -186,7 +186,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 					origFieldValue.Set(fieldValue)
 				}
 				fieldValue = fieldValue.Elem()
-			case reflect.Bool, reflect.String:
+			case reflect.Bool, reflect.Int64, reflect.String:
 				// Nothing
 			default:
 				panic(fmt.Errorf("field %s contains a pointer to %s", propertyName, ptrKind))
@@ -299,6 +299,14 @@ func propertyToValue(typ reflect.Type, property *parser.Property) (reflect.Value
 		b, ok := property.Value.Eval().(*parser.Bool)
 		if !ok {
 			return value, fmt.Errorf("%s: can't assign %s value to bool property %q",
+				property.Value.Pos(), property.Value.Type(), property.Name)
+		}
+		value = reflect.ValueOf(b.Value)
+
+	case reflect.Int64:
+		b, ok := property.Value.Eval().(*parser.Int64)
+		if !ok {
+			return value, fmt.Errorf("%s: can't assign %s value to int64 property %q",
 				property.Value.Pos(), property.Value.Type(), property.Name)
 		}
 		value = reflect.ValueOf(b.Value)
