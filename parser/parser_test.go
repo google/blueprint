@@ -110,6 +110,35 @@ var validParseTestCases = []struct {
 
 	{`
 		foo {
+			num: 4,
+		}
+		`,
+		[]Definition{
+			&Module{
+				Type:    "foo",
+				TypePos: mkpos(3, 2, 3),
+				Map: Map{
+					LBracePos: mkpos(7, 2, 7),
+					RBracePos: mkpos(22, 4, 3),
+					Properties: []*Property{
+						{
+							Name:     "num",
+							NamePos:  mkpos(12, 3, 4),
+							ColonPos: mkpos(15, 3, 7),
+							Value: &Int64{
+								LiteralPos: mkpos(17, 3, 9),
+								Value:      4,
+							},
+						},
+					},
+				},
+			},
+		},
+		nil,
+	},
+
+	{`
+		foo {
 			stuff: ["asdf", "jkl;", "qwert",
 				"uiop", "bnm,"]
 		}
@@ -164,7 +193,8 @@ var validParseTestCases = []struct {
 		foo {
 			stuff: {
 				isGood: true,
-				name: "bar"
+				name: "bar",
+				num: 36,
 			}
 		}
 		`,
@@ -174,7 +204,7 @@ var validParseTestCases = []struct {
 				TypePos: mkpos(3, 2, 3),
 				Map: Map{
 					LBracePos: mkpos(7, 2, 7),
-					RBracePos: mkpos(62, 7, 3),
+					RBracePos: mkpos(76, 8, 3),
 					Properties: []*Property{
 						{
 							Name:     "stuff",
@@ -182,7 +212,7 @@ var validParseTestCases = []struct {
 							ColonPos: mkpos(17, 3, 9),
 							Value: &Map{
 								LBracePos: mkpos(19, 3, 11),
-								RBracePos: mkpos(58, 6, 4),
+								RBracePos: mkpos(72, 7, 4),
 								Properties: []*Property{
 									{
 										Name:     "isGood",
@@ -200,6 +230,15 @@ var validParseTestCases = []struct {
 										Value: &String{
 											LiteralPos: mkpos(49, 5, 11),
 											Value:      "bar",
+										},
+									},
+									{
+										Name:     "num",
+										NamePos:  mkpos(60, 6, 5),
+										ColonPos: mkpos(63, 6, 8),
+										Value: &Int64{
+											LiteralPos: mkpos(65, 6, 10),
+											Value:      36,
 										},
 									},
 								},
@@ -279,10 +318,12 @@ var validParseTestCases = []struct {
 	{`
 		foo {
 			name: "abc",
+			num: 4,
 		}
 
 		bar {
 			name: "def",
+			num: -5,
 		}
 		`,
 		[]Definition{
@@ -291,7 +332,7 @@ var validParseTestCases = []struct {
 				TypePos: mkpos(3, 2, 3),
 				Map: Map{
 					LBracePos: mkpos(7, 2, 7),
-					RBracePos: mkpos(27, 4, 3),
+					RBracePos: mkpos(38, 5, 3),
 					Properties: []*Property{
 						{
 							Name:     "name",
@@ -302,23 +343,41 @@ var validParseTestCases = []struct {
 								Value:      "abc",
 							},
 						},
+						{
+							Name:     "num",
+							NamePos:  mkpos(28, 4, 4),
+							ColonPos: mkpos(31, 4, 7),
+							Value: &Int64{
+								LiteralPos: mkpos(33, 4, 9),
+								Value:      4,
+							},
+						},
 					},
 				},
 			},
 			&Module{
 				Type:    "bar",
-				TypePos: mkpos(32, 6, 3),
+				TypePos: mkpos(43, 7, 3),
 				Map: Map{
-					LBracePos: mkpos(36, 6, 7),
-					RBracePos: mkpos(56, 8, 3),
+					LBracePos: mkpos(47, 7, 7),
+					RBracePos: mkpos(79, 10, 3),
 					Properties: []*Property{
 						{
 							Name:     "name",
-							NamePos:  mkpos(41, 7, 4),
-							ColonPos: mkpos(45, 7, 8),
+							NamePos:  mkpos(52, 8, 4),
+							ColonPos: mkpos(56, 8, 8),
 							Value: &String{
-								LiteralPos: mkpos(47, 7, 10),
+								LiteralPos: mkpos(58, 8, 10),
 								Value:      "def",
+							},
+						},
+						{
+							Name:     "num",
+							NamePos:  mkpos(68, 9, 4),
+							ColonPos: mkpos(71, 9, 7),
+							Value: &Int64{
+								LiteralPos: mkpos(73, 9, 9),
+								Value:      -5,
 							},
 						},
 					},
@@ -327,6 +386,7 @@ var validParseTestCases = []struct {
 		},
 		nil,
 	},
+
 	{`
 		foo = "stuff"
 		bar = foo
@@ -557,6 +617,317 @@ var validParseTestCases = []struct {
 		},
 		nil,
 	},
+
+	{`
+		baz = -4 + -5 + 6
+		`,
+		[]Definition{
+			&Assignment{
+				Name:      "baz",
+				NamePos:   mkpos(3, 2, 3),
+				EqualsPos: mkpos(7, 2, 7),
+				Value: &Operator{
+					OperatorPos: mkpos(12, 2, 12),
+					Operator:    '+',
+					Value: &Int64{
+						LiteralPos: mkpos(9, 2, 9),
+						Value:      -3,
+					},
+					Args: [2]Expression{
+						&Int64{
+							LiteralPos: mkpos(9, 2, 9),
+							Value:      -4,
+						},
+						&Operator{
+							OperatorPos: mkpos(17, 2, 17),
+							Operator:    '+',
+							Value: &Int64{
+								LiteralPos: mkpos(14, 2, 14),
+								Value:      1,
+							},
+							Args: [2]Expression{
+								&Int64{
+									LiteralPos: mkpos(14, 2, 14),
+									Value:      -5,
+								},
+								&Int64{
+									LiteralPos: mkpos(19, 2, 19),
+									Value:      6,
+								},
+							},
+						},
+					},
+				},
+				OrigValue: &Operator{
+					OperatorPos: mkpos(12, 2, 12),
+					Operator:    '+',
+					Value: &Int64{
+						LiteralPos: mkpos(9, 2, 9),
+						Value:      -3,
+					},
+					Args: [2]Expression{
+						&Int64{
+							LiteralPos: mkpos(9, 2, 9),
+							Value:      -4,
+						},
+						&Operator{
+							OperatorPos: mkpos(17, 2, 17),
+							Operator:    '+',
+							Value: &Int64{
+								LiteralPos: mkpos(14, 2, 14),
+								Value:      1,
+							},
+							Args: [2]Expression{
+								&Int64{
+									LiteralPos: mkpos(14, 2, 14),
+									Value:      -5,
+								},
+								&Int64{
+									LiteralPos: mkpos(19, 2, 19),
+									Value:      6,
+								},
+							},
+						},
+					},
+				},
+				Assigner:   "=",
+				Referenced: false,
+			},
+		},
+		nil,
+	},
+
+	{`
+		foo = 1000000
+		bar = foo
+		baz = foo + bar
+		boo = baz
+		boo += foo
+		`,
+		[]Definition{
+			&Assignment{
+				Name:      "foo",
+				NamePos:   mkpos(3, 2, 3),
+				EqualsPos: mkpos(7, 2, 7),
+				Value: &Int64{
+					LiteralPos: mkpos(9, 2, 9),
+					Value:      1000000,
+				},
+				OrigValue: &Int64{
+					LiteralPos: mkpos(9, 2, 9),
+					Value:      1000000,
+				},
+				Assigner:   "=",
+				Referenced: true,
+			},
+			&Assignment{
+				Name:      "bar",
+				NamePos:   mkpos(19, 3, 3),
+				EqualsPos: mkpos(23, 3, 7),
+				Value: &Variable{
+					Name:    "foo",
+					NamePos: mkpos(25, 3, 9),
+					Value: &Int64{
+						LiteralPos: mkpos(9, 2, 9),
+						Value:      1000000,
+					},
+				},
+				OrigValue: &Variable{
+					Name:    "foo",
+					NamePos: mkpos(25, 3, 9),
+					Value: &Int64{
+						LiteralPos: mkpos(9, 2, 9),
+						Value:      1000000,
+					},
+				},
+				Assigner:   "=",
+				Referenced: true,
+			},
+			&Assignment{
+				Name:      "baz",
+				NamePos:   mkpos(31, 4, 3),
+				EqualsPos: mkpos(35, 4, 7),
+				Value: &Operator{
+					OperatorPos: mkpos(41, 4, 13),
+					Operator:    '+',
+					Value: &Int64{
+						LiteralPos: mkpos(9, 2, 9),
+						Value:      2000000,
+					},
+					Args: [2]Expression{
+						&Variable{
+							Name:    "foo",
+							NamePos: mkpos(37, 4, 9),
+							Value: &Int64{
+								LiteralPos: mkpos(9, 2, 9),
+								Value:      1000000,
+							},
+						},
+						&Variable{
+							Name:    "bar",
+							NamePos: mkpos(43, 4, 15),
+							Value: &Variable{
+								Name:    "foo",
+								NamePos: mkpos(25, 3, 9),
+								Value: &Int64{
+									LiteralPos: mkpos(9, 2, 9),
+									Value:      1000000,
+								},
+							},
+						},
+					},
+				},
+				OrigValue: &Operator{
+					OperatorPos: mkpos(41, 4, 13),
+					Operator:    '+',
+					Value: &Int64{
+						LiteralPos: mkpos(9, 2, 9),
+						Value:      2000000,
+					},
+					Args: [2]Expression{
+						&Variable{
+							Name:    "foo",
+							NamePos: mkpos(37, 4, 9),
+							Value: &Int64{
+								LiteralPos: mkpos(9, 2, 9),
+								Value:      1000000,
+							},
+						},
+						&Variable{
+							Name:    "bar",
+							NamePos: mkpos(43, 4, 15),
+							Value: &Variable{
+								Name:    "foo",
+								NamePos: mkpos(25, 3, 9),
+								Value: &Int64{
+									LiteralPos: mkpos(9, 2, 9),
+									Value:      1000000,
+								},
+							},
+						},
+					},
+				},
+				Assigner:   "=",
+				Referenced: true,
+			},
+			&Assignment{
+				Name:      "boo",
+				NamePos:   mkpos(49, 5, 3),
+				EqualsPos: mkpos(53, 5, 7),
+				Value: &Operator{
+					Args: [2]Expression{
+						&Variable{
+							Name:    "baz",
+							NamePos: mkpos(55, 5, 9),
+							Value: &Operator{
+								OperatorPos: mkpos(41, 4, 13),
+								Operator:    '+',
+								Value: &Int64{
+									LiteralPos: mkpos(9, 2, 9),
+									Value:      2000000,
+								},
+								Args: [2]Expression{
+									&Variable{
+										Name:    "foo",
+										NamePos: mkpos(37, 4, 9),
+										Value: &Int64{
+											LiteralPos: mkpos(9, 2, 9),
+											Value:      1000000,
+										},
+									},
+									&Variable{
+										Name:    "bar",
+										NamePos: mkpos(43, 4, 15),
+										Value: &Variable{
+											Name:    "foo",
+											NamePos: mkpos(25, 3, 9),
+											Value: &Int64{
+												LiteralPos: mkpos(9, 2, 9),
+												Value:      1000000,
+											},
+										},
+									},
+								},
+							},
+						},
+						&Variable{
+							Name:    "foo",
+							NamePos: mkpos(68, 6, 10),
+							Value: &Int64{
+								LiteralPos: mkpos(9, 2, 9),
+								Value:      1000000,
+							},
+						},
+					},
+					OperatorPos: mkpos(66, 6, 8),
+					Operator:    '+',
+					Value: &Int64{
+						LiteralPos: mkpos(9, 2, 9),
+						Value:      3000000,
+					},
+				},
+				OrigValue: &Variable{
+					Name:    "baz",
+					NamePos: mkpos(55, 5, 9),
+					Value: &Operator{
+						OperatorPos: mkpos(41, 4, 13),
+						Operator:    '+',
+						Value: &Int64{
+							LiteralPos: mkpos(9, 2, 9),
+							Value:      2000000,
+						},
+						Args: [2]Expression{
+							&Variable{
+								Name:    "foo",
+								NamePos: mkpos(37, 4, 9),
+								Value: &Int64{
+									LiteralPos: mkpos(9, 2, 9),
+									Value:      1000000,
+								},
+							},
+							&Variable{
+								Name:    "bar",
+								NamePos: mkpos(43, 4, 15),
+								Value: &Variable{
+									Name:    "foo",
+									NamePos: mkpos(25, 3, 9),
+									Value: &Int64{
+										LiteralPos: mkpos(9, 2, 9),
+										Value:      1000000,
+									},
+								},
+							},
+						},
+					},
+				},
+				Assigner: "=",
+			},
+			&Assignment{
+				Name:      "boo",
+				NamePos:   mkpos(61, 6, 3),
+				EqualsPos: mkpos(66, 6, 8),
+				Value: &Variable{
+					Name:    "foo",
+					NamePos: mkpos(68, 6, 10),
+					Value: &Int64{
+						LiteralPos: mkpos(9, 2, 9),
+						Value:      1000000,
+					},
+				},
+				OrigValue: &Variable{
+					Name:    "foo",
+					NamePos: mkpos(68, 6, 10),
+					Value: &Int64{
+						LiteralPos: mkpos(9, 2, 9),
+						Value:      1000000,
+					},
+				},
+				Assigner: "+=",
+			},
+		},
+		nil,
+	},
+
 	{`
 		// comment1
 		// comment2
