@@ -91,6 +91,15 @@ var clonePropertiesTestCases = []struct {
 		},
 	},
 	{
+		// Clone pointer to int64
+		in: &struct{ S *int64 }{
+			S: Int64Ptr(5),
+		},
+		out: &struct{ S *int64 }{
+			S: Int64Ptr(5),
+		},
+	},
+	{
 		// Clone struct
 		in: &struct{ S struct{ S string } }{
 			S: struct{ S string }{
@@ -189,10 +198,12 @@ var clonePropertiesTestCases = []struct {
 		}{
 			EmbeddedStruct: EmbeddedStruct{
 				S: "string1",
+				I: Int64Ptr(55),
 			},
 			Nested: struct{ EmbeddedStruct }{
 				EmbeddedStruct: EmbeddedStruct{
 					S: "string2",
+					I: Int64Ptr(5),
 				},
 			},
 		},
@@ -202,10 +213,12 @@ var clonePropertiesTestCases = []struct {
 		}{
 			EmbeddedStruct: EmbeddedStruct{
 				S: "string1",
+				I: Int64Ptr(55),
 			},
 			Nested: struct{ EmbeddedStruct }{
 				EmbeddedStruct: EmbeddedStruct{
 					S: "string2",
+					I: Int64Ptr(5),
 				},
 			},
 		},
@@ -241,7 +254,10 @@ var clonePropertiesTestCases = []struct {
 	},
 }
 
-type EmbeddedStruct struct{ S string }
+type EmbeddedStruct struct {
+	S string
+	I *int64
+}
 type EmbeddedInterface interface{}
 
 func TestCloneProperties(t *testing.T) {
@@ -307,6 +323,14 @@ var cloneEmptyPropertiesTestCases = []struct {
 			B2: BoolPtr(false),
 		},
 		out: &struct{ B1, B2 *bool }{},
+	},
+	{
+		// Clone pointer to int64
+		in: &struct{ B1, B2 *int64 }{
+			B1: Int64Ptr(5),
+			B2: Int64Ptr(4),
+		},
+		out: &struct{ B1, B2 *int64 }{},
 	},
 	{
 		// Clone pointer to string
