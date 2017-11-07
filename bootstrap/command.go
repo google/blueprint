@@ -31,15 +31,14 @@ import (
 )
 
 var (
-	outFile        string
-	depFile        string
-	docFile        string
-	cpuprofile     string
-	memprofile     string
-	traceFile      string
-	runGoTests     bool
-	noGC           bool
-	moduleListFile string
+	outFile    string
+	depFile    string
+	docFile    string
+	cpuprofile string
+	memprofile string
+	traceFile  string
+	runGoTests bool
+	noGC       bool
 
 	BuildDir      string
 	NinjaBuildDir string
@@ -57,7 +56,6 @@ func init() {
 	flag.StringVar(&memprofile, "memprofile", "", "write memory profile to file")
 	flag.BoolVar(&noGC, "nogc", false, "turn off GC for debugging")
 	flag.BoolVar(&runGoTests, "t", false, "build and run go tests during bootstrap")
-	flag.StringVar(&moduleListFile, "l", "", "file that lists filepaths to parse")
 }
 
 func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...string) {
@@ -95,21 +93,11 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		fatalf("no Blueprints file specified")
 	}
 
-	SrcDir = filepath.Dir(flag.Arg(0))
-	if moduleListFile != "" {
-		ctx.SetModuleListFile(moduleListFile)
-		extraNinjaFileDeps = append(extraNinjaFileDeps, moduleListFile)
-	} else {
-		fatalf("-l <moduleListFile> is required and must be nonempty")
-	}
-	filesToParse, err := ctx.ListModulePaths(SrcDir)
-	if err != nil {
-		fatalf("could not enumerate files: %v\n", err.Error())
-	}
-
 	if NinjaBuildDir == "" {
 		NinjaBuildDir = BuildDir
 	}
+
+	SrcDir = filepath.Dir(flag.Arg(0))
 
 	stage := StageMain
 	if c, ok := config.(ConfigInterface); ok {
@@ -122,7 +110,6 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		stage: stage,
 		topLevelBlueprintsFile: flag.Arg(0),
 		runGoTests:             runGoTests,
-		moduleListFile:         moduleListFile,
 	}
 
 	ctx.RegisterBottomUpMutator("bootstrap_plugin_deps", pluginDeps)
@@ -133,7 +120,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 
 	ctx.RegisterSingletonType("glob", globSingletonFactory(ctx))
 
-	deps, errs := ctx.ParseFileList(filepath.Dir(bootstrapConfig.topLevelBlueprintsFile), filesToParse)
+	deps, errs := ctx.ParseBlueprintsFiles(bootstrapConfig.topLevelBlueprintsFile)
 	if len(errs) > 0 {
 		fatalErrors(errs)
 	}
@@ -162,7 +149,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	deps = append(deps, extraDeps...)
 
 	buf := bytes.NewBuffer(nil)
-	err = ctx.WriteBuildFile(buf)
+	err := ctx.WriteBuildFile(buf)
 	if err != nil {
 		fatalf("error generating Ninja file contents: %s", err)
 	}

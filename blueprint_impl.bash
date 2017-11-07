@@ -1,28 +1,9 @@
-if [ ! "${BLUEPRINT_BOOTSTRAP_VERSION}" -eq "2" ]; then
+if [ ! "${BLUEPRINT_BOOTSTRAP_VERSION}" -eq "1" ]; then
   echo "Please run bootstrap.bash again (out of date)" >&2
   exit 1
 fi
 
-
-# Allow the caller to pass in a list of module files
-if [ -z "$BLUEPRINT_LIST_FILE" ]; then
-  # If the caller does not pass a list of module files, then do a search now
-  OUR_LIST_FILE="${BUILDDIR}/.bootstrap/bplist"
-  TEMP_LIST_FILE="${OUR_FILES_LIST}.tmp"
-  mkdir -p "$(dirname ${OUR_LIST_FILE})"
-  (cd "$SRCDIR";
-    find . -mindepth 1 -type d \( -name ".*" -o -execdir test -e {}/.out-dir \; \) -prune \
-      -o -name $TOPNAME -print | sort) >"${TEMP_LIST_FILE}"
-  if cmp -s "${OUR_LIST_FILE}" "${TEMP_LIST_FILE}"; then
-    rm "${TEMP_LIST_FILE}"
-  else
-    mv "${TEMP_LIST_FILE}" "${OUR_LIST_FILE}"
-  fi
-  BLUEPRINT_LIST_FILE="${OUR_LIST_FILE}"
-fi
-
 export GOROOT
-export BLUEPRINT_LIST_FILE
 
 source "${BLUEPRINTDIR}/microfactory/microfactory.bash"
 

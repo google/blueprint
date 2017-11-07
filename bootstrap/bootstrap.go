@@ -622,14 +622,10 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			}
 		})
 
-	var extraSharedFlagArray []string
+	var extraTestFlags string
 	if s.config.runGoTests {
-		extraSharedFlagArray = append(extraSharedFlagArray, "-t")
+		extraTestFlags = "-t"
 	}
-	if s.config.moduleListFile != "" {
-		extraSharedFlagArray = append(extraSharedFlagArray, "-l", s.config.moduleListFile)
-	}
-	extraSharedFlagString := strings.Join(extraSharedFlagArray, " ")
 
 	var primaryBuilderName, primaryBuilderExtraFlags string
 	switch len(primaryBuilders) {
@@ -638,11 +634,11 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		// as the primary builder.  We can trigger its primary builder mode with
 		// the -p flag.
 		primaryBuilderName = "minibp"
-		primaryBuilderExtraFlags = "-p " + extraSharedFlagString
+		primaryBuilderExtraFlags = "-p " + extraTestFlags
 
 	case 1:
 		primaryBuilderName = ctx.ModuleName(primaryBuilders[0])
-		primaryBuilderExtraFlags = extraSharedFlagString
+		primaryBuilderExtraFlags = extraTestFlags
 
 	default:
 		ctx.Errorf("multiple primary builder modules present:")
@@ -701,7 +697,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		Inputs:  []string{topLevelBlueprints},
 		Args: map[string]string{
 			"builder": minibpFile,
-			"extra":   extraSharedFlagString,
+			"extra":   extraTestFlags,
 		},
 	})
 
