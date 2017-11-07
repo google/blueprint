@@ -114,7 +114,7 @@ func CopyProperties(dstValue, srcValue reflect.Value) {
 						origDstFieldValue.Set(newValue)
 					}
 				}
-			case reflect.Bool, reflect.String:
+			case reflect.Bool, reflect.Int64, reflect.String:
 				newValue := reflect.New(srcFieldValue.Type())
 				newValue.Elem().Set(srcFieldValue)
 				origDstFieldValue.Set(newValue)
@@ -167,7 +167,7 @@ func ZeroProperties(structValue reflect.Value) {
 					break
 				}
 				ZeroProperties(fieldValue.Elem())
-			case reflect.Bool, reflect.String:
+			case reflect.Bool, reflect.Int64, reflect.String:
 				fieldValue.Set(reflect.Zero(fieldValue.Type()))
 			default:
 				panic(fmt.Errorf("can't zero field %q: points to a %s",
@@ -237,7 +237,7 @@ func cloneEmptyProperties(dstValue, srcValue reflect.Value) {
 				} else {
 					dstFieldValue.Set(newValue)
 				}
-			case reflect.Bool, reflect.String:
+			case reflect.Bool, reflect.Int64, reflect.String:
 				// Nothing
 			default:
 				panic(fmt.Errorf("can't clone empty field %q: points to a %s",

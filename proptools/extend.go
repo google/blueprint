@@ -346,7 +346,7 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 						dstFieldValue.Type(), srcFieldValue.Type())
 				}
 				switch ptrKind := srcFieldValue.Type().Elem().Kind(); ptrKind {
-				case reflect.Bool, reflect.String, reflect.Struct:
+				case reflect.Bool, reflect.Int64, reflect.String, reflect.Struct:
 				// Nothing
 				default:
 					return extendPropertyErrorf(propertyName, "pointer is a %s", ptrKind)
@@ -447,6 +447,17 @@ func ExtendBasicType(dstFieldValue, srcFieldValue reflect.Value, order Order) {
 			} else {
 				// For append, replace the original value.
 				dstFieldValue.Set(reflect.ValueOf(BoolPtr(srcFieldValue.Elem().Bool())))
+			}
+		case reflect.Int64:
+			if prepend {
+				if dstFieldValue.IsNil() {
+					// Int() returns Int64
+					dstFieldValue.Set(reflect.ValueOf(Int64Ptr(srcFieldValue.Elem().Int())))
+				}
+			} else {
+				// For append, replace the original value.
+				// Int() returns Int64
+				dstFieldValue.Set(reflect.ValueOf(Int64Ptr(srcFieldValue.Elem().Int())))
 			}
 		case reflect.String:
 			if prepend {

@@ -177,6 +177,58 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 			prepend: true,
 		},
 		{
+			// Append pointer to integer
+			in1: &struct{ I1, I2, I3, I4, I5, I6, I7, I8, I9 *int64 }{
+				I1: Int64Ptr(55),
+				I2: Int64Ptr(-3),
+				I3: nil,
+				I4: Int64Ptr(100),
+				I5: Int64Ptr(33),
+				I6: nil,
+				I7: Int64Ptr(77),
+				I8: Int64Ptr(0),
+				I9: nil,
+			},
+			in2: &struct{ I1, I2, I3, I4, I5, I6, I7, I8, I9 *int64 }{
+				I1: nil,
+				I2: nil,
+				I3: nil,
+				I4: Int64Ptr(1),
+				I5: Int64Ptr(-2),
+				I6: Int64Ptr(8),
+				I7: Int64Ptr(9),
+				I8: Int64Ptr(10),
+				I9: Int64Ptr(11),
+			},
+			out: &struct{ I1, I2, I3, I4, I5, I6, I7, I8, I9 *int64 }{
+				I1: Int64Ptr(55),
+				I2: Int64Ptr(-3),
+				I3: nil,
+				I4: Int64Ptr(1),
+				I5: Int64Ptr(-2),
+				I6: Int64Ptr(8),
+				I7: Int64Ptr(9),
+				I8: Int64Ptr(10),
+				I9: Int64Ptr(11),
+			},
+		},
+		{
+			// Prepend pointer to integer
+			in1: &struct{ I1, I2, I3 *int64 }{
+				I1: Int64Ptr(55),
+				I3: nil,
+			},
+			in2: &struct{ I1, I2, I3 *int64 }{
+				I2: Int64Ptr(33),
+			},
+			out: &struct{ I1, I2, I3 *int64 }{
+				I1: Int64Ptr(55),
+				I2: Int64Ptr(33),
+				I3: nil,
+			},
+			prepend: true,
+		},
+		{
 			// Append pointer to strings
 			in1: &struct{ S1, S2, S3, S4 *string }{
 				S1: StringPtr("string1"),
@@ -383,6 +435,18 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 			},
 		},
 		{
+			// Unexported field
+			in1: &struct{ i *int64 }{
+				i: Int64Ptr(33),
+			},
+			in2: &struct{ i *int64 }{
+				i: Int64Ptr(5),
+			},
+			out: &struct{ i *int64 }{
+				i: Int64Ptr(33),
+			},
+		},
+		{
 			// Empty struct
 			in1: &struct{}{},
 			in2: &struct{}{},
@@ -420,10 +484,12 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 			}{
 				EmbeddedStruct: EmbeddedStruct{
 					S: "string1",
+					I: Int64Ptr(55),
 				},
 				Nested: struct{ EmbeddedStruct }{
 					EmbeddedStruct: EmbeddedStruct{
 						S: "string2",
+						I: Int64Ptr(-4),
 					},
 				},
 			},
@@ -433,10 +499,12 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 			}{
 				EmbeddedStruct: EmbeddedStruct{
 					S: "string3",
+					I: Int64Ptr(66),
 				},
 				Nested: struct{ EmbeddedStruct }{
 					EmbeddedStruct: EmbeddedStruct{
 						S: "string4",
+						I: Int64Ptr(-8),
 					},
 				},
 			},
@@ -446,10 +514,12 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 			}{
 				EmbeddedStruct: EmbeddedStruct{
 					S: "string1string3",
+					I: Int64Ptr(66),
 				},
 				Nested: struct{ EmbeddedStruct }{
 					EmbeddedStruct: EmbeddedStruct{
 						S: "string2string4",
+						I: Int64Ptr(-8),
 					},
 				},
 			},
@@ -460,12 +530,20 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				EmbeddedInterface
 				Nested struct{ EmbeddedInterface }
 			}{
-				EmbeddedInterface: &struct{ S string }{
+				EmbeddedInterface: &struct {
+					S string
+					I *int64
+				}{
 					S: "string1",
+					I: Int64Ptr(-8),
 				},
 				Nested: struct{ EmbeddedInterface }{
-					EmbeddedInterface: &struct{ S string }{
+					EmbeddedInterface: &struct {
+						S string
+						I *int64
+					}{
 						S: "string2",
+						I: Int64Ptr(55),
 					},
 				},
 			},
@@ -473,12 +551,20 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				EmbeddedInterface
 				Nested struct{ EmbeddedInterface }
 			}{
-				EmbeddedInterface: &struct{ S string }{
+				EmbeddedInterface: &struct {
+					S string
+					I *int64
+				}{
 					S: "string3",
+					I: Int64Ptr(6),
 				},
 				Nested: struct{ EmbeddedInterface }{
-					EmbeddedInterface: &struct{ S string }{
+					EmbeddedInterface: &struct {
+						S string
+						I *int64
+					}{
 						S: "string4",
+						I: Int64Ptr(6),
 					},
 				},
 			},
@@ -486,12 +572,20 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				EmbeddedInterface
 				Nested struct{ EmbeddedInterface }
 			}{
-				EmbeddedInterface: &struct{ S string }{
+				EmbeddedInterface: &struct {
+					S string
+					I *int64
+				}{
 					S: "string1string3",
+					I: Int64Ptr(6),
 				},
 				Nested: struct{ EmbeddedInterface }{
-					EmbeddedInterface: &struct{ S string }{
+					EmbeddedInterface: &struct {
+						S string
+						I *int64
+					}{
 						S: "string2string4",
+						I: Int64Ptr(6),
 					},
 				},
 			},
@@ -624,6 +718,19 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				I: 1,
 			},
 			err: extendPropertyErrorf("i", "unsupported kind int"),
+		},
+		{
+			// Unsupported kind
+			in1: &struct{ I int64 }{
+				I: 1,
+			},
+			in2: &struct{ I int64 }{
+				I: 2,
+			},
+			out: &struct{ I int64 }{
+				I: 1,
+			},
+			err: extendPropertyErrorf("i", "unsupported kind int64"),
 		},
 		{
 			// Interface nilitude mismatch
@@ -782,6 +889,24 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				S string `blueprint:"mutated"`
 			}{
 				S: "string1",
+			},
+		},
+		{
+			// Filter mutated
+			in1: &struct {
+				S *int64 `blueprint:"mutated"`
+			}{
+				S: Int64Ptr(4),
+			},
+			in2: &struct {
+				S *int64 `blueprint:"mutated"`
+			}{
+				S: Int64Ptr(5),
+			},
+			out: &struct {
+				S *int64 `blueprint:"mutated"`
+			}{
+				S: Int64Ptr(4),
 			},
 		},
 		{

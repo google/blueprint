@@ -114,7 +114,7 @@ func newParser(r io.Reader, scope *Scope) *parser {
 	p.scanner.Error = func(sc *scanner.Scanner, msg string) {
 		p.errorf(msg)
 	}
-	p.scanner.Mode = scanner.ScanIdents | scanner.ScanStrings |
+	p.scanner.Mode = scanner.ScanIdents | scanner.ScanInts | scanner.ScanStrings |
 		scanner.ScanRawStrings | scanner.ScanComments
 	p.next()
 	return p
@@ -330,6 +330,9 @@ func (p *parser) parseExpression() (value Expression) {
 	switch p.tok {
 	case '+':
 		return p.parseOperator(value)
+	case '-':
+		p.errorf("subtraction not supported: %s", p.scanner.String())
+		return value
 	default:
 		return value
 	}
@@ -355,6 +358,8 @@ func (p *parser) evaluateOperator(value1, value2 Expression, operator rune,
 			switch v := value.(type) {
 			case *String:
 				v.Value += e2.(*String).Value
+			case *Int64:
+				v.Value += e2.(*Int64).Value
 			case *List:
 				v.Values = append(v.Values, e2.(*List).Values...)
 			case *Map:
@@ -441,6 +446,8 @@ func (p *parser) parseValue() (value Expression) {
 	switch p.tok {
 	case scanner.Ident:
 		return p.parseVariable()
+	case '-', scanner.Int: // Integer might have '-' sign ahead ('+' is only treated as operator now)
+		return p.parseIntValue()
 	case scanner.String:
 		return p.parseStringValue()
 	case '[':
@@ -497,6 +504,32 @@ func (p *parser) parseStringValue() *String {
 		Value:      str,
 	}
 	p.accept(scanner.String)
+	return value
+}
+
+func (p *parser) parseIntValue() *Int64 {
+	var str string
+	literalPos := p.scanner.Position
+	if p.tok == '-' {
+		str += string(p.tok)
+		p.accept(p.tok)
+		if p.tok != scanner.Int {
+			p.errorf("expected int; found %s", scanner.TokenString(p.tok))
+			return nil
+		}
+	}
+	str += p.scanner.TokenText()
+	i, err := strconv.ParseInt(str, 10, 64)
+	if err != nil {
+		p.errorf("couldn't parse int: %s", err)
+		return nil
+	}
+
+	value := &Int64{
+		LiteralPos: literalPos,
+		Value:      i,
+	}
+	p.accept(scanner.Int)
 	return value
 }
 

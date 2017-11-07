@@ -47,6 +47,7 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/token"
 	"io"
@@ -199,6 +200,62 @@ func (p *GoPackage) FindDeps(config *Config, path string) error {
 	return nil
 }
 
+// Roughly equivalent to go/build.Context.match
+func matchBuildTag(name string) bool {
+	if name == "" {
+		return false
+	}
+	if i := strings.Index(name, ","); i >= 0 {
+		ok1 := matchBuildTag(name[:i])
+		ok2 := matchBuildTag(name[i+1:])
+		return ok1 && ok2
+	}
+	if strings.HasPrefix(name, "!!") {
+		return false
+	}
+	if strings.HasPrefix(name, "!") {
+		return len(name) > 1 && !matchBuildTag(name[1:])
+	}
+
+	if name == runtime.GOOS || name == runtime.GOARCH || name == "gc" {
+		return true
+	}
+	for _, tag := range build.Default.BuildTags {
+		if tag == name {
+			return true
+		}
+	}
+	for _, tag := range build.Default.ReleaseTags {
+		if tag == name {
+			return true
+		}
+	}
+
+	return false
+}
+
+func parseBuildComment(comment string) (matches, ok bool) {
+	if !strings.HasPrefix(comment, "//") {
+		return false, false
+	}
+	for i, c := range comment {
+		if i < 2 || c == ' ' || c == '\t' {
+			continue
+		} else if c == '+' {
+			f := strings.Fields(comment[i:])
+			if f[0] == "+build" {
+				matches = false
+				for _, tok := range f[1:] {
+					matches = matches || matchBuildTag(tok)
+				}
+				return matches, true
+			}
+		}
+		break
+	}
+	return false, false
+}
+
 // findDeps is the recursive version of FindDeps. allPackages is the map of
 // all locally defined packages so that the same dependency of two different
 // packages is only resolved once.
@@ -217,7 +274,7 @@ func (p *GoPackage) findDeps(config *Config, path string, allPackages *linkedDep
 			return false
 		}
 		return true
-	}, parser.ImportsOnly)
+	}, parser.ImportsOnly|parser.ParseComments)
 	if err != nil {
 		return fmt.Errorf("Error parsing directory %q: %v", path, err)
 	}
@@ -236,6 +293,18 @@ func (p *GoPackage) findDeps(config *Config, path string, allPackages *linkedDep
 	localDeps := make(map[string]bool)
 
 	for filename, astFile := range foundPkg.Files {
+		ignore := false
+		for _, commentGroup := range astFile.Comments {
+			for _, comment := range commentGroup.List {
+				if matches, ok := parseBuildComment(comment.Text); ok && !matches {
+					ignore = true
+				}
+			}
+		}
+		if ignore {
+			continue
+		}
+
 		p.files = append(p.files, filename)
 
 		for _, importSpec := range astFile.Imports {

@@ -161,6 +161,7 @@ type Type int
 const (
 	BoolType Type = iota + 1
 	StringType
+	Int64Type
 	ListType
 	MapType
 )
@@ -171,6 +172,8 @@ func (t Type) String() string {
 		return "bool"
 	case StringType:
 		return "string"
+	case Int64Type:
+		return "int64"
 	case ListType:
 		return "list"
 	case MapType:
@@ -348,6 +351,31 @@ func (x *String) String() string {
 
 func (x *String) Type() Type {
 	return StringType
+}
+
+type Int64 struct {
+	LiteralPos scanner.Position
+	Value      int64
+}
+
+func (x *Int64) Pos() scanner.Position { return x.LiteralPos }
+func (x *Int64) End() scanner.Position { return x.LiteralPos }
+
+func (x *Int64) Copy() Expression {
+	ret := *x
+	return &ret
+}
+
+func (x *Int64) Eval() Expression {
+	return x
+}
+
+func (x *Int64) String() string {
+	return fmt.Sprintf("%q@%s", x.Value, x.LiteralPos)
+}
+
+func (x *Int64) Type() Type {
+	return Int64Type
 }
 
 type Bool struct {
