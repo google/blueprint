@@ -18,8 +18,6 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-
-	"github.com/google/blueprint/parser"
 )
 
 type Walker interface {
@@ -98,7 +96,7 @@ func TestContextParse(t *testing.T) {
 		}
 	`)
 
-	_, _, errs := ctx.parseOne(".", "Blueprint", r, parser.NewScope(nil))
+	_, _, errs := ctx.parseOne(".", "Blueprint", r, nil)
 	if len(errs) > 0 {
 		t.Errorf("unexpected parse errors:")
 		for _, err := range errs {
