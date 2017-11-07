@@ -72,6 +72,7 @@ type Context struct {
 	moduleGroups        []*moduleGroup
 	moduleInfo          map[Module]*moduleInfo
 	modulesSorted       []*moduleInfo
+	preSingletonInfo    []*singletonInfo
 	singletonInfo       []*singletonInfo
 	mutatorInfo         []*mutatorInfo
 	earlyMutatorInfo    []*mutatorInfo
@@ -91,6 +92,7 @@ type Context struct {
 
 	// set during PrepareBuildActions
 	pkgNames        map[*packageContext]string
+	liveGlobals     *liveTracker
 	globalVariables map[Variable]*ninjaString
 	globalPools     map[Pool]*poolDef
 	globalRules     map[Rule]*ruleDef
@@ -266,12 +268,16 @@ type mutatorInfo struct {
 
 func newContext() *Context {
 	return &Context{
-		moduleFactories:  make(map[string]ModuleFactory),
-		moduleNames:      make(map[string]*moduleGroup),
-		moduleInfo:       make(map[Module]*moduleInfo),
-		moduleNinjaNames: make(map[string]*moduleGroup),
-		globs:            make(map[string]GlobPath),
-		fs:               pathtools.OsFs,
+		moduleFactories:    make(map[string]ModuleFactory),
+		moduleNames:        make(map[string]*moduleGroup),
+		moduleInfo:         make(map[Module]*moduleInfo),
+		moduleNinjaNames:   make(map[string]*moduleGroup),
+		globs:              make(map[string]GlobPath),
+		fs:                 pathtools.OsFs,
+		ninjaBuildDir:      nil,
+		requiredNinjaMajor: 1,
+		requiredNinjaMinor: 7,
+		requiredNinjaMicro: 0,
 	}
 }
 
@@ -381,6 +387,28 @@ func (c *Context) RegisterSingletonType(name string, factory SingletonFactory) {
 	}
 
 	c.singletonInfo = append(c.singletonInfo, &singletonInfo{
+		factory:   factory,
+		singleton: factory(),
+		name:      name,
+	})
+}
+
+// RegisterPreSingletonType registers a presingleton type that will be invoked to
+// generate build actions before any Blueprint files have been read.  Each registered
+// presingleton type is instantiated and invoked exactly once at the beginning of the
+// parse phase.  Each registered presingleton is invoked in registration order.
+//
+// The presingleton type names given here must be unique for the context.  The
+// factory function should be a named function so that its package and name can
+// be included in the generated Ninja file for debugging purposes.
+func (c *Context) RegisterPreSingletonType(name string, factory SingletonFactory) {
+	for _, s := range c.preSingletonInfo {
+		if s.name == name {
+			panic(errors.New("presingleton name is already registered"))
+		}
+	}
+
+	c.preSingletonInfo = append(c.preSingletonInfo, &singletonInfo{
 		factory:   factory,
 		singleton: factory(),
 		name:      name,
@@ -1237,15 +1265,23 @@ func (c *Context) addModule(module *moduleInfo) []error {
 // the modules depended upon are defined and that no circular dependencies
 // exist.
 func (c *Context) ResolveDependencies(config interface{}) (deps []string, errs []error) {
+	c.liveGlobals = newLiveTracker(config)
+
+	deps, errs = c.generateSingletonBuildActions(config, c.preSingletonInfo, c.liveGlobals)
+	if len(errs) > 0 {
+		return nil, errs
+	}
+
 	errs = c.updateDependencies()
 	if len(errs) > 0 {
 		return nil, errs
 	}
 
-	deps, errs = c.runMutators(config)
+	mutatorDeps, errs := c.runMutators(config)
 	if len(errs) > 0 {
 		return nil, errs
 	}
+	deps = append(deps, mutatorDeps...)
 
 	c.cloneModules()
 
@@ -1762,16 +1798,12 @@ func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs [
 		deps = append(deps, extraDeps...)
 	}
 
-	liveGlobals := newLiveTracker(config)
-
-	c.initSpecialVariables()
-
-	depsModules, errs := c.generateModuleBuildActions(config, liveGlobals)
+	depsModules, errs := c.generateModuleBuildActions(config, c.liveGlobals)
 	if len(errs) > 0 {
 		return nil, errs
 	}
 
-	depsSingletons, errs := c.generateSingletonBuildActions(config, liveGlobals)
+	depsSingletons, errs := c.generateSingletonBuildActions(config, c.singletonInfo, c.liveGlobals)
 	if len(errs) > 0 {
 		return nil, errs
 	}
@@ -1780,20 +1812,20 @@ func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs [
 	deps = append(deps, depsSingletons...)
 
 	if c.ninjaBuildDir != nil {
-		liveGlobals.addNinjaStringDeps(c.ninjaBuildDir)
+		c.liveGlobals.addNinjaStringDeps(c.ninjaBuildDir)
 	}
 
-	pkgNames, depsPackages := c.makeUniquePackageNames(liveGlobals)
+	pkgNames, depsPackages := c.makeUniquePackageNames(c.liveGlobals)
 
 	deps = append(deps, depsPackages...)
 
 	// This will panic if it finds a problem since it's a programming error.
-	c.checkForVariableReferenceCycles(liveGlobals.variables, pkgNames)
+	c.checkForVariableReferenceCycles(c.liveGlobals.variables, pkgNames)
 
 	c.pkgNames = pkgNames
-	c.globalVariables = liveGlobals.variables
-	c.globalPools = liveGlobals.pools
-	c.globalRules = liveGlobals.rules
+	c.globalVariables = c.liveGlobals.variables
+	c.globalPools = c.liveGlobals.pools
+	c.globalRules = c.liveGlobals.rules
 
 	c.buildActionsReady = true
 
@@ -2086,13 +2118,6 @@ func spliceModules(modules []*moduleInfo, i int, newModules []*moduleInfo) ([]*m
 	return dest, i + spliceSize - 1
 }
 
-func (c *Context) initSpecialVariables() {
-	c.ninjaBuildDir = nil
-	c.requiredNinjaMajor = 1
-	c.requiredNinjaMinor = 7
-	c.requiredNinjaMicro = 0
-}
-
 func (c *Context) generateModuleBuildActions(config interface{},
 	liveGlobals *liveTracker) ([]string, []error) {
 
@@ -2186,12 +2211,12 @@ func (c *Context) generateModuleBuildActions(config interface{},
 }
 
 func (c *Context) generateSingletonBuildActions(config interface{},
-	liveGlobals *liveTracker) ([]string, []error) {
+	singletons []*singletonInfo, liveGlobals *liveTracker) ([]string, []error) {
 
 	var deps []string
 	var errs []error
 
-	for _, info := range c.singletonInfo {
+	for _, info := range singletons {
 		// The parent scope of the singletonContext's local scope gets overridden to be that of the
 		// calling Go package on a per-call basis.  Since the initial parent scope doesn't matter we
 		// just set it to nil.
