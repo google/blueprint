@@ -82,5 +82,6 @@ type Config struct {
 
 	topLevelBlueprintsFile string
 
-	runGoTests bool
+	runGoTests     bool
+	moduleListFile string
 }

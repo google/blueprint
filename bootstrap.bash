@@ -62,9 +62,6 @@ fi
 # Go toolchain properties.
 [ -z "$GOROOT" ] && GOROOT=`go env GOROOT`
 
-# If RUN_TESTS is set, behave like -t was passed in as an option.
-[ ! -z "$RUN_TESTS" ] && EXTRA_ARGS="-t"
-
 usage() {
     echo "Usage of ${BOOTSTRAP}:"
     echo "  -h: print a help message and exit"
@@ -76,7 +73,7 @@ usage() {
 while getopts ":b:ht" opt; do
     case $opt in
         b) BUILDDIR="$OPTARG";;
-        t) EXTRA_ARGS="-t";;
+        t) RUN_TESTS=true;;
         h)
             usage
             exit 1
@@ -93,6 +90,15 @@ while getopts ":b:ht" opt; do
     esac
 done
 
+# If RUN_TESTS is set, behave like -t was passed in as an option.
+[ ! -z "$RUN_TESTS" ] && EXTRA_ARGS="${EXTRA_ARGS} -t"
+
+# Allow the caller to pass in a list of module files
+if [ -z "${BLUEPRINT_LIST_FILE}" ]; then
+  BLUEPRINT_LIST_FILE="${BUILDDIR}/.bootstrap/bplist"
+fi
+EXTRA_ARGS="${EXTRA_ARGS} -l ${BLUEPRINT_LIST_FILE}"
+
 mkdir -p $BUILDDIR/.minibootstrap
 
 echo "bootstrapBuildDir = $BUILDDIR" > $BUILDDIR/.minibootstrap/build.ninja
@@ -101,11 +107,14 @@ echo "extraArgs = $EXTRA_ARGS" >> $BUILDDIR/.minibootstrap/build.ninja
 echo "builddir = $NINJA_BUILDDIR" >> $BUILDDIR/.minibootstrap/build.ninja
 echo "include $BLUEPRINTDIR/bootstrap/build.ninja" >> $BUILDDIR/.minibootstrap/build.ninja
 
-echo "BLUEPRINT_BOOTSTRAP_VERSION=1" > $BUILDDIR/.blueprint.bootstrap
+echo "BLUEPRINT_BOOTSTRAP_VERSION=2" > $BUILDDIR/.blueprint.bootstrap
 echo "SRCDIR=\"${SRCDIR}\"" >> $BUILDDIR/.blueprint.bootstrap
 echo "BLUEPRINTDIR=\"${BLUEPRINTDIR}\"" >> $BUILDDIR/.blueprint.bootstrap
 echo "NINJA_BUILDDIR=\"${NINJA_BUILDDIR}\"" >> $BUILDDIR/.blueprint.bootstrap
 echo "GOROOT=\"${GOROOT}\"" >> $BUILDDIR/.blueprint.bootstrap
+echo "TOPNAME=\"${TOPNAME}\"" >> $BUILDDIR/.blueprint.bootstrap
+
+touch "${BUILDDIR}/.out-dir"
 
 if [ ! -z "$WRAPPER" ]; then
     cp $WRAPPER $BUILDDIR/
