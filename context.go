@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -106,7 +107,8 @@ type Context struct {
 	globs    map[string]GlobPath
 	globLock sync.Mutex
 
-	fs pathtools.FileSystem
+	fs             pathtools.FileSystem
+	moduleListFile string
 }
 
 // An Error describes a problem that was encountered that is related to a
@@ -520,97 +522,42 @@ func (c *Context) SetAllowMissingDependencies(allowMissingDependencies bool) {
 	c.allowMissingDependencies = allowMissingDependencies
 }
 
-// Parse parses a single Blueprints file from r, creating Module objects for
-// each of the module definitions encountered.  If the Blueprints file contains
-// an assignment to the "subdirs" variable, then the subdirectories listed are
-// searched for Blueprints files returned in the subBlueprints return value.
-// If the Blueprints file contains an assignment to the "build" variable, then
-// the file listed are returned in the subBlueprints return value.
-//
-// rootDir specifies the path to the root directory of the source tree, while
-// filename specifies the path to the Blueprints file.  These paths are used for
-// error reporting and for determining the module's directory.
-func (c *Context) parse(rootDir, filename string, r io.Reader,
-	scope *parser.Scope) (file *parser.File, subBlueprints []stringAndScope, errs []error) {
+func (c *Context) SetModuleListFile(listFile string) {
+	c.moduleListFile = listFile
+}
 
-	relBlueprintsFile, err := filepath.Rel(rootDir, filename)
+func (c *Context) ListModulePaths(baseDir string) (paths []string, err error) {
+	reader, err := c.fs.Open(c.moduleListFile)
 	if err != nil {
-		return nil, nil, []error{err}
+		return nil, err
 	}
-
-	scope = parser.NewScope(scope)
-	scope.Remove("subdirs")
-	scope.Remove("optional_subdirs")
-	scope.Remove("build")
-	file, errs = parser.ParseAndEval(filename, r, scope)
-	if len(errs) > 0 {
-		for i, err := range errs {
-			if parseErr, ok := err.(*parser.ParseError); ok {
-				err = &BlueprintError{
-					Err: parseErr.Err,
-					Pos: parseErr.Pos,
-				}
-				errs[i] = err
-			}
-		}
-
-		// If there were any parse errors don't bother trying to interpret the
-		// result.
-		return nil, nil, errs
-	}
-	file.Name = relBlueprintsFile
-
-	subdirs, subdirsPos, err := getLocalStringListFromScope(scope, "subdirs")
+	bytes, err := ioutil.ReadAll(reader)
 	if err != nil {
-		errs = append(errs, err)
+		return nil, err
+	}
+	text := string(bytes)
+
+	text = strings.Trim(text, "\n")
+	lines := strings.Split(text, "\n")
+	for i := range lines {
+		lines[i] = filepath.Join(baseDir, lines[i])
 	}
 
-	optionalSubdirs, optionalSubdirsPos, err := getLocalStringListFromScope(scope, "optional_subdirs")
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	build, buildPos, err := getLocalStringListFromScope(scope, "build")
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	subBlueprintsName, _, err := getStringFromScope(scope, "subname")
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	if subBlueprintsName == "" {
-		subBlueprintsName = "Blueprints"
-	}
-
-	var blueprints []string
-
-	newBlueprints, newErrs := c.findBuildBlueprints(filepath.Dir(filename), build, buildPos)
-	blueprints = append(blueprints, newBlueprints...)
-	errs = append(errs, newErrs...)
-
-	newBlueprints, newErrs = c.findSubdirBlueprints(filepath.Dir(filename), subdirs, subdirsPos,
-		subBlueprintsName, false)
-	blueprints = append(blueprints, newBlueprints...)
-	errs = append(errs, newErrs...)
-
-	newBlueprints, newErrs = c.findSubdirBlueprints(filepath.Dir(filename), optionalSubdirs,
-		optionalSubdirsPos, subBlueprintsName, true)
-	blueprints = append(blueprints, newBlueprints...)
-	errs = append(errs, newErrs...)
-
-	subBlueprintsAndScope := make([]stringAndScope, len(blueprints))
-	for i, b := range blueprints {
-		subBlueprintsAndScope[i] = stringAndScope{b, scope}
-	}
-
-	return file, subBlueprintsAndScope, errs
+	return lines, nil
 }
 
 type stringAndScope struct {
 	string
 	*parser.Scope
+}
+
+func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string, errs []error) {
+	baseDir := filepath.Dir(rootFile)
+	pathsToParse, err := c.ListModulePaths(baseDir)
+	if err != nil {
+		return nil, []error{err}
+	}
+	return c.ParseFileList(baseDir, pathsToParse)
 }
 
 // ParseBlueprintsFiles parses a set of Blueprints files starting with the file
@@ -622,8 +569,12 @@ type stringAndScope struct {
 // which the future output will depend is returned.  This list will include both
 // Blueprints file paths as well as directory paths for cases where wildcard
 // subdirs are found.
-func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string,
+func (c *Context) ParseFileList(rootDir string, filePaths []string) (deps []string,
 	errs []error) {
+
+	if len(filePaths) < 1 {
+		return nil, []error{fmt.Errorf("no paths provided to parse")}
+	}
 
 	c.dependenciesReady = false
 
@@ -634,7 +585,7 @@ func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string,
 	var numGoroutines int32
 
 	// handler must be reentrant
-	handler := func(file *parser.File) {
+	handleOneFile := func(file *parser.File) {
 		if atomic.LoadUint32(&numErrs) > maxErrors {
 			return
 		}
@@ -667,7 +618,7 @@ func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string,
 	atomic.AddInt32(&numGoroutines, 1)
 	go func() {
 		var errs []error
-		deps, errs = c.WalkBlueprintsFiles(rootFile, handler)
+		deps, errs = c.WalkBlueprintsFiles(rootDir, filePaths, handleOneFile)
 		if len(errs) > 0 {
 			errsCh <- errs
 		}
@@ -697,52 +648,84 @@ loop:
 
 type FileHandler func(*parser.File)
 
-// Walk a set of Blueprints files starting with the file at rootFile, calling handler on each.
-// When it encounters a Blueprints file with a set of subdirs listed it recursively parses any
-// Blueprints files found in those subdirectories.  handler will be called from a goroutine, so
-// it must be reentrant.
+// WalkBlueprintsFiles walks a set of Blueprints files starting with the given filepaths,
+// calling the given file handler on each
+//
+// When WalkBlueprintsFiles encounters a Blueprints file with a set of subdirs listed,
+// it recursively parses any Blueprints files found in those subdirectories.
+//
+// If any of the file paths is an ancestor directory of any other of file path, the ancestor
+// will be parsed and visited first.
+//
+// the file handler will be called from a goroutine, so it must be reentrant.
 //
 // If no errors are encountered while parsing the files, the list of paths on
 // which the future output will depend is returned.  This list will include both
 // Blueprints file paths as well as directory paths for cases where wildcard
 // subdirs are found.
-func (c *Context) WalkBlueprintsFiles(rootFile string, handler FileHandler) (deps []string,
-	errs []error) {
+func (c *Context) WalkBlueprintsFiles(rootDir string, filePaths []string,
+	visitor FileHandler) (deps []string, errs []error) {
 
-	rootDir := filepath.Dir(rootFile)
-
+	// make a mapping from ancestors to their descendants to facilitate parsing ancestors first
+	descendantsMap, err := findBlueprintDescendants(filePaths)
+	if err != nil {
+		panic(err.Error())
+		return nil, []error{err}
+	}
 	blueprintsSet := make(map[string]bool)
 
-	// Channels to receive data back from parseBlueprintsFile goroutines
+	// Channels to receive data back from parseOneAsync goroutines
 	blueprintsCh := make(chan stringAndScope)
 	errsCh := make(chan []error)
 	fileCh := make(chan *parser.File)
 	depsCh := make(chan string)
 
-	// Channel to notify main loop that a parseBlueprintsFile goroutine has finished
-	doneCh := make(chan struct{})
+	// Channel to notify main loop that a parseOneAsync goroutine has finished
+	doneCh := make(chan stringAndScope)
 
 	// Number of outstanding goroutines to wait for
-	count := 0
+	activeCount := 0
+	var pending []stringAndScope
+	tooManyErrors := false
+
+	// Limit concurrent calls to parseBlueprintFiles to 200
+	// Darwin has a default limit of 256 open files
+	maxActiveCount := 200
 
 	startParseBlueprintsFile := func(blueprint stringAndScope) {
 		if blueprintsSet[blueprint.string] {
 			return
 		}
 		blueprintsSet[blueprint.string] = true
-		count++
+		activeCount++
+		deps = append(deps, blueprint.string)
 		go func() {
-			c.parseBlueprintsFile(blueprint.string, blueprint.Scope, rootDir,
+			c.parseOneAsync(blueprint.string, blueprint.Scope, rootDir,
 				errsCh, fileCh, blueprintsCh, depsCh)
-			doneCh <- struct{}{}
+
+			doneCh <- blueprint
 		}()
 	}
 
-	tooManyErrors := false
+	foundParseableBlueprint := func(blueprint stringAndScope) {
+		if activeCount >= maxActiveCount {
+			pending = append(pending, blueprint)
+		} else {
+			startParseBlueprintsFile(blueprint)
+		}
+	}
 
-	startParseBlueprintsFile(stringAndScope{rootFile, nil})
+	startParseDescendants := func(blueprint stringAndScope) {
+		descendants, hasDescendants := descendantsMap[blueprint.string]
+		if hasDescendants {
+			for _, descendant := range descendants {
+				foundParseableBlueprint(stringAndScope{descendant, parser.NewScope(blueprint.Scope)})
+			}
+		}
+	}
 
-	var pending []stringAndScope
+	// begin parsing any files that have no ancestors
+	startParseDescendants(stringAndScope{"", parser.NewScope(nil)})
 
 loop:
 	for {
@@ -756,29 +739,30 @@ loop:
 		case dep := <-depsCh:
 			deps = append(deps, dep)
 		case file := <-fileCh:
-			handler(file)
+			visitor(file)
 		case blueprint := <-blueprintsCh:
 			if tooManyErrors {
 				continue
 			}
-			// Limit concurrent calls to parseBlueprintFiles to 200
-			// Darwin has a default limit of 256 open files
-			if count >= 200 {
-				pending = append(pending, blueprint)
-				continue
+			foundParseableBlueprint(blueprint)
+		case blueprint := <-doneCh:
+			activeCount--
+			if !tooManyErrors {
+				startParseDescendants(blueprint)
 			}
-			startParseBlueprintsFile(blueprint)
-		case <-doneCh:
-			count--
-			if len(pending) > 0 {
-				startParseBlueprintsFile(pending[len(pending)-1])
+			if activeCount < maxActiveCount && len(pending) > 0 {
+				// start to process the next one from the queue
+				next := pending[len(pending)-1]
 				pending = pending[:len(pending)-1]
+				startParseBlueprintsFile(next)
 			}
-			if count == 0 {
+			if activeCount == 0 {
 				break loop
 			}
 		}
 	}
+
+	sort.Strings(deps)
 
 	return
 }
@@ -786,14 +770,29 @@ loop:
 // MockFileSystem causes the Context to replace all reads with accesses to the provided map of
 // filenames to contents stored as a byte slice.
 func (c *Context) MockFileSystem(files map[string][]byte) {
+	// find every file named "Blueprints"
+	pathsToParse := []string{}
+	for candidate := range files {
+		if filepath.Base(candidate) == "Blueprints" {
+			pathsToParse = append(pathsToParse, candidate)
+		}
+	}
+	// put the list of Blueprints files into a list file
+	listFile := "bplist"
+	files[listFile] = []byte(strings.Join(pathsToParse, "\n"))
+	c.SetModuleListFile(listFile)
+
+	// mock the filesystem
 	c.fs = pathtools.MockFs(files)
 }
 
-// parseBlueprintFile parses a single Blueprints file, returning any errors through
-// errsCh, any defined modules through modulesCh, any sub-Blueprints files through
-// blueprintsCh, and any dependencies on Blueprints files or directories through
-// depsCh.
-func (c *Context) parseBlueprintsFile(filename string, scope *parser.Scope, rootDir string,
+// parseOneAsync parses a single Blueprints file, and sends results through the provided channels
+//
+// Errors are returned through errsCh.
+// Any defined modules are returned through modulesCh.
+// Any sub-Blueprints files are returned through blueprintsCh.
+// Any dependencies on Blueprints files or directories are returned through depsCh.
+func (c *Context) parseOneAsync(filename string, scope *parser.Scope, rootDir string,
 	errsCh chan<- []error, fileCh chan<- *parser.File, blueprintsCh chan<- stringAndScope,
 	depsCh chan<- string) {
 
@@ -826,7 +825,7 @@ func (c *Context) parseBlueprintsFile(filename string, scope *parser.Scope, root
 		}
 	}()
 
-	file, subBlueprints, errs := c.parse(rootDir, filename, f, scope)
+	file, subBlueprints, errs := c.parseOne(rootDir, filename, f, scope)
 	if len(errs) > 0 {
 		errsCh <- errs
 	} else {
@@ -837,6 +836,73 @@ func (c *Context) parseBlueprintsFile(filename string, scope *parser.Scope, root
 		blueprintsCh <- b
 		depsCh <- b.string
 	}
+}
+
+// parseOne parses a single Blueprints file from the given reader, creating Module
+// objects for each of the module definitions encountered.  If the Blueprints
+// file contains an assignment to the "subdirs" variable, then the
+// subdirectories listed are searched for Blueprints files returned in the
+// subBlueprints return value.  If the Blueprints file contains an assignment
+// to the "build" variable, then the file listed are returned in the
+// subBlueprints return value.
+//
+// rootDir specifies the path to the root directory of the source tree, while
+// filename specifies the path to the Blueprints file.  These paths are used for
+// error reporting and for determining the module's directory.
+func (c *Context) parseOne(rootDir, filename string, reader io.Reader,
+	scope *parser.Scope) (file *parser.File, subBlueprints []stringAndScope, errs []error) {
+
+	relBlueprintsFile, err := filepath.Rel(rootDir, filename)
+	if err != nil {
+		return nil, nil, []error{err}
+	}
+
+	scope.Remove("subdirs")
+	scope.Remove("optional_subdirs")
+	scope.Remove("build")
+	file, errs = parser.ParseAndEval(filename, reader, scope)
+	if len(errs) > 0 {
+		for i, err := range errs {
+			if parseErr, ok := err.(*parser.ParseError); ok {
+				err = &BlueprintError{
+					Err: parseErr.Err,
+					Pos: parseErr.Pos,
+				}
+				errs[i] = err
+			}
+		}
+
+		// If there were any parse errors don't bother trying to interpret the
+		// result.
+		return nil, nil, errs
+	}
+	file.Name = relBlueprintsFile
+
+	build, buildPos, err := getLocalStringListFromScope(scope, "build")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	subBlueprintsName, _, err := getStringFromScope(scope, "subname")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	if subBlueprintsName == "" {
+		subBlueprintsName = "Blueprints"
+	}
+
+	var blueprints []string
+
+	newBlueprints, newErrs := c.findBuildBlueprints(filepath.Dir(filename), build, buildPos)
+	blueprints = append(blueprints, newBlueprints...)
+	errs = append(errs, newErrs...)
+
+	subBlueprintsAndScope := make([]stringAndScope, len(blueprints))
+	for i, b := range blueprints {
+		subBlueprintsAndScope[i] = stringAndScope{b, parser.NewScope(scope)}
+	}
+	return file, subBlueprintsAndScope, errs
 }
 
 func (c *Context) findBuildBlueprints(dir string, build []string,
@@ -1416,6 +1482,44 @@ func (c *Context) addInterVariantDependency(origModule *moduleInfo, tag Dependen
 
 	fromInfo.directDeps = append(fromInfo.directDeps, depInfo{toInfo, tag})
 	atomic.AddUint32(&c.depsModified, 1)
+}
+
+// findBlueprintDescendants returns a map linking parent Blueprints files to child Blueprints files
+// For example, if paths = []string{"a/b/c/Android.bp", "a/Blueprints"},
+// then descendants = {"":[]string{"a/Blueprints"}, "a/Blueprints":[]string{"a/b/c/Android.bp"}}
+func findBlueprintDescendants(paths []string) (descendants map[string][]string, err error) {
+	// make mapping from dir path to file path
+	filesByDir := make(map[string]string, len(paths))
+	for _, path := range paths {
+		dir := filepath.Dir(path)
+		_, alreadyFound := filesByDir[dir]
+		if alreadyFound {
+			return nil, fmt.Errorf("Found two Blueprint files in directory %v : %v and %v", dir, filesByDir[dir], path)
+		}
+		filesByDir[dir] = path
+	}
+
+	// generate the descendants map
+	descendants = make(map[string][]string, len(filesByDir))
+	for childDir, childFile := range filesByDir {
+		prevAncestorDir := childDir
+		for {
+			ancestorDir := filepath.Dir(prevAncestorDir)
+			if ancestorDir == prevAncestorDir {
+				// reached the root dir without any matches; assign this as a descendant of ""
+				descendants[""] = append(descendants[""], childFile)
+				break
+			}
+
+			ancestorFile, ancestorExists := filesByDir[ancestorDir]
+			if ancestorExists {
+				descendants[ancestorFile] = append(descendants[ancestorFile], childFile)
+				break
+			}
+			prevAncestorDir = ancestorDir
+		}
+	}
+	return descendants, nil
 }
 
 type visitOrderer interface {
