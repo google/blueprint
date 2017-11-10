@@ -763,10 +763,10 @@ func (mctx *mutatorContext) CreateModule(factory ModuleFactory, props ...interfa
 // structure list.
 type SimpleName struct {
 	Properties struct {
-		Name string
+		Name *string
 	}
 }
 
 func (s *SimpleName) Name() string {
-	return s.Properties.Name
+	return proptools.String(s.Properties.Name)
 }

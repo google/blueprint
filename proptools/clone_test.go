@@ -197,12 +197,12 @@ var clonePropertiesTestCases = []struct {
 			Nested struct{ EmbeddedStruct }
 		}{
 			EmbeddedStruct: EmbeddedStruct{
-				S: "string1",
+				S: StringPtr("string1"),
 				I: Int64Ptr(55),
 			},
 			Nested: struct{ EmbeddedStruct }{
 				EmbeddedStruct: EmbeddedStruct{
-					S: "string2",
+					S: StringPtr("string2"),
 					I: Int64Ptr(5),
 				},
 			},
@@ -212,12 +212,12 @@ var clonePropertiesTestCases = []struct {
 			Nested struct{ EmbeddedStruct }
 		}{
 			EmbeddedStruct: EmbeddedStruct{
-				S: "string1",
+				S: StringPtr("string1"),
 				I: Int64Ptr(55),
 			},
 			Nested: struct{ EmbeddedStruct }{
 				EmbeddedStruct: EmbeddedStruct{
-					S: "string2",
+					S: StringPtr("string2"),
 					I: Int64Ptr(5),
 				},
 			},
@@ -255,7 +255,7 @@ var clonePropertiesTestCases = []struct {
 }
 
 type EmbeddedStruct struct {
-	S string
+	S *string
 	I *int64
 }
 type EmbeddedInterface interface{}
@@ -426,11 +426,11 @@ var cloneEmptyPropertiesTestCases = []struct {
 			Nested struct{ EmbeddedStruct }
 		}{
 			EmbeddedStruct: EmbeddedStruct{
-				S: "string1",
+				S: StringPtr("string1"),
 			},
 			Nested: struct{ EmbeddedStruct }{
 				EmbeddedStruct: EmbeddedStruct{
-					S: "string2",
+					S: StringPtr("string2"),
 				},
 			},
 		},

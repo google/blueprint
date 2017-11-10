@@ -335,7 +335,7 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 				// Recursively extend the struct's fields.
 				recurse = append(recurse, dstFieldValue)
 				continue
-			case reflect.Bool, reflect.String, reflect.Slice:
+			case reflect.Slice:
 				if srcFieldValue.Type() != dstFieldValue.Type() {
 					return extendPropertyErrorf(propertyName, "mismatched types %s and %s",
 						dstFieldValue.Type(), srcFieldValue.Type())
@@ -407,17 +407,6 @@ func ExtendBasicType(dstFieldValue, srcFieldValue reflect.Value, order Order) {
 	prepend := order == Prepend
 
 	switch srcFieldValue.Kind() {
-	case reflect.Bool:
-		// Boolean OR
-		dstFieldValue.Set(reflect.ValueOf(srcFieldValue.Bool() || dstFieldValue.Bool()))
-	case reflect.String:
-		if prepend {
-			dstFieldValue.SetString(srcFieldValue.String() +
-				dstFieldValue.String())
-		} else {
-			dstFieldValue.SetString(dstFieldValue.String() +
-				srcFieldValue.String())
-		}
 	case reflect.Slice:
 		if srcFieldValue.IsNil() {
 			break

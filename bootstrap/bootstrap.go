@@ -23,6 +23,7 @@ import (
 
 	"github.com/google/blueprint"
 	"github.com/google/blueprint/pathtools"
+	"github.com/google/blueprint/proptools"
 )
 
 const bootstrapSubDir = ".bootstrap"
@@ -210,7 +211,7 @@ type goPackage struct {
 	blueprint.SimpleName
 	properties struct {
 		Deps      []string
-		PkgPath   string
+		PkgPath   *string
 		Srcs      []string
 		TestSrcs  []string
 		PluginFor []string
@@ -255,7 +256,7 @@ func (g *goPackage) DynamicDependencies(ctx blueprint.DynamicDependerModuleConte
 }
 
 func (g *goPackage) GoPkgPath() string {
-	return g.properties.PkgPath
+	return String(g.properties.PkgPath)
 }
 
 func (g *goPackage) GoPkgRoot() string {
@@ -287,14 +288,14 @@ func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
 		genSrcs    = []string{}
 	)
 
-	if g.properties.PkgPath == "" {
+	if String(g.properties.PkgPath) == "" {
 		ctx.ModuleErrorf("module %s did not specify a valid pkgPath", name)
 		return
 	}
 
 	g.pkgRoot = packageRoot(ctx)
 	g.archiveFile = filepath.Join(g.pkgRoot,
-		filepath.FromSlash(g.properties.PkgPath)+".a")
+		filepath.FromSlash(String(g.properties.PkgPath))+".a")
 
 	ctx.VisitDepsDepthFirstIf(isGoPluginFor(name),
 		func(module blueprint.Module) { hasPlugins = true })
@@ -303,7 +304,7 @@ func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
 		genSrcs = append(genSrcs, pluginSrc)
 	}
 
-	if hasPlugins && !buildGoPluginLoader(ctx, g.properties.PkgPath, pluginSrc) {
+	if hasPlugins && !buildGoPluginLoader(ctx, String(g.properties.PkgPath), pluginSrc) {
 		return
 	}
 
@@ -318,13 +319,13 @@ func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
 
 	if g.config.runGoTests {
 		testArchiveFile := filepath.Join(testRoot(ctx),
-			filepath.FromSlash(g.properties.PkgPath)+".a")
+			filepath.FromSlash(String(g.properties.PkgPath))+".a")
 		g.testResultFile = buildGoTest(ctx, testRoot(ctx), testArchiveFile,
-			g.properties.PkgPath, srcs, genSrcs,
+			String(g.properties.PkgPath), srcs, genSrcs,
 			testSrcs)
 	}
 
-	buildGoPackage(ctx, g.pkgRoot, g.properties.PkgPath, g.archiveFile,
+	buildGoPackage(ctx, g.pkgRoot, String(g.properties.PkgPath), g.archiveFile,
 		srcs, genSrcs)
 }
 
@@ -335,8 +336,8 @@ type goBinary struct {
 		Deps           []string
 		Srcs           []string
 		TestSrcs       []string
-		PrimaryBuilder bool
-		Default        bool
+		PrimaryBuilder *bool
+		Default        *bool
 
 		Darwin struct {
 			Srcs     []string
@@ -347,7 +348,7 @@ type goBinary struct {
 			TestSrcs []string
 		}
 
-		Tool_dir bool `blueprint:mutated`
+		Tool_dir bool `blueprint:"mutated"`
 	}
 
 	installPath string
@@ -451,7 +452,7 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 		Outputs:   []string{g.installPath},
 		Inputs:    []string{aoutFile},
 		OrderOnly: deps,
-		Optional:  !g.properties.Default,
+		Optional:  !Bool(g.properties.Default),
 	})
 }
 
@@ -617,7 +618,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			if binaryModule.properties.Tool_dir {
 				blueprintTools = append(blueprintTools, binaryModule.InstallPath())
 			}
-			if binaryModule.properties.PrimaryBuilder {
+			if Bool(binaryModule.properties.PrimaryBuilder) {
 				primaryBuilders = append(primaryBuilders, binaryModule)
 			}
 		})
@@ -754,3 +755,6 @@ func moduleObjDir(ctx blueprint.ModuleContext) string {
 func moduleGenSrcDir(ctx blueprint.ModuleContext) string {
 	return filepath.Join(bootstrapDir, ctx.ModuleName(), "gen")
 }
+
+var String = proptools.String
+var Bool = proptools.Bool
