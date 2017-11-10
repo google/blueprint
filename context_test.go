@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/google/blueprint/parser"
+	"github.com/google/blueprint/proptools"
 )
 
 type Walker interface {
@@ -30,7 +31,7 @@ type fooModule struct {
 	SimpleName
 	properties struct {
 		Deps []string
-		Foo  string
+		Foo  *string
 	}
 }
 
@@ -47,7 +48,7 @@ func (f *fooModule) DynamicDependencies(ctx DynamicDependerModuleContext) []stri
 }
 
 func (f *fooModule) Foo() string {
-	return f.properties.Foo
+	return String(f.properties.Foo)
 }
 
 func (f *fooModule) Walk() bool {
@@ -58,7 +59,7 @@ type barModule struct {
 	SimpleName
 	properties struct {
 		Deps []string
-		Bar  bool
+		Bar  *bool
 	}
 }
 
@@ -75,7 +76,7 @@ func (b *barModule) GenerateBuildActions(ModuleContext) {
 }
 
 func (b *barModule) Bar() bool {
-	return b.properties.Bar
+	return Bool(b.properties.Bar)
 }
 
 func (b *barModule) Walk() bool {
@@ -264,21 +265,26 @@ func TestCreateModule(t *testing.T) {
 
 func createTestMutator(ctx TopDownMutatorContext) {
 	type props struct {
-		Name string
+		Name *string
 		Deps []string
 	}
 
 	ctx.CreateModule(newBarModule, &props{
-		Name: "B",
+		Name: StringPtr("B"),
 		Deps: []string{"D"},
 	})
 
 	ctx.CreateModule(newBarModule, &props{
-		Name: "C",
+		Name: StringPtr("C"),
 		Deps: []string{"D"},
 	})
 
 	ctx.CreateModule(newFooModule, &props{
-		Name: "D",
+		Name: StringPtr("D"),
 	})
 }
+
+var StringPtr = proptools.StringPtr
+var String = proptools.String
+var Bool = proptools.Bool
+var BoolPtr = proptools.BoolPtr
