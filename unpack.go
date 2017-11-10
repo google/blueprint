@@ -158,7 +158,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 		// TODO(ccross): we don't validate types inside nil struct pointers
 		// Move type validation to a function that runs on each factory once
 		switch kind := fieldValue.Kind(); kind {
-		case reflect.Bool, reflect.String, reflect.Struct:
+		case reflect.Struct:
 			// Do nothing
 		case reflect.Slice:
 			elemType := field.Type.Elem()
@@ -192,9 +192,9 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 				panic(fmt.Errorf("field %s contains a pointer to %s", propertyName, ptrKind))
 			}
 
-		case reflect.Int, reflect.Uint:
+		case reflect.Bool, reflect.String, reflect.Int, reflect.Uint:
 			if !proptools.HasTag(field, "blueprint", "mutated") {
-				panic(fmt.Errorf(`int field %s must be tagged blueprint:"mutated"`, propertyName))
+				panic(fmt.Errorf(`field %s must be tagged blueprint:"mutated"`, propertyName))
 			}
 
 		default:

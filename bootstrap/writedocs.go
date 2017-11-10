@@ -18,7 +18,7 @@ func writeDocs(ctx *blueprint.Context, srcDir, filename string) error {
 	ctx.VisitAllModulesIf(isBootstrapBinaryModule,
 		func(module blueprint.Module) {
 			binaryModule := module.(*goBinary)
-			if binaryModule.properties.PrimaryBuilder {
+			if Bool(binaryModule.properties.PrimaryBuilder) {
 				primaryBuilders = append(primaryBuilders, binaryModule)
 			}
 			if ctx.ModuleName(binaryModule) == "minibp" {
@@ -48,7 +48,7 @@ func writeDocs(ctx *blueprint.Context, srcDir, filename string) error {
 	ctx.VisitDepsDepthFirst(primaryBuilder, func(module blueprint.Module) {
 		switch m := module.(type) {
 		case (*goPackage):
-			pkgFiles[m.properties.PkgPath] = pathtools.PrefixPaths(m.properties.Srcs,
+			pkgFiles[String(m.properties.PkgPath)] = pathtools.PrefixPaths(m.properties.Srcs,
 				filepath.Join(srcDir, ctx.ModuleDir(m)))
 		default:
 			panic(fmt.Errorf("unknown dependency type %T", module))

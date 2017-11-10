@@ -36,74 +36,6 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 		// Valid inputs
 
 		{
-			// Append bool
-			in1: &struct{ B1, B2, B3, B4 bool }{
-				B1: true,
-				B2: false,
-				B3: true,
-				B4: false,
-			},
-			in2: &struct{ B1, B2, B3, B4 bool }{
-				B1: true,
-				B2: true,
-				B3: false,
-				B4: false,
-			},
-			out: &struct{ B1, B2, B3, B4 bool }{
-				B1: true,
-				B2: true,
-				B3: true,
-				B4: false,
-			},
-		},
-		{
-			// Prepend bool
-			in1: &struct{ B1, B2, B3, B4 bool }{
-				B1: true,
-				B2: false,
-				B3: true,
-				B4: false,
-			},
-			in2: &struct{ B1, B2, B3, B4 bool }{
-				B1: true,
-				B2: true,
-				B3: false,
-				B4: false,
-			},
-			out: &struct{ B1, B2, B3, B4 bool }{
-				B1: true,
-				B2: true,
-				B3: true,
-				B4: false,
-			},
-			prepend: true,
-		},
-		{
-			// Append strings
-			in1: &struct{ S string }{
-				S: "string1",
-			},
-			in2: &struct{ S string }{
-				S: "string2",
-			},
-			out: &struct{ S string }{
-				S: "string1string2",
-			},
-		},
-		{
-			// Prepend strings
-			in1: &struct{ S string }{
-				S: "string1",
-			},
-			in2: &struct{ S string }{
-				S: "string2",
-			},
-			out: &struct{ S string }{
-				S: "string2string1",
-			},
-			prepend: true,
-		},
-		{
 			// Append pointer to bool
 			in1: &struct{ B1, B2, B3, B4, B5, B6, B7, B8, B9 *bool }{
 				B1: BoolPtr(true),
@@ -350,37 +282,37 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 		},
 		{
 			// Append pointer
-			in1: &struct{ S *struct{ S string } }{
-				S: &struct{ S string }{
-					S: "string1",
+			in1: &struct{ S *struct{ S *string } }{
+				S: &struct{ S *string }{
+					S: StringPtr("string1"),
 				},
 			},
-			in2: &struct{ S *struct{ S string } }{
-				S: &struct{ S string }{
-					S: "string2",
+			in2: &struct{ S *struct{ S *string } }{
+				S: &struct{ S *string }{
+					S: StringPtr("string2"),
 				},
 			},
-			out: &struct{ S *struct{ S string } }{
-				S: &struct{ S string }{
-					S: "string1string2",
+			out: &struct{ S *struct{ S *string } }{
+				S: &struct{ S *string }{
+					S: StringPtr("string2"),
 				},
 			},
 		},
 		{
 			// Prepend pointer
-			in1: &struct{ S *struct{ S string } }{
-				S: &struct{ S string }{
-					S: "string1",
+			in1: &struct{ S *struct{ S *string } }{
+				S: &struct{ S *string }{
+					S: StringPtr("string1"),
 				},
 			},
-			in2: &struct{ S *struct{ S string } }{
-				S: &struct{ S string }{
-					S: "string2",
+			in2: &struct{ S *struct{ S *string } }{
+				S: &struct{ S *string }{
+					S: StringPtr("string2"),
 				},
 			},
-			out: &struct{ S *struct{ S string } }{
-				S: &struct{ S string }{
-					S: "string2string1",
+			out: &struct{ S *struct{ S *string } }{
+				S: &struct{ S *string }{
+					S: StringPtr("string1"),
 				},
 			},
 			prepend: true,
@@ -388,50 +320,50 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 		{
 			// Append interface
 			in1: &struct{ S interface{} }{
-				S: &struct{ S string }{
-					S: "string1",
+				S: &struct{ S *string }{
+					S: StringPtr("string1"),
 				},
 			},
 			in2: &struct{ S interface{} }{
-				S: &struct{ S string }{
-					S: "string2",
+				S: &struct{ S *string }{
+					S: StringPtr("string2"),
 				},
 			},
 			out: &struct{ S interface{} }{
-				S: &struct{ S string }{
-					S: "string1string2",
+				S: &struct{ S *string }{
+					S: StringPtr("string2"),
 				},
 			},
 		},
 		{
 			// Prepend interface
 			in1: &struct{ S interface{} }{
-				S: &struct{ S string }{
-					S: "string1",
+				S: &struct{ S *string }{
+					S: StringPtr("string1"),
 				},
 			},
 			in2: &struct{ S interface{} }{
-				S: &struct{ S string }{
-					S: "string2",
+				S: &struct{ S *string }{
+					S: StringPtr("string2"),
 				},
 			},
 			out: &struct{ S interface{} }{
-				S: &struct{ S string }{
-					S: "string2string1",
+				S: &struct{ S *string }{
+					S: StringPtr("string1"),
 				},
 			},
 			prepend: true,
 		},
 		{
 			// Unexported field
-			in1: &struct{ s string }{
-				s: "string1",
+			in1: &struct{ s *string }{
+				s: StringPtr("string1"),
 			},
-			in2: &struct{ s string }{
-				s: "string2",
+			in2: &struct{ s *string }{
+				s: StringPtr("string2"),
 			},
-			out: &struct{ s string }{
-				s: "string1",
+			out: &struct{ s *string }{
+				s: StringPtr("string1"),
 			},
 		},
 		{
@@ -483,12 +415,12 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				Nested struct{ EmbeddedStruct }
 			}{
 				EmbeddedStruct: EmbeddedStruct{
-					S: "string1",
+					S: StringPtr("string1"),
 					I: Int64Ptr(55),
 				},
 				Nested: struct{ EmbeddedStruct }{
 					EmbeddedStruct: EmbeddedStruct{
-						S: "string2",
+						S: StringPtr("string2"),
 						I: Int64Ptr(-4),
 					},
 				},
@@ -498,12 +430,12 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				Nested struct{ EmbeddedStruct }
 			}{
 				EmbeddedStruct: EmbeddedStruct{
-					S: "string3",
+					S: StringPtr("string3"),
 					I: Int64Ptr(66),
 				},
 				Nested: struct{ EmbeddedStruct }{
 					EmbeddedStruct: EmbeddedStruct{
-						S: "string4",
+						S: StringPtr("string4"),
 						I: Int64Ptr(-8),
 					},
 				},
@@ -513,12 +445,12 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				Nested struct{ EmbeddedStruct }
 			}{
 				EmbeddedStruct: EmbeddedStruct{
-					S: "string1string3",
+					S: StringPtr("string3"),
 					I: Int64Ptr(66),
 				},
 				Nested: struct{ EmbeddedStruct }{
 					EmbeddedStruct: EmbeddedStruct{
-						S: "string2string4",
+						S: StringPtr("string4"),
 						I: Int64Ptr(-8),
 					},
 				},
@@ -531,18 +463,18 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				Nested struct{ EmbeddedInterface }
 			}{
 				EmbeddedInterface: &struct {
-					S string
+					S *string
 					I *int64
 				}{
-					S: "string1",
+					S: StringPtr("string1"),
 					I: Int64Ptr(-8),
 				},
 				Nested: struct{ EmbeddedInterface }{
 					EmbeddedInterface: &struct {
-						S string
+						S *string
 						I *int64
 					}{
-						S: "string2",
+						S: StringPtr("string2"),
 						I: Int64Ptr(55),
 					},
 				},
@@ -552,18 +484,18 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				Nested struct{ EmbeddedInterface }
 			}{
 				EmbeddedInterface: &struct {
-					S string
+					S *string
 					I *int64
 				}{
-					S: "string3",
+					S: StringPtr("string3"),
 					I: Int64Ptr(6),
 				},
 				Nested: struct{ EmbeddedInterface }{
 					EmbeddedInterface: &struct {
-						S string
+						S *string
 						I *int64
 					}{
-						S: "string4",
+						S: StringPtr("string4"),
 						I: Int64Ptr(6),
 					},
 				},
@@ -573,18 +505,18 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				Nested struct{ EmbeddedInterface }
 			}{
 				EmbeddedInterface: &struct {
-					S string
+					S *string
 					I *int64
 				}{
-					S: "string1string3",
+					S: StringPtr("string3"),
 					I: Int64Ptr(6),
 				},
 				Nested: struct{ EmbeddedInterface }{
 					EmbeddedInterface: &struct {
-						S string
+						S *string
 						I *int64
 					}{
-						S: "string2string4",
+						S: StringPtr("string4"),
 						I: Int64Ptr(6),
 					},
 				},
@@ -594,29 +526,29 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 			// Nil pointer to a struct
 			in1: &struct {
 				Nested *struct {
-					S string
+					S *string
 				}
 			}{},
 			in2: &struct {
 				Nested *struct {
-					S string
+					S *string
 				}
 			}{
 				Nested: &struct {
-					S string
+					S *string
 				}{
-					S: "string",
+					S: StringPtr("string"),
 				},
 			},
 			out: &struct {
 				Nested *struct {
-					S string
+					S *string
 				}
 			}{
 				Nested: &struct {
-					S string
+					S *string
 				}{
-					S: "string",
+					S: StringPtr("string"),
 				},
 			},
 		},
@@ -625,45 +557,45 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 			in1: &struct {
 				Nested interface{}
 			}{
-				Nested: (*struct{ S string })(nil),
+				Nested: (*struct{ S *string })(nil),
 			},
 			in2: &struct {
 				Nested interface{}
 			}{
 				Nested: &struct {
-					S string
+					S *string
 				}{
-					S: "string",
+					S: StringPtr("string"),
 				},
 			},
 			out: &struct {
 				Nested interface{}
 			}{
 				Nested: &struct {
-					S string
+					S *string
 				}{
-					S: "string",
+					S: StringPtr("string"),
 				},
 			},
 		},
 		{
 			// Interface src nil
 			in1: &struct{ S interface{} }{
-				S: &struct{ S string }{
-					S: "string1",
+				S: &struct{ S *string }{
+					S: StringPtr("string1"),
 				},
 			},
 			in2: &struct{ S interface{} }{
 				S: nil,
 			},
 			out: &struct{ S interface{} }{
-				S: &struct{ S string }{
-					S: "string1",
+				S: &struct{ S *string }{
+					S: StringPtr("string1"),
 				},
 			},
 		},
 
-		// Errors
+		//// Errors
 
 		{
 			// Non-pointer in1
@@ -818,18 +750,18 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 			err: extendPropertyErrorf("s.i", "unsupported kind int"),
 		},
 
-		// Filters
+		//// Filters
 
 		{
 			// Filter true
-			in1: &struct{ S string }{
-				S: "string1",
+			in1: &struct{ S *string }{
+				S: StringPtr("string1"),
 			},
-			in2: &struct{ S string }{
-				S: "string2",
+			in2: &struct{ S *string }{
+				S: StringPtr("string2"),
 			},
-			out: &struct{ S string }{
-				S: "string1string2",
+			out: &struct{ S *string }{
+				S: StringPtr("string2"),
 			},
 			filter: func(property string,
 				dstField, srcField reflect.StructField,
@@ -839,14 +771,14 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 		},
 		{
 			// Filter false
-			in1: &struct{ S string }{
-				S: "string1",
+			in1: &struct{ S *string }{
+				S: StringPtr("string1"),
 			},
-			in2: &struct{ S string }{
-				S: "string2",
+			in2: &struct{ S *string }{
+				S: StringPtr("string2"),
 			},
-			out: &struct{ S string }{
-				S: "string1",
+			out: &struct{ S *string }{
+				S: StringPtr("string1"),
 			},
 			filter: func(property string,
 				dstField, srcField reflect.StructField,
@@ -856,21 +788,21 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 		},
 		{
 			// Filter check args
-			in1: &struct{ S string }{
-				S: "string1",
+			in1: &struct{ S *string }{
+				S: StringPtr("string1"),
 			},
-			in2: &struct{ S string }{
-				S: "string2",
+			in2: &struct{ S *string }{
+				S: StringPtr("string2"),
 			},
-			out: &struct{ S string }{
-				S: "string1string2",
+			out: &struct{ S *string }{
+				S: StringPtr("string2"),
 			},
 			filter: func(property string,
 				dstField, srcField reflect.StructField,
 				dstValue, srcValue interface{}) (bool, error) {
 				return property == "s" &&
 					dstField.Name == "S" && srcField.Name == "S" &&
-					dstValue.(string) == "string1" && srcValue.(string) == "string2", nil
+					*(dstValue.(*string)) == "string1" && *(srcValue.(*string)) == "string2", nil
 			},
 		},
 		{
@@ -911,14 +843,14 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 		},
 		{
 			// Filter error
-			in1: &struct{ S string }{
-				S: "string1",
+			in1: &struct{ S *string }{
+				S: StringPtr("string1"),
 			},
-			in2: &struct{ S string }{
-				S: "string2",
+			in2: &struct{ S *string }{
+				S: StringPtr("string2"),
 			},
-			out: &struct{ S string }{
-				S: "string1",
+			out: &struct{ S *string }{
+				S: StringPtr("string1"),
 			},
 			filter: func(property string,
 				dstField, srcField reflect.StructField,
@@ -993,119 +925,119 @@ func appendMatchingPropertiesTestCases() []appendMatchingPropertiesTestCase {
 	return []appendMatchingPropertiesTestCase{
 		{
 			// Append strings
-			in1: []interface{}{&struct{ S string }{
-				S: "string1",
+			in1: []interface{}{&struct{ S *string }{
+				S: StringPtr("string1"),
 			}},
-			in2: &struct{ S string }{
-				S: "string2",
+			in2: &struct{ S *string }{
+				S: StringPtr("string2"),
 			},
-			out: []interface{}{&struct{ S string }{
-				S: "string1string2",
+			out: []interface{}{&struct{ S *string }{
+				S: StringPtr("string2"),
 			}},
 		},
 		{
 			// Prepend strings
-			in1: []interface{}{&struct{ S string }{
-				S: "string1",
+			in1: []interface{}{&struct{ S *string }{
+				S: StringPtr("string1"),
 			}},
-			in2: &struct{ S string }{
-				S: "string2",
+			in2: &struct{ S *string }{
+				S: StringPtr("string2"),
 			},
-			out: []interface{}{&struct{ S string }{
-				S: "string2string1",
+			out: []interface{}{&struct{ S *string }{
+				S: StringPtr("string1"),
 			}},
 			prepend: true,
 		},
 		{
 			// Append all
 			in1: []interface{}{
-				&struct{ S, A string }{
-					S: "string1",
+				&struct{ S, A *string }{
+					S: StringPtr("string1"),
 				},
-				&struct{ S, B string }{
-					S: "string2",
+				&struct{ S, B *string }{
+					S: StringPtr("string2"),
 				},
 			},
-			in2: &struct{ S string }{
-				S: "string3",
+			in2: &struct{ S *string }{
+				S: StringPtr("string3"),
 			},
 			out: []interface{}{
-				&struct{ S, A string }{
-					S: "string1string3",
+				&struct{ S, A *string }{
+					S: StringPtr("string3"),
 				},
-				&struct{ S, B string }{
-					S: "string2string3",
+				&struct{ S, B *string }{
+					S: StringPtr("string3"),
 				},
 			},
 		},
 		{
 			// Append some
 			in1: []interface{}{
-				&struct{ S, A string }{
-					S: "string1",
+				&struct{ S, A *string }{
+					S: StringPtr("string1"),
 				},
-				&struct{ B string }{},
+				&struct{ B *string }{},
 			},
-			in2: &struct{ S string }{
-				S: "string2",
+			in2: &struct{ S *string }{
+				S: StringPtr("string2"),
 			},
 			out: []interface{}{
-				&struct{ S, A string }{
-					S: "string1string2",
+				&struct{ S, A *string }{
+					S: StringPtr("string2"),
 				},
-				&struct{ B string }{},
+				&struct{ B *string }{},
 			},
 		},
 		{
 			// Append mismatched structs
-			in1: []interface{}{&struct{ S, A string }{
-				S: "string1",
+			in1: []interface{}{&struct{ S, A *string }{
+				S: StringPtr("string1"),
 			}},
-			in2: &struct{ S string }{
-				S: "string2",
+			in2: &struct{ S *string }{
+				S: StringPtr("string2"),
 			},
-			out: []interface{}{&struct{ S, A string }{
-				S: "string1string2",
+			out: []interface{}{&struct{ S, A *string }{
+				S: StringPtr("string2"),
 			}},
 		},
 		{
 			// Append mismatched pointer structs
-			in1: []interface{}{&struct{ S *struct{ S, A string } }{
-				S: &struct{ S, A string }{
-					S: "string1",
+			in1: []interface{}{&struct{ S *struct{ S, A *string } }{
+				S: &struct{ S, A *string }{
+					S: StringPtr("string1"),
 				},
 			}},
-			in2: &struct{ S *struct{ S string } }{
-				S: &struct{ S string }{
-					S: "string2",
+			in2: &struct{ S *struct{ S *string } }{
+				S: &struct{ S *string }{
+					S: StringPtr("string2"),
 				},
 			},
-			out: []interface{}{&struct{ S *struct{ S, A string } }{
-				S: &struct{ S, A string }{
-					S: "string1string2",
+			out: []interface{}{&struct{ S *struct{ S, A *string } }{
+				S: &struct{ S, A *string }{
+					S: StringPtr("string2"),
 				},
 			}},
 		},
 		{
 			// Append through mismatched types
 			in1: []interface{}{
-				&struct{ B string }{},
+				&struct{ B *string }{},
 				&struct{ S interface{} }{
-					S: &struct{ S, A string }{
-						S: "string1",
+					S: &struct{ S, A *string }{
+						S: StringPtr("string1"),
 					},
 				},
 			},
-			in2: &struct{ S struct{ S string } }{
-				S: struct{ S string }{
-					S: "string2",
+			in2: &struct{ S struct{ S *string } }{
+				S: struct{ S *string }{
+					S: StringPtr("string2"),
 				},
 			},
 			out: []interface{}{
-				&struct{ B string }{},
+				&struct{ B *string }{},
 				&struct{ S interface{} }{
-					S: &struct{ S, A string }{
-						S: "string1string2",
+					S: &struct{ S, A *string }{
+						S: StringPtr("string2"),
 					},
 				},
 			},
@@ -1113,21 +1045,21 @@ func appendMatchingPropertiesTestCases() []appendMatchingPropertiesTestCase {
 		{
 			// Append through mismatched types and nil
 			in1: []interface{}{
-				&struct{ B string }{},
+				&struct{ B *string }{},
 				&struct{ S interface{} }{
-					S: (*struct{ S, A string })(nil),
+					S: (*struct{ S, A *string })(nil),
 				},
 			},
-			in2: &struct{ S struct{ S string } }{
-				S: struct{ S string }{
-					S: "string2",
+			in2: &struct{ S struct{ S *string } }{
+				S: struct{ S *string }{
+					S: StringPtr("string2"),
 				},
 			},
 			out: []interface{}{
-				&struct{ B string }{},
+				&struct{ B *string }{},
 				&struct{ S interface{} }{
-					S: &struct{ S, A string }{
-						S: "string2",
+					S: &struct{ S, A *string }{
+						S: StringPtr("string2"),
 					},
 				},
 			},
@@ -1136,45 +1068,45 @@ func appendMatchingPropertiesTestCases() []appendMatchingPropertiesTestCase {
 			// Append through multiple matches
 			in1: []interface{}{
 				&struct {
-					S struct{ S, A string }
+					S struct{ S, A *string }
 				}{
-					S: struct{ S, A string }{
-						S: "string1",
+					S: struct{ S, A *string }{
+						S: StringPtr("string1"),
 					},
 				},
 				&struct {
-					S struct{ S, B string }
+					S struct{ S, B *string }
 				}{
-					S: struct{ S, B string }{
-						S: "string2",
+					S: struct{ S, B *string }{
+						S: StringPtr("string2"),
 					},
 				},
 			},
-			in2: &struct{ S struct{ B string } }{
-				S: struct{ B string }{
-					B: "string3",
+			in2: &struct{ S struct{ B *string } }{
+				S: struct{ B *string }{
+					B: StringPtr("string3"),
 				},
 			},
 			out: []interface{}{
 				&struct {
-					S struct{ S, A string }
+					S struct{ S, A *string }
 				}{
-					S: struct{ S, A string }{
-						S: "string1",
+					S: struct{ S, A *string }{
+						S: StringPtr("string1"),
 					},
 				},
 				&struct {
-					S struct{ S, B string }
+					S struct{ S, B *string }
 				}{
-					S: struct{ S, B string }{
-						S: "string2",
-						B: "string3",
+					S: struct{ S, B *string }{
+						S: StringPtr("string2"),
+						B: StringPtr("string3"),
 					},
 				},
 			},
 		},
 
-		// Errors
+		//// Errors
 
 		{
 			// Non-pointer in1
