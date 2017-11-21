@@ -40,6 +40,7 @@ import (
 var ErrBuildActionsNotReady = errors.New("build actions are not ready")
 
 const maxErrors = 10
+const MockModuleListFile = "bplist"
 
 // A Context contains all the state needed to parse a set of Blueprints files
 // and generate a Ninja file.  The process of generating a Ninja file proceeds
@@ -798,17 +799,23 @@ loop:
 // MockFileSystem causes the Context to replace all reads with accesses to the provided map of
 // filenames to contents stored as a byte slice.
 func (c *Context) MockFileSystem(files map[string][]byte) {
-	// find every file named "Blueprints"
-	pathsToParse := []string{}
-	for candidate := range files {
-		if filepath.Base(candidate) == "Blueprints" {
-			pathsToParse = append(pathsToParse, candidate)
+	// look for a module list file
+	_, ok := files[MockModuleListFile]
+	if !ok {
+		// no module list file specified; find every file named Blueprints
+		pathsToParse := []string{}
+		for candidate := range files {
+			if filepath.Base(candidate) == "Blueprints" {
+				pathsToParse = append(pathsToParse, candidate)
+			}
 		}
+		if len(pathsToParse) < 1 {
+			panic(fmt.Sprintf("No Blueprints files found in mock filesystem: %v\n", files))
+		}
+		// put the list of Blueprints files into a list file
+		files[MockModuleListFile] = []byte(strings.Join(pathsToParse, "\n"))
 	}
-	// put the list of Blueprints files into a list file
-	listFile := "bplist"
-	files[listFile] = []byte(strings.Join(pathsToParse, "\n"))
-	c.SetModuleListFile(listFile)
+	c.SetModuleListFile(MockModuleListFile)
 
 	// mock the filesystem
 	c.fs = pathtools.MockFs(files)
