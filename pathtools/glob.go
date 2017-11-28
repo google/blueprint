@@ -177,7 +177,7 @@ func filterExcludes(matches []string, excludes []string) ([]string, error) {
 matchLoop:
 	for _, m := range matches {
 		for _, e := range excludes {
-			exclude, err := match(e, m)
+			exclude, err := Match(e, m)
 			if err != nil {
 				return nil, err
 			}
@@ -206,9 +206,9 @@ func filterDotFiles(matches []string) []string {
 	return ret
 }
 
-// match returns true if name matches pattern using the same rules as filepath.Match, but supporting
+// Match returns true if name matches pattern using the same rules as filepath.Match, but supporting
 // hierarchical patterns (a/*) and recursive globs (**).
-func match(pattern, name string) (bool, error) {
+func Match(pattern, name string) (bool, error) {
 	if filepath.Base(pattern) == "**" {
 		return false, GlobLastRecursiveErr
 	}
@@ -237,7 +237,7 @@ func match(pattern, name string) (bool, error) {
 
 // matchPrefix returns true if the beginning of name matches pattern using the same rules as
 // filepath.Match, but supporting hierarchical patterns (a/*).  Recursive globs (**) are not
-// supported, they should have been handled in match().
+// supported, they should have been handled in Match().
 func matchPrefix(pattern, name string) (bool, error) {
 	if len(pattern) > 0 && pattern[0] == '/' {
 		if len(name) > 0 && name[0] == '/' {
