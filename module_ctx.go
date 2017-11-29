@@ -142,6 +142,8 @@ type BaseModuleContext interface {
 
 	moduleInfo() *moduleInfo
 	error(err error)
+
+	Namespace() Namespace
 }
 
 type DynamicDependerModuleContext BottomUpMutatorContext
@@ -267,6 +269,10 @@ func (d *baseModuleContext) GlobWithDeps(pattern string,
 
 func (d *baseModuleContext) Fs() pathtools.FileSystem {
 	return d.context.fs
+}
+
+func (d *baseModuleContext) Namespace() Namespace {
+	return d.context.nameInterface.GetNamespace(d)
 }
 
 var _ ModuleContext = (*moduleContext)(nil)
@@ -650,7 +656,8 @@ func (mctx *mutatorContext) Module() Module {
 // correctly for all future mutator passes.
 func (mctx *mutatorContext) AddDependency(module Module, tag DependencyTag, deps ...string) {
 	for _, dep := range deps {
-		errs := mctx.context.addDependency(mctx.context.moduleInfo[module], tag, dep)
+		modInfo := mctx.context.moduleInfo[module]
+		errs := mctx.context.addDependency(modInfo, tag, dep)
 		if len(errs) > 0 {
 			mctx.errs = append(mctx.errs, errs...)
 		}
@@ -731,7 +738,8 @@ func (mctx *mutatorContext) ReplaceDependencies(name string) {
 }
 
 func (mctx *mutatorContext) OtherModuleExists(name string) bool {
-	return mctx.context.moduleNames[name] != nil
+	_, exists := mctx.context.nameInterface.ModuleFromName(name, mctx.module.namespace())
+	return exists
 }
 
 // Rename all variants of a module.  The new name is not visible to calls to ModuleName,
