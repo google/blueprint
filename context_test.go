@@ -183,7 +183,7 @@ func TestWalkDeps(t *testing.T) {
 
 	var outputDown string
 	var outputUp string
-	topModule := ctx.modulesFromName("A")[0]
+	topModule := ctx.modulesFromName("A", nil)[0]
 	ctx.walkDeps(topModule,
 		func(dep depInfo, parent *moduleInfo) bool {
 			if dep.module.logicModule.(Walker).Walk() {
@@ -239,10 +239,10 @@ func TestCreateModule(t *testing.T) {
 		t.FailNow()
 	}
 
-	a := ctx.modulesFromName("A")[0].logicModule.(*fooModule)
-	b := ctx.modulesFromName("B")[0].logicModule.(*barModule)
-	c := ctx.modulesFromName("C")[0].logicModule.(*barModule)
-	d := ctx.modulesFromName("D")[0].logicModule.(*fooModule)
+	a := ctx.modulesFromName("A", nil)[0].logicModule.(*fooModule)
+	b := ctx.modulesFromName("B", nil)[0].logicModule.(*barModule)
+	c := ctx.modulesFromName("C", nil)[0].logicModule.(*barModule)
+	d := ctx.modulesFromName("D", nil)[0].logicModule.(*fooModule)
 
 	checkDeps := func(m Module, expected string) {
 		var deps []string

@@ -12,6 +12,7 @@ bootstrap_go_package {
         "live_tracker.go",
         "mangle.go",
         "module_ctx.go",
+        "name_interface.go",
         "ninja_defs.go",
         "ninja_strings.go",
         "ninja_writer.go",
