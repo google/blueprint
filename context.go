@@ -1284,7 +1284,7 @@ func (c *Context) addModule(module *moduleInfo) []error {
 	}
 	module.group = group
 	namespace, errs := c.nameInterface.NewModule(
-		&moduleCreationContextImpl{c.ModuleDir(module.logicModule)},
+		&namespaceContextImpl{c.ModulePath(module.logicModule)},
 		ModuleGroup{moduleGroup: group},
 		module.logicModule)
 	if len(errs) > 0 {
@@ -2733,9 +2733,13 @@ func (c *Context) ModuleName(logicModule Module) string {
 	return module.Name()
 }
 
-func (c *Context) ModuleDir(logicModule Module) string {
+func (c *Context) ModulePath(logicModule Module) string {
 	module := c.moduleInfo[logicModule]
-	return filepath.Dir(module.relBlueprintsFile)
+	return module.relBlueprintsFile
+}
+
+func (c *Context) ModuleDir(logicModule Module) string {
+	return filepath.Dir(c.ModulePath(logicModule))
 }
 
 func (c *Context) ModuleSubDir(logicModule Module) string {

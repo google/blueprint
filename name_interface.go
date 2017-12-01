@@ -74,15 +74,15 @@ type NameInterface interface {
 // A NamespaceContext stores the information given to a NameInterface to enable the NameInterface
 // to choose the namespace for any given module
 type NamespaceContext interface {
-	ModuleDir() string
+	ModulePath() string
 }
 
-type moduleCreationContextImpl struct {
-	moduleDir string
+type namespaceContextImpl struct {
+	modulePath string
 }
 
-func (ctx *moduleCreationContextImpl) ModuleDir() string {
-	return ctx.moduleDir
+func (ctx *namespaceContextImpl) ModulePath() string {
+	return ctx.modulePath
 }
 
 // a SimpleNameInterface just stores all modules in a map based on name
