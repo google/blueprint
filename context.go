@@ -954,6 +954,14 @@ func (c *Context) parseOne(rootDir, filename string, reader io.Reader,
 	if err != nil {
 		errs = append(errs, err)
 	}
+	for _, buildEntry := range build {
+		if strings.Contains(buildEntry, "/") {
+			errs = append(errs, &BlueprintError{
+				Err: fmt.Errorf("illegal value %v. The '/' character is not permitted", buildEntry),
+				Pos: buildPos,
+			})
+		}
+	}
 
 	subBlueprintsName, _, err := getStringFromScope(scope, "subname")
 	if err != nil {
