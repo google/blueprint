@@ -25,7 +25,6 @@ import (
 	"reflect"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -78,7 +77,6 @@ type Context struct {
 	mutatorInfo         []*mutatorInfo
 	earlyMutatorInfo    []*mutatorInfo
 	variantMutatorNames []string
-	moduleNinjaNames    map[string]*moduleGroup
 
 	depsModified uint32 // positive if a mutator modified the dependencies
 
@@ -278,7 +276,6 @@ func newContext() *Context {
 		moduleFactories:    make(map[string]ModuleFactory),
 		nameInterface:      NewSimpleNameInterface(),
 		moduleInfo:         make(map[Module]*moduleInfo),
-		moduleNinjaNames:   make(map[string]*moduleGroup),
 		globs:              make(map[string]GlobPath),
 		fs:                 pathtools.OsFs,
 		ninjaBuildDir:      nil,
@@ -1278,21 +1275,13 @@ func (c *Context) addModule(module *moduleInfo) []error {
 	name := module.logicModule.Name()
 	c.moduleInfo[module.logicModule] = module
 
-	ninjaName := toNinjaName(name)
-	// The sanitizing in toNinjaName can result in collisions, uniquify the name if it
-	// already exists
-	for i := 0; c.moduleNinjaNames[ninjaName] != nil; i++ {
-		ninjaName = toNinjaName(name) + strconv.Itoa(i)
-	}
-
 	group := &moduleGroup{
-		name:      name,
-		ninjaName: ninjaName,
-		modules:   []*moduleInfo{module},
+		name:    name,
+		modules: []*moduleInfo{module},
 	}
 	module.group = group
 	namespace, errs := c.nameInterface.NewModule(
-		&namespaceContextImpl{c.ModulePath(module.logicModule)},
+		newNamespaceContext(module),
 		ModuleGroup{moduleGroup: group},
 		module.logicModule)
 	if len(errs) > 0 {
@@ -1303,7 +1292,6 @@ func (c *Context) addModule(module *moduleInfo) []error {
 	}
 	group.namespace = namespace
 
-	c.moduleNinjaNames[ninjaName] = group
 	c.moduleGroups = append(c.moduleGroups, group)
 
 	return nil
@@ -2179,10 +2167,15 @@ func (c *Context) generateModuleBuildActions(config interface{},
 	}()
 
 	c.parallelVisit(bottomUpVisitor, func(module *moduleInfo) bool {
+
+		uniqueName := c.nameInterface.UniqueName(newNamespaceContext(module), module.group.name)
+		sanitizedName := toNinjaName(uniqueName)
+
+		prefix := moduleNamespacePrefix(sanitizedName + "_" + module.variantName)
+
 		// The parent scope of the moduleContext's local scope gets overridden to be that of the
 		// calling Go package on a per-call basis.  Since the initial parent scope doesn't matter we
 		// just set it to nil.
-		prefix := moduleNamespacePrefix(module.group.ninjaName + "_" + module.variantName)
 		scope := newLocalScope(nil, prefix)
 
 		mctx := &moduleContext{
@@ -3166,24 +3159,33 @@ func (s depSorter) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
 
-type moduleSorter []*moduleInfo
+type moduleSorter struct {
+	modules       []*moduleInfo
+	nameInterface NameInterface
+}
 
 func (s moduleSorter) Len() int {
-	return len(s)
+	return len(s.modules)
 }
 
 func (s moduleSorter) Less(i, j int) bool {
-	iName := s[i].Name()
-	jName := s[j].Name()
+	iMod := s.modules[i]
+	jMod := s.modules[j]
+	iName := s.nameInterface.UniqueName(newNamespaceContext(iMod), iMod.group.name)
+	jName := s.nameInterface.UniqueName(newNamespaceContext(jMod), jMod.group.name)
 	if iName == jName {
-		iName = s[i].variantName
-		jName = s[j].variantName
+		iName = s.modules[i].variantName
+		jName = s.modules[j].variantName
+	}
+
+	if iName == jName {
+		panic(fmt.Sprintf("duplicate module name: %s: %#v and %#v\n", iName, iMod, jMod))
 	}
 	return iName < jName
 }
 
 func (s moduleSorter) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
+	s.modules[i], s.modules[j] = s.modules[j], s.modules[i]
 }
 
 func (c *Context) writeAllModuleActions(nw *ninjaWriter) error {
@@ -3198,7 +3200,7 @@ func (c *Context) writeAllModuleActions(nw *ninjaWriter) error {
 	for _, module := range c.moduleInfo {
 		modules = append(modules, module)
 	}
-	sort.Sort(moduleSorter(modules))
+	sort.Sort(moduleSorter{modules, c.nameInterface})
 
 	buf := bytes.NewBuffer(nil)
 

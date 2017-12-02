@@ -69,6 +69,9 @@ type NameInterface interface {
 
 	// gets the namespace for a given path
 	GetNamespace(ctx NamespaceContext) (namespace Namespace)
+
+	// returns a deterministic, unique, arbitrary string for the given name in the given namespace
+	UniqueName(ctx NamespaceContext, name string) (unique string)
 }
 
 // A NamespaceContext stores the information given to a NameInterface to enable the NameInterface
@@ -79,6 +82,10 @@ type NamespaceContext interface {
 
 type namespaceContextImpl struct {
 	modulePath string
+}
+
+func newNamespaceContext(moduleInfo *moduleInfo) (ctx NamespaceContext) {
+	return &namespaceContextImpl{moduleInfo.pos.Filename}
 }
 
 func (ctx *namespaceContextImpl) ModulePath() string {
@@ -164,4 +171,8 @@ func (s *SimpleNameInterface) MissingDependencyError(depender string, dependerNa
 
 func (s *SimpleNameInterface) GetNamespace(ctx NamespaceContext) Namespace {
 	return nil
+}
+
+func (s *SimpleNameInterface) UniqueName(ctx NamespaceContext, name string) (unique string) {
+	return name
 }

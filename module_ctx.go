@@ -272,9 +272,7 @@ func (d *baseModuleContext) Fs() pathtools.FileSystem {
 }
 
 func (d *baseModuleContext) Namespace() Namespace {
-	nsctx := &namespaceContextImpl{d.context.ModulePath(d.module.logicModule)}
-
-	return d.context.nameInterface.GetNamespace(nsctx)
+	return d.context.nameInterface.GetNamespace(newNamespaceContext(d.module))
 }
 
 var _ ModuleContext = (*moduleContext)(nil)
