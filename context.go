@@ -750,8 +750,17 @@ func (c *Context) WalkBlueprintsFiles(rootDir string, filePaths []string,
 		deps = append(deps, blueprint.fileName)
 		visitorWaitGroup.Add(1)
 		go func() {
-			file := c.openAndParse(blueprint.fileName, blueprint.Scope, rootDir,
-				errsCh, blueprintsCh, depsCh, &blueprint)
+			file, blueprints, deps, errs := c.openAndParse(blueprint.fileName, blueprint.Scope, rootDir,
+				&blueprint)
+			if len(errs) > 0 {
+				errsCh <- errs
+			}
+			for _, blueprint := range blueprints {
+				blueprintsCh <- blueprint
+			}
+			for _, dep := range deps {
+				depsCh <- dep
+			}
 			doneParsingCh <- blueprint
 
 			if blueprint.parent != nil && blueprint.parent.doneVisiting != nil {
@@ -854,15 +863,10 @@ func (c *Context) MockFileSystem(files map[string][]byte) {
 	c.fs = pathtools.MockFs(files)
 }
 
-// openAndParse parses a single Blueprints file, and sends results through the provided channels
-//
-// Errors are returned through errsCh.
-// Any defined modules are returned through modulesCh.
-// Any sub-Blueprints files are returned through blueprintsCh.
-// Any dependencies on Blueprints files or directories are returned through depsCh.
+// openAndParse opens and parses a single Blueprints file, and returns the results
 func (c *Context) openAndParse(filename string, scope *parser.Scope, rootDir string,
-	errsCh chan<- []error, blueprintsCh chan<- fileParseContext,
-	depsCh chan<- string, parent *fileParseContext) (file *parser.File) {
+	parent *fileParseContext) (file *parser.File,
+	subBlueprints []fileParseContext, deps []string, errs []error) {
 
 	f, err := c.fs.Open(filename)
 	if err != nil {
@@ -883,28 +887,28 @@ func (c *Context) openAndParse(filename string, scope *parser.Scope, rootDir str
 				err = fmt.Errorf("%v exists but could not be opened: %v", filename, err)
 			}
 		}
-		errsCh <- []error{err}
-		return nil
+		return nil, nil, nil, []error{err}
 	}
 
-	defer func() {
-		err = f.Close()
-		if err != nil {
-			errsCh <- []error{err}
-		}
+	func() {
+		defer func() {
+			err = f.Close()
+			if err != nil {
+				errs = append(errs, err)
+			}
+		}()
+		file, subBlueprints, errs = c.parseOne(rootDir, filename, f, scope, parent)
 	}()
 
-	file, subBlueprints, errs := c.parseOne(rootDir, filename, f, scope, parent)
 	if len(errs) > 0 {
-		errsCh <- errs
+		return nil, nil, nil, errs
 	}
 
 	for _, b := range subBlueprints {
-		blueprintsCh <- b
-		depsCh <- b.fileName
+		deps = append(deps, b.fileName)
 	}
 
-	return file
+	return file, subBlueprints, deps, nil
 }
 
 // parseOne parses a single Blueprints file from the given reader, creating Module
