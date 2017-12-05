@@ -16,8 +16,11 @@ package blueprint
 
 import (
 	"bytes"
+	"reflect"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/blueprint/parser"
 )
@@ -98,7 +101,7 @@ func TestContextParse(t *testing.T) {
 		}
 	`)
 
-	_, _, errs := ctx.parseOne(".", "Blueprint", r, parser.NewScope(nil))
+	_, _, errs := ctx.parseOne(".", "Blueprint", r, parser.NewScope(nil), nil)
 	if len(errs) > 0 {
 		t.Errorf("unexpected parse errors:")
 		for _, err := range errs {
@@ -281,4 +284,72 @@ func createTestMutator(ctx TopDownMutatorContext) {
 	ctx.CreateModule(newFooModule, &props{
 		Name: "D",
 	})
+}
+
+func TestWalkFileOrder(t *testing.T) {
+	// Run the test once to see how long it normally takes
+	start := time.Now()
+	doTestWalkFileOrder(t, time.Duration(0))
+	duration := time.Since(start)
+
+	// Run the test again, but put enough of a sleep into each visitor to detect ordering
+	// problems if they exist
+	doTestWalkFileOrder(t, duration)
+}
+
+// test that WalkBlueprintsFiles calls asyncVisitor in the right order
+func doTestWalkFileOrder(t *testing.T, sleepDuration time.Duration) {
+	// setup mock context
+	ctx := newContext()
+	mockFiles := map[string][]byte{
+		"Blueprints": []byte(`
+			sample_module {
+			    name: "a",
+			}
+		`),
+		"dir1/Blueprints": []byte(`
+			sample_module {
+			    name: "b",
+			}
+		`),
+		"dir1/dir2/Blueprints": []byte(`
+			sample_module {
+			    name: "c",
+			}
+		`),
+	}
+	ctx.MockFileSystem(mockFiles)
+
+	// prepare to monitor the visit order
+	visitOrder := []string{}
+	visitLock := sync.Mutex{}
+	correctVisitOrder := []string{"Blueprints", "dir1/Blueprints", "dir1/dir2/Blueprints"}
+
+	// sleep longer when processing the earlier files
+	chooseSleepDuration := func(fileName string) (duration time.Duration) {
+		duration = time.Duration(0)
+		for i := len(correctVisitOrder) - 1; i >= 0; i-- {
+			if fileName == correctVisitOrder[i] {
+				return duration
+			}
+			duration = duration + sleepDuration
+		}
+		panic("unrecognized file name " + fileName)
+	}
+
+	visitor := func(file *parser.File) {
+		time.Sleep(chooseSleepDuration(file.Name))
+		visitLock.Lock()
+		defer visitLock.Unlock()
+		visitOrder = append(visitOrder, file.Name)
+	}
+	keys := []string{"Blueprints", "dir1/Blueprints", "dir1/dir2/Blueprints"}
+
+	// visit the blueprints files
+	ctx.WalkBlueprintsFiles(".", keys, visitor)
+
+	// check the order
+	if !reflect.DeepEqual(visitOrder, correctVisitOrder) {
+		t.Errorf("Incorrect visit order; expected %v, got %v", correctVisitOrder, visitOrder)
+	}
 }
