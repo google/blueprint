@@ -721,12 +721,12 @@ func (c *Context) WalkBlueprintsFiles(rootDir string, filePaths []string,
 	}
 	blueprintsSet := make(map[string]bool)
 
-	// Channels to receive data back from parseOneAsync goroutines
+	// Channels to receive data back from openAndParse goroutines
 	blueprintsCh := make(chan fileParseContext)
 	errsCh := make(chan []error)
 	depsCh := make(chan string)
 
-	// Channel to notify main loop that a parseOneAsync goroutine has finished
+	// Channel to notify main loop that a openAndParse goroutine has finished
 	doneParsingCh := make(chan fileParseContext)
 
 	// Number of outstanding goroutines to wait for
@@ -750,7 +750,7 @@ func (c *Context) WalkBlueprintsFiles(rootDir string, filePaths []string,
 		deps = append(deps, blueprint.fileName)
 		visitorWaitGroup.Add(1)
 		go func() {
-			file := c.parseOneAsync(blueprint.fileName, blueprint.Scope, rootDir,
+			file := c.openAndParse(blueprint.fileName, blueprint.Scope, rootDir,
 				errsCh, blueprintsCh, depsCh, &blueprint)
 			doneParsingCh <- blueprint
 
@@ -854,13 +854,13 @@ func (c *Context) MockFileSystem(files map[string][]byte) {
 	c.fs = pathtools.MockFs(files)
 }
 
-// parseOneAsync parses a single Blueprints file, and sends results through the provided channels
+// openAndParse parses a single Blueprints file, and sends results through the provided channels
 //
 // Errors are returned through errsCh.
 // Any defined modules are returned through modulesCh.
 // Any sub-Blueprints files are returned through blueprintsCh.
 // Any dependencies on Blueprints files or directories are returned through depsCh.
-func (c *Context) parseOneAsync(filename string, scope *parser.Scope, rootDir string,
+func (c *Context) openAndParse(filename string, scope *parser.Scope, rootDir string,
 	errsCh chan<- []error, blueprintsCh chan<- fileParseContext,
 	depsCh chan<- string, parent *fileParseContext) (file *parser.File) {
 
