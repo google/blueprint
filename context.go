@@ -768,8 +768,10 @@ func (c *Context) WalkBlueprintsFiles(rootDir string, filePaths []string,
 				<-blueprint.parent.doneVisiting
 			}
 
-			// process this file
-			visitor(file)
+			if len(errs) == 0 {
+				// process this file
+				visitor(file)
+			}
 			if blueprint.doneVisiting != nil {
 				close(blueprint.doneVisiting)
 			}
