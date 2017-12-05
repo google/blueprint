@@ -331,6 +331,8 @@ func toNinjaName(name string) string {
 		if valid {
 			ret.WriteRune(r)
 		} else {
+			// TODO(jeffrygaston): do escaping so that toNinjaName won't ever output duplicate
+			// names for two different input names
 			ret.WriteRune('_')
 		}
 	}
