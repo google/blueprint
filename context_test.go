@@ -16,6 +16,8 @@ package blueprint
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"sync"
@@ -352,4 +354,41 @@ func doTestWalkFileOrder(t *testing.T, sleepDuration time.Duration) {
 	if !reflect.DeepEqual(visitOrder, correctVisitOrder) {
 		t.Errorf("Incorrect visit order; expected %v, got %v", correctVisitOrder, visitOrder)
 	}
+}
+
+// test that WalkBlueprintsFiles reports syntax errors
+func TestWalkingWithSyntaxError(t *testing.T) {
+	// setup mock context
+	ctx := newContext()
+	mockFiles := map[string][]byte{
+		"Blueprints": []byte(`
+			sample_module {
+			    name: "a" "b",
+			}
+		`),
+		"dir1/Blueprints": []byte(`
+			sample_module {
+			    name: "b",
+		`),
+		"dir1/dir2/Blueprints": []byte(`
+			sample_module {
+			    name: "c",
+			}
+		`),
+	}
+	ctx.MockFileSystem(mockFiles)
+
+	keys := []string{"Blueprints", "dir1/Blueprints", "dir1/dir2/Blueprints"}
+
+	// visit the blueprints files
+	_, errs := ctx.WalkBlueprintsFiles(".", keys, func(file *parser.File) {})
+
+	expectedErrs := []error{
+		errors.New(`Blueprints:3:18: expected "}", found String`),
+		errors.New(`dir1/Blueprints:4:3: expected "}", found EOF`),
+	}
+	if fmt.Sprintf("%s", expectedErrs) != fmt.Sprintf("%s", errs) {
+		t.Errorf("Incorrect errors; expected:\n%s\ngot:\n%s", expectedErrs, errs)
+	}
+
 }
