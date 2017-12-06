@@ -43,7 +43,7 @@ const MockModuleListFile = "bplist"
 
 // A Context contains all the state needed to parse a set of Blueprints files
 // and generate a Ninja file.  The process of generating a Ninja file proceeds
-// through a series of four phases.  Each phase corresponds with a some methods
+// through a series of four phases.  Each phase corresponds with some methods
 // on the Context object
 //
 //         Phase                            Methods
@@ -238,9 +238,9 @@ func (vm variationMap) clone() variationMap {
 	return newVm
 }
 
-// Compare this variationMap to another one.  Returns true if the every entry in this map
-// is either the same in the other map or doesn't exist in the other map.
-func (vm variationMap) subset(other variationMap) bool {
+// Compare this variationMap to another one.  Returns true if every key that is
+// shared by both maps also has the same value in each map
+func (vm variationMap) intersectionMatches(other variationMap) bool {
 	for k, v1 := range vm {
 		if v2, ok := other[k]; ok && v1 != v2 {
 			return false
@@ -1109,7 +1109,7 @@ func getStringFromScope(scope *parser.Scope, v string) (string, scanner.Position
 }
 
 // Clones a build logic module by calling the factory method for its module type, and then cloning
-// property values.  Any values stored in the module object that are not stored in properties
+// property values.  Any values stored in the module object that are not stored in Properties
 // structs will be lost.
 func (c *Context) cloneLogicModule(origModule *moduleInfo) (Module, []interface{}) {
 	newLogicModule, newProperties := origModule.factory()
@@ -1355,8 +1355,8 @@ func blueprintDepsMutator(ctx BottomUpMutatorContext) {
 	}
 }
 
-// findMatchingVariant searches the moduleGroup for a module with the same variant as module,
-// and returns the matching module, or nil if one is not found.
+// findMatchingVariant searches the moduleGroup for a module with a variant that matches
+// module.dependencyVariant, and returns the matching module, or nil if one is not found.
 func (c *Context) findMatchingVariant(module *moduleInfo, possible []*moduleInfo) *moduleInfo {
 	if len(possible) == 1 {
 		return possible[0]
@@ -1372,6 +1372,7 @@ func (c *Context) findMatchingVariant(module *moduleInfo, possible []*moduleInfo
 }
 
 func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName string) []error {
+
 	if _, ok := tag.(BaseDependencyTag); ok {
 		panic("BaseDependencyTag is not allowed to be used directly!")
 	}
@@ -1462,14 +1463,12 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 		return c.discoveredMissingDependencies(module, depName)
 	}
 
-	// We can't just append variant.Variant to module.dependencyVariants.variantName and
-	// compare the strings because the result won't be in mutator registration order.
-	// Create a new map instead, and then deep compare the maps.
+	// Find the first matching module variant that matches in all the required Variation dimensions
 	var newVariant variationMap
-	if !far {
-		newVariant = module.dependencyVariant.clone()
-	} else {
+	if far {
 		newVariant = make(variationMap)
+	} else {
+		newVariant = module.dependencyVariant.clone()
 	}
 	for _, v := range variations {
 		newVariant[v.Mutator] = v.Variation
@@ -1478,7 +1477,7 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 	for _, m := range possibleDeps {
 		var found bool
 		if far {
-			found = m.variant.subset(newVariant)
+			found = m.variant.intersectionMatches(newVariant)
 		} else {
 			found = m.variant.equal(newVariant)
 		}
@@ -1489,10 +1488,11 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 					Pos: module.pos,
 				}}
 			}
-			// AddVariationDependency allows adding a dependency on itself, but only if
-			// that module is earlier in the module list than this one, since we always
-			// run GenerateBuildActions in order for the variants of a module
-			if m.group == module.group && beforeInModuleList(module, m, module.group.modules) {
+			// AddVariationDependency does allow one variant of a module to add a dependency on
+			// another variant of the same module, but only if the dependency variant is earlier in
+			// the module list than the dependent variant, since we always run GenerateBuildActions
+			// in order for the variants of a module
+			if m.group == module.group && aPrecedesBInModuleList(module, m, module.group.modules) {
 				return []error{&BlueprintError{
 					Err: fmt.Errorf("%q depends on later version of itself", depName),
 					Pos: module.pos,
@@ -1688,8 +1688,8 @@ func (c *Context) parallelVisit(order visitOrderer, visit func(group *moduleInfo
 // additional fields based on the dependencies.  It builds a sorted list of modules
 // such that dependencies of a module always appear first, and populates reverse
 // dependency links and counts of total dependencies.  It also reports errors when
-// it encounters dependency cycles.  This should called after resolveDependencies,
-// as well as after any mutator pass has called addDependency
+// it encounters dependency cycles.  This should be called after resolveDependencies,
+// as well as after any mutator pass that has called addDependency
 func (c *Context) updateDependencies() (errs []error) {
 	visited := make(map[*moduleInfo]bool)  // modules that were already checked
 	checking := make(map[*moduleInfo]bool) // modules actively being checked
@@ -2875,7 +2875,7 @@ func (c *Context) VisitAllModuleVariants(module Module,
 	c.visitAllModuleVariants(c.moduleInfo[module], visit)
 }
 
-// WriteBuildFile writes the Ninja manifeset text for the generated build
+// WriteBuildFile writes the Ninja manifest text for the generated build
 // actions to w.  If this is called before PrepareBuildActions successfully
 // completes then ErrBuildActionsNotReady is returned.
 func (c *Context) WriteBuildFile(w io.Writer) error {
@@ -3381,7 +3381,7 @@ func (c *Context) writeLocalBuildActions(nw *ninjaWriter,
 	return nil
 }
 
-func beforeInModuleList(a, b *moduleInfo, list []*moduleInfo) bool {
+func aPrecedesBInModuleList(a, b *moduleInfo, list []*moduleInfo) bool {
 	found := false
 	if a == b {
 		return false
