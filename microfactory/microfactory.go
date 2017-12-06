@@ -478,7 +478,8 @@ func (p *GoPackage) Compile(config *Config, outDir string) error {
 	}
 	err = cmd.Run()
 	if err != nil {
-		err = fmt.Errorf("%s: %v", p.Name, err)
+		commandText := strings.Join(cmd.Args, " ")
+		err = fmt.Errorf("%q: %v", commandText, err)
 		p.failed = err
 		return err
 	}
@@ -580,13 +581,13 @@ func Build(config *Config, out, pkg string) (*GoPackage, error) {
 	}
 
 	if err := p.FindDeps(config, path); err != nil {
-		return nil, fmt.Errorf("Failed to find deps: %v", err)
+		return nil, fmt.Errorf("Failed to find deps of %v: %v", pkg, err)
 	}
 	if err := p.Compile(config, intermediates); err != nil {
-		return nil, fmt.Errorf("Failed to compile: %v", err)
+		return nil, fmt.Errorf("Failed to compile %v: %v", pkg, err)
 	}
 	if err := p.Link(config, out); err != nil {
-		return nil, fmt.Errorf("Failed to link: %v", err)
+		return nil, fmt.Errorf("Failed to link %v: %v", pkg, err)
 	}
 	return p, nil
 }
