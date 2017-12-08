@@ -49,8 +49,7 @@ func ShellEscape(slice []string) []string {
 			r == '=',
 			r == '.',
 			r == ',',
-			r == '/',
-			r == ' ':
+			r == '/':
 			return false
 		default:
 			return true
