@@ -155,6 +155,12 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		return
 	}
 
+	if c, ok := config.(ConfigStopBefore); ok {
+		if c.StopBefore() == StopBeforePrepareBuildActions {
+			return
+		}
+	}
+
 	extraDeps, errs = ctx.PrepareBuildActions(config)
 	if len(errs) > 0 {
 		fatalErrors(errs)
