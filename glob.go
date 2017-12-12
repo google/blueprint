@@ -15,9 +15,11 @@
 package blueprint
 
 import (
+	"crypto/md5"
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 )
 
 type GlobPath struct {
@@ -106,9 +108,16 @@ func globToString(pattern string) string {
 }
 
 func globToFileName(pattern string, excludes []string) string {
-	ret := globToString(pattern)
+	name := globToString(pattern)
+	excludeName := ""
 	for _, e := range excludes {
-		ret += "__" + globToString(e)
+		excludeName += "__" + globToString(e)
 	}
-	return ret + ".glob"
+
+	// Prevent file names from reaching ninja's path component limit
+	if strings.Count(name, "/")+strings.Count(excludeName, "/") > 30 {
+		excludeName = fmt.Sprintf("___%x", md5.Sum([]byte(excludeName)))
+	}
+
+	return name + excludeName + ".glob"
 }
