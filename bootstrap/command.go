@@ -148,11 +148,17 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	deps = append(deps, extraDeps...)
 
 	if docFile != "" {
-		err := writeDocs(ctx, filepath.Dir(bootstrapConfig.topLevelBlueprintsFile), docFile)
+		err := writeDocs(ctx, docFile)
 		if err != nil {
 			fatalErrors([]error{err})
 		}
 		return
+	}
+
+	if c, ok := config.(ConfigStopBefore); ok {
+		if c.StopBefore() == StopBeforePrepareBuildActions {
+			return
+		}
 	}
 
 	extraDeps, errs = ctx.PrepareBuildActions(config)

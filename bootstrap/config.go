@@ -70,6 +70,16 @@ type ConfigBlueprintToolLocation interface {
 	BlueprintToolLocation() string
 }
 
+type StopBefore int
+
+const (
+	StopBeforePrepareBuildActions StopBefore = 1
+)
+
+type ConfigStopBefore interface {
+	StopBefore() StopBefore
+}
+
 type Stage int
 
 const (
