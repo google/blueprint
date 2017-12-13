@@ -1,7 +1,10 @@
 package bootstrap
 
 import (
+	"bytes"
 	"fmt"
+	"html/template"
+	"io/ioutil"
 	"path/filepath"
 
 	"github.com/google/blueprint"
@@ -9,7 +12,9 @@ import (
 	"github.com/google/blueprint/pathtools"
 )
 
-func writeDocs(ctx *blueprint.Context, srcDir, filename string) error {
+// ModuleTypeDocs returns a list of bpdoc.ModuleType objects that contain information relevant
+// to generating documentation for module types supported by the primary builder.
+func ModuleTypeDocs(ctx *blueprint.Context) ([]*bpdoc.ModuleType, error) {
 	// Find the module that's marked as the "primary builder", which means it's
 	// creating the binary that we'll use to generate the non-bootstrap
 	// build.ninja file.
@@ -41,7 +46,7 @@ func writeDocs(ctx *blueprint.Context, srcDir, filename string) error {
 		primaryBuilder = primaryBuilders[0]
 
 	default:
-		return fmt.Errorf("multiple primary builder modules present")
+		return nil, fmt.Errorf("multiple primary builder modules present")
 	}
 
 	pkgFiles := make(map[string][]string)
@@ -49,11 +54,116 @@ func writeDocs(ctx *blueprint.Context, srcDir, filename string) error {
 		switch m := module.(type) {
 		case (*goPackage):
 			pkgFiles[m.properties.PkgPath] = pathtools.PrefixPaths(m.properties.Srcs,
-				filepath.Join(srcDir, ctx.ModuleDir(m)))
+				filepath.Join(SrcDir, ctx.ModuleDir(m)))
 		default:
 			panic(fmt.Errorf("unknown dependency type %T", module))
 		}
 	})
 
-	return bpdoc.Write(filename, pkgFiles, ctx.ModuleTypePropertyStructs())
+	return bpdoc.ModuleTypes(pkgFiles, ctx.ModuleTypePropertyStructs())
 }
+
+func writeDocs(ctx *blueprint.Context, filename string) error {
+	moduleTypeList, err := ModuleTypeDocs(ctx)
+	if err != nil {
+		return err
+	}
+
+	buf := &bytes.Buffer{}
+
+	unique := 0
+
+	tmpl, err := template.New("file").Funcs(map[string]interface{}{
+		"unique": func() int {
+			unique++
+			return unique
+		}}).Parse(fileTemplate)
+	if err != nil {
+		return err
+	}
+
+	err = tmpl.Execute(buf, moduleTypeList)
+	if err != nil {
+		return err
+	}
+
+	err = ioutil.WriteFile(filename, buf.Bytes(), 0666)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+const (
+	fileTemplate = `
+<html>
+<head>
+<title>Build Docs</title>
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
+</head>
+<body>
+<h1>Build Docs</h1>
+<div class="panel-group" id="accordion" role="tablist" aria-multiselectable="true">
+  {{range .}}
+    {{ $collapseIndex := unique }}
+    <div class="panel panel-default">
+      <div class="panel-heading" role="tab" id="heading{{$collapseIndex}}">
+        <h2 class="panel-title">
+          <a class="collapsed" role="button" data-toggle="collapse" data-parent="#accordion" href="#collapse{{$collapseIndex}}" aria-expanded="false" aria-controls="collapse{{$collapseIndex}}">
+             {{.Name}}
+          </a>
+        </h2>
+      </div>
+    </div>
+    <div id="collapse{{$collapseIndex}}" class="panel-collapse collapse" role="tabpanel" aria-labelledby="heading{{$collapseIndex}}">
+      <div class="panel-body">
+        <p>{{.Text}}</p>
+        {{range .PropertyStructs}}
+          <p>{{.Text}}</p>
+          {{template "properties" .Properties}}
+        {{end}}
+      </div>
+    </div>
+  {{end}}
+</div>
+</body>
+</html>
+
+{{define "properties"}}
+  <div class="panel-group" id="accordion" role="tablist" aria-multiselectable="true">
+    {{range .}}
+      {{$collapseIndex := unique}}
+      {{if .Properties}}
+        <div class="panel panel-default">
+          <div class="panel-heading" role="tab" id="heading{{$collapseIndex}}">
+            <h4 class="panel-title">
+              <a class="collapsed" role="button" data-toggle="collapse" data-parent="#accordion" href="#collapse{{$collapseIndex}}" aria-expanded="false" aria-controls="collapse{{$collapseIndex}}">
+                 {{.Name}}{{range .OtherNames}}, {{.}}{{end}}
+              </a>
+            </h4>
+          </div>
+        </div>
+        <div id="collapse{{$collapseIndex}}" class="panel-collapse collapse" role="tabpanel" aria-labelledby="heading{{$collapseIndex}}">
+          <div class="panel-body">
+            <p>{{.Text}}</p>
+            {{range .OtherTexts}}<p>{{.}}</p>{{end}}
+            {{template "properties" .Properties}}
+          </div>
+        </div>
+      {{else}}
+        <div>
+          <h4>{{.Name}}{{range .OtherNames}}, {{.}}{{end}}</h4>
+          <p>{{.Text}}</p>
+          {{range .OtherTexts}}<p>{{.}}</p>{{end}}
+          <p><i>Type: {{.Type}}</i></p>
+          {{if .Default}}<p><i>Default: {{.Default}}</i></p>{{end}}
+        </div>
+      {{end}}
+    {{end}}
+  </div>
+{{end}}
+`
+)
