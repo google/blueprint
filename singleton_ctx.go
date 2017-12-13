@@ -16,6 +16,7 @@ package blueprint
 
 import (
 	"fmt"
+
 	"github.com/google/blueprint/pathtools"
 )
 

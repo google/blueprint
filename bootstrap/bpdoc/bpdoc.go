@@ -1,14 +1,12 @@
 package bpdoc
 
 import (
-	"bytes"
 	"fmt"
 	"go/ast"
 	"go/doc"
 	"go/parser"
 	"go/token"
 	"html/template"
-	"io/ioutil"
 	"reflect"
 	"sort"
 	"strconv"
@@ -413,16 +411,14 @@ func NewPackageAST(files []string) (*ast.Package, error) {
 	return pkg, nil
 }
 
-func Write(filename string, pkgFiles map[string][]string,
-	moduleTypePropertyStructs map[string][]interface{}) error {
-
+func ModuleTypes(pkgFiles map[string][]string, moduleTypePropertyStructs map[string][]interface{}) ([]*ModuleType, error) {
 	c := NewContext(pkgFiles)
 
-	var moduleTypeList []*moduleType
+	var moduleTypeList []*ModuleType
 	for moduleType, propertyStructs := range moduleTypePropertyStructs {
 		mt, err := getModuleType(c, moduleType, propertyStructs)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		removeEmptyPropertyStructs(mt)
 		collapseDuplicatePropertyStructs(mt)
@@ -433,35 +429,12 @@ func Write(filename string, pkgFiles map[string][]string,
 
 	sort.Sort(moduleTypeByName(moduleTypeList))
 
-	buf := &bytes.Buffer{}
-
-	unique := 0
-
-	tmpl, err := template.New("file").Funcs(map[string]interface{}{
-		"unique": func() int {
-			unique++
-			return unique
-		}}).Parse(fileTemplate)
-	if err != nil {
-		return err
-	}
-
-	err = tmpl.Execute(buf, moduleTypeList)
-	if err != nil {
-		return err
-	}
-
-	err = ioutil.WriteFile(filename, buf.Bytes(), 0666)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return moduleTypeList, nil
 }
 
 func getModuleType(c *Context, moduleTypeName string,
-	propertyStructs []interface{}) (*moduleType, error) {
-	mt := &moduleType{
+	propertyStructs []interface{}) (*ModuleType, error) {
+	mt := &ModuleType{
 		Name: moduleTypeName,
 		//Text: c.ModuleTypeDocs(moduleType),
 	}
@@ -563,7 +536,7 @@ func nestedPropertyStructs(s reflect.Value) map[string]reflect.Value {
 }
 
 // Remove any property structs that have no exported fields
-func removeEmptyPropertyStructs(mt *moduleType) {
+func removeEmptyPropertyStructs(mt *ModuleType) {
 	for i := 0; i < len(mt.PropertyStructs); i++ {
 		if len(mt.PropertyStructs[i].Properties) == 0 {
 			mt.PropertyStructs = append(mt.PropertyStructs[:i], mt.PropertyStructs[i+1:]...)
@@ -573,7 +546,7 @@ func removeEmptyPropertyStructs(mt *moduleType) {
 }
 
 // Squashes duplicates of the same property struct into single entries
-func collapseDuplicatePropertyStructs(mt *moduleType) {
+func collapseDuplicatePropertyStructs(mt *ModuleType) {
 	var collapsed []*PropertyStruct
 
 propertyStructLoop:
@@ -605,7 +578,7 @@ propertyLoop:
 
 // Find all property structs that only contain structs, and move their children up one with
 // a prefixed name
-func collapseNestedPropertyStructs(mt *moduleType) {
+func collapseNestedPropertyStructs(mt *ModuleType) {
 	for _, ps := range mt.PropertyStructs {
 		collapseNestedProperties(&ps.Properties)
 	}
@@ -637,7 +610,7 @@ func collapseNestedProperties(p *[]Property) {
 	*p = n
 }
 
-func combineDuplicateProperties(mt *moduleType) {
+func combineDuplicateProperties(mt *ModuleType) {
 	for _, ps := range mt.PropertyStructs {
 		combineDuplicateSubProperties(&ps.Properties)
 	}
@@ -664,87 +637,23 @@ propertyLoop:
 	*p = n
 }
 
-type moduleTypeByName []*moduleType
+type moduleTypeByName []*ModuleType
 
 func (l moduleTypeByName) Len() int           { return len(l) }
 func (l moduleTypeByName) Less(i, j int) bool { return l[i].Name < l[j].Name }
 func (l moduleTypeByName) Swap(i, j int)      { l[i], l[j] = l[j], l[i] }
 
-type moduleType struct {
-	Name            string
-	Text            string
+// ModuleType contains the info about a module type that is relevant to generating documentation.
+type ModuleType struct {
+	// Name is the string that will appear in Blueprints files when defining a new module of
+	// this type.
+	Name string
+
+	// Text is the contents of the comment documenting the module type
+	Text string
+
+	// PropertyStructs is a list of PropertyStruct objects that contain information about each
+	// property struct that is used by the module type, containing all properties that are valid
+	// for the module type.
 	PropertyStructs []*PropertyStruct
 }
-
-var (
-	fileTemplate = `
-<html>
-<head>
-<title>Build Docs</title>
-<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
-<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
-</head>
-<body>
-<h1>Build Docs</h1>
-<div class="panel-group" id="accordion" role="tablist" aria-multiselectable="true">
-  {{range .}}
-    {{ $collapseIndex := unique }}
-    <div class="panel panel-default">
-      <div class="panel-heading" role="tab" id="heading{{$collapseIndex}}">
-        <h2 class="panel-title">
-          <a class="collapsed" role="button" data-toggle="collapse" data-parent="#accordion" href="#collapse{{$collapseIndex}}" aria-expanded="false" aria-controls="collapse{{$collapseIndex}}">
-             {{.Name}}
-          </a>
-        </h2>
-      </div>
-    </div>
-    <div id="collapse{{$collapseIndex}}" class="panel-collapse collapse" role="tabpanel" aria-labelledby="heading{{$collapseIndex}}">
-      <div class="panel-body">
-        <p>{{.Text}}</p>
-        {{range .PropertyStructs}}
-          <p>{{.Text}}</p>
-          {{template "properties" .Properties}}
-        {{end}}
-      </div>
-    </div>
-  {{end}}
-</div>
-</body>
-</html>
-
-{{define "properties"}}
-  <div class="panel-group" id="accordion" role="tablist" aria-multiselectable="true">
-    {{range .}}
-      {{$collapseIndex := unique}}
-      {{if .Properties}}
-        <div class="panel panel-default">
-          <div class="panel-heading" role="tab" id="heading{{$collapseIndex}}">
-            <h4 class="panel-title">
-              <a class="collapsed" role="button" data-toggle="collapse" data-parent="#accordion" href="#collapse{{$collapseIndex}}" aria-expanded="false" aria-controls="collapse{{$collapseIndex}}">
-                 {{.Name}}{{range .OtherNames}}, {{.}}{{end}}
-              </a>
-            </h4>
-          </div>
-        </div>
-        <div id="collapse{{$collapseIndex}}" class="panel-collapse collapse" role="tabpanel" aria-labelledby="heading{{$collapseIndex}}">
-          <div class="panel-body">
-            <p>{{.Text}}</p>
-            {{range .OtherTexts}}<p>{{.}}</p>{{end}}
-            {{template "properties" .Properties}}
-          </div>
-        </div>
-      {{else}}
-        <div>
-          <h4>{{.Name}}{{range .OtherNames}}, {{.}}{{end}}</h4>
-          <p>{{.Text}}</p>
-          {{range .OtherTexts}}<p>{{.}}</p>{{end}}
-          <p><i>Type: {{.Type}}</i></p>
-          {{if .Default}}<p><i>Default: {{.Default}}</i></p>{{end}}
-        </div>
-      {{end}}
-    {{end}}
-  </div>
-{{end}}
-`
-)
