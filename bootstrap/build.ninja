@@ -9,6 +9,7 @@ ninja_required_version = 1.7.0
 
 rule build.ninja
     command = ${builder} ${extraArgs} -b ${bootstrapBuildDir} -n ${builddir} -d ${out}.d -o ${out} ${in}
+    deps = gcc
     depfile = ${out}.d
     description = ${builder} ${out}
 
