@@ -23,6 +23,7 @@ bootstrap_go_package {
     ],
     testSrcs: [
         "context_test.go",
+        "glob_test.go",
         "ninja_strings_test.go",
         "ninja_writer_test.go",
         "splice_modules_test.go",
