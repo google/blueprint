@@ -42,7 +42,7 @@ func usage() {
 
 func usageViolation(violation string) {
 	fmt.Fprintln(os.Stderr, violation)
-	fmt.Fprintf(os.Stderr, "usage: bpfmt [flags] [path ...]\n")
+	fmt.Fprintln(os.Stderr, "usage: bpfmt [flags] [path ...]")
 	flag.PrintDefaults()
 	os.Exit(2)
 }
