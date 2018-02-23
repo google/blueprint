@@ -28,12 +28,13 @@ import (
 var GlobMultipleRecursiveErr = errors.New("pattern contains multiple **")
 var GlobLastRecursiveErr = errors.New("pattern ** as last path element")
 
-// Glob returns the list of files that match the given pattern but do not match
-// the given exclude patterns, along with the list of directories and other
-// dependencies that were searched to construct the file list.  The supported
-// glob and exclude patterns are equivalent to filepath.Glob, with an extension
-// that recursive glob (** matching zero or more complete path entries) is
-// supported.  Glob also returns a list of directories that were searched.
+// Glob returns the list of files and directories that match the given pattern
+// but do not match the given exclude patterns, along with the list of
+// directories and other dependencies that were searched to construct the file
+// list.  The supported glob and exclude patterns are equivalent to
+// filepath.Glob, with an extension that recursive glob (** matching zero or
+// more complete path entries) is supported. Any directories in the matches
+// list will have a '/' suffix.
 //
 // In general ModuleContext.GlobWithDeps or SingletonContext.GlobWithDeps
 // should be used instead, as they will automatically set up dependencies
@@ -69,6 +70,14 @@ func startGlob(fs FileSystem, pattern string, excludes []string) (matches, deps 
 	// is removed.
 	if !isWild(pattern) {
 		deps = append(deps, matches...)
+	}
+
+	for i, match := range matches {
+		if isDir, err := fs.IsDir(match); err != nil {
+			return nil, nil, fmt.Errorf("IsDir(%s): %s", match, err.Error())
+		} else if isDir {
+			matches[i] = match + "/"
+		}
 	}
 
 	return matches, deps, nil
@@ -325,12 +334,14 @@ func HasGlob(in []string) bool {
 	return false
 }
 
-// GlobWithDepFile finds all files that match glob.  It compares the list of files
-// against the contents of fileListFile, and rewrites fileListFile if it has changed.  It also
-// writes all of the the directories it traversed as a depenencies on fileListFile to depFile.
+// GlobWithDepFile finds all files and directories that match glob.  Directories
+// will have a trailing '/'.  It compares the list of matches against the
+// contents of fileListFile, and rewrites fileListFile if it has changed.  It
+// also writes all of the the directories it traversed as dependencies on
+// fileListFile to depFile.
 //
-// The format of glob is either path/*.ext for a single directory glob, or path/**/*.ext
-// for a recursive glob.
+// The format of glob is either path/*.ext for a single directory glob, or
+// path/**/*.ext for a recursive glob.
 //
 // Returns a list of file paths, and an error.
 //
