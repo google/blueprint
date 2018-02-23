@@ -52,7 +52,7 @@ func (m *multiArg) Get() interface{} {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "usage: bpglob -o out glob\n")
+	fmt.Fprintln(os.Stderr, "usage: bpglob -o out glob")
 	flag.PrintDefaults()
 	os.Exit(2)
 }
@@ -61,7 +61,7 @@ func main() {
 	flag.Parse()
 
 	if *out == "" {
-		fmt.Fprintf(os.Stderr, "error: -o is required\n")
+		fmt.Fprintln(os.Stderr, "error: -o is required")
 		usage()
 	}
 
