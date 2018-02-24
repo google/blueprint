@@ -113,6 +113,7 @@ var (
 			Command:     "$builder $extra -b $buildDir -n $ninjaBuildDir -d $out.d -o $out $in",
 			CommandDeps: []string{"$builder"},
 			Description: "$builder $out",
+			Deps:        blueprint.DepsGCC,
 			Depfile:     "$out.d",
 			Restat:      true,
 		},
