@@ -81,13 +81,13 @@ func TestBadPackagePathMap(t *testing.T) {
 		t.Error("Expected error with blank argument, but none returned")
 	}
 	if err := pkgMap.Set("a=a"); err != nil {
-		t.Error("Unexpected error: %v", err)
+		t.Errorf("Unexpected error: %v", err)
 	}
 	if err := pkgMap.Set("a=b"); err == nil {
 		t.Error("Expected error with duplicate package prefix, but none returned")
 	}
 	if _, ok, err := pkgMap.Path("testing"); err != nil {
-		t.Error("Unexpected error: %v", err)
+		t.Errorf("Unexpected error: %v", err)
 	} else if ok {
 		t.Error("Expected testing to be consider in the stdlib")
 	}
@@ -104,7 +104,7 @@ func TestSingleBuild(t *testing.T) {
 		pkg := loadPkg()
 
 		if err := pkg.Compile(config, filepath.Join(dir, "out")); err != nil {
-			t.Fatalf("Got error when compiling:", err)
+			t.Fatal("Got error when compiling:", err)
 		}
 
 		if err := pkg.Link(config, out); err != nil {

@@ -48,7 +48,7 @@ func report(err error) {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "usage: bpmodify [flags] [path ...]\n")
+	fmt.Fprintln(os.Stderr, "usage: bpmodify [flags] [path ...]")
 	flag.PrintDefaults()
 	os.Exit(2)
 }
