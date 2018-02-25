@@ -17,7 +17,6 @@ package blueprint
 import (
 	"crypto/md5"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 )
@@ -34,8 +33,14 @@ func verifyGlob(fileName, pattern string, excludes []string, g GlobPath) {
 	if pattern != g.Pattern {
 		panic(fmt.Errorf("Mismatched patterns %q and %q for glob file %q", pattern, g.Pattern, fileName))
 	}
-	if !reflect.DeepEqual(g.Excludes, excludes) {
+	if len(excludes) != len(g.Excludes) {
 		panic(fmt.Errorf("Mismatched excludes %v and %v for glob file %q", excludes, g.Excludes, fileName))
+	}
+
+	for i := range excludes {
+		if g.Excludes[i] != excludes[i] {
+			panic(fmt.Errorf("Mismatched excludes %v and %v for glob file %q", excludes, g.Excludes, fileName))
+		}
 	}
 }
 
