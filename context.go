@@ -1017,6 +1017,12 @@ func (c *Context) findBuildBlueprints(dir string, build []string,
 		}
 
 		for _, foundBlueprints := range matches {
+			if strings.HasSuffix(foundBlueprints, "/") {
+				errs = append(errs, &BlueprintError{
+					Err: fmt.Errorf("%q: is a directory", foundBlueprints),
+					Pos: buildPos,
+				})
+			}
 			blueprints = append(blueprints, foundBlueprints)
 		}
 	}
@@ -1053,6 +1059,12 @@ func (c *Context) findSubdirBlueprints(dir string, subdirs []string, subdirsPos 
 		}
 
 		for _, subBlueprints := range matches {
+			if strings.HasSuffix(subBlueprints, "/") {
+				errs = append(errs, &BlueprintError{
+					Err: fmt.Errorf("%q: is a directory", subBlueprints),
+					Pos: subdirsPos,
+				})
+			}
 			blueprints = append(blueprints, subBlueprints)
 		}
 	}
