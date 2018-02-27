@@ -160,6 +160,14 @@ func (matchString) ImportPath() string {
 	return "{{.Package}}"
 }
 
+func (matchString) StartTestLog(io.Writer) {
+	panic("shouldn't get here")
+}
+
+func (matchString) StopTestLog() error {
+	panic("shouldn't get here")
+}
+
 func main() {
 {{if .MainStartTakesInterface}}
 	m := testing.MainStart(matchString{}, t, nil, nil)
