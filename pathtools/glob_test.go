@@ -36,7 +36,7 @@ var globTestCases = []globTestCase{
 	// Current directory tests
 	{
 		pattern: "*",
-		matches: []string{"a", "b", "c", "d.ext", "e.ext"},
+		matches: []string{"a/", "b/", "c/", "d.ext", "e.ext"},
 		deps:    []string{"."},
 	},
 	{
@@ -46,7 +46,7 @@ var globTestCases = []globTestCase{
 	},
 	{
 		pattern: "*/a",
-		matches: []string{"a/a", "b/a"},
+		matches: []string{"a/a/", "b/a"},
 		deps:    []string{".", "a", "b", "c"},
 	},
 	{
@@ -63,7 +63,7 @@ var globTestCases = []globTestCase{
 	// ./ directory tests
 	{
 		pattern: "./*",
-		matches: []string{"a", "b", "c", "d.ext", "e.ext"},
+		matches: []string{"a/", "b/", "c/", "d.ext", "e.ext"},
 		deps:    []string{"."},
 	},
 	{
@@ -73,12 +73,12 @@ var globTestCases = []globTestCase{
 	},
 	{
 		pattern: "./*/a",
-		matches: []string{"a/a", "b/a"},
+		matches: []string{"a/a/", "b/a"},
 		deps:    []string{".", "a", "b", "c"},
 	},
 	{
 		pattern: "./[ac]/a",
-		matches: []string{"a/a"},
+		matches: []string{"a/a/"},
 		deps:    []string{".", "a", "c"},
 	},
 
@@ -112,12 +112,12 @@ var globTestCases = []globTestCase{
 	// no-wild tests
 	{
 		pattern: "a",
-		matches: []string{"a"},
+		matches: []string{"a/"},
 		deps:    []string{"a"},
 	},
 	{
 		pattern: "a/a",
-		matches: []string{"a/a"},
+		matches: []string{"a/a/"},
 		deps:    []string{"a/a"},
 	},
 
@@ -136,17 +136,17 @@ var globTestCases = []globTestCase{
 	// recursive tests
 	{
 		pattern: "**/a",
-		matches: []string{"a", "a/a", "a/a/a", "b/a"},
+		matches: []string{"a/", "a/a/", "a/a/a", "b/a"},
 		deps:    []string{".", "a", "a/a", "a/b", "b", "c", "c/f", "c/g", "c/h"},
 	},
 	{
 		pattern: "a/**/a",
-		matches: []string{"a/a", "a/a/a"},
+		matches: []string{"a/a/", "a/a/a"},
 		deps:    []string{"a", "a/a", "a/b"},
 	},
 	{
 		pattern: "a/**/*",
-		matches: []string{"a/a", "a/b", "a/a/a", "a/b/b"},
+		matches: []string{"a/a/", "a/b/", "a/a/a", "a/b/b"},
 		deps:    []string{"a", "a/a", "a/b"},
 	},
 
@@ -208,19 +208,19 @@ var globTestCases = []globTestCase{
 	{
 		pattern:  "*/*",
 		excludes: []string{"a/b"},
-		matches:  []string{"a/a", "b/a", "c/c", "c/f", "c/g", "c/h"},
+		matches:  []string{"a/a/", "b/a", "c/c", "c/f/", "c/g/", "c/h/"},
 		deps:     []string{".", "a", "b", "c"},
 	},
 	{
 		pattern:  "*/*",
 		excludes: []string{"a/b", "c/c"},
-		matches:  []string{"a/a", "b/a", "c/f", "c/g", "c/h"},
+		matches:  []string{"a/a/", "b/a", "c/f/", "c/g/", "c/h/"},
 		deps:     []string{".", "a", "b", "c"},
 	},
 	{
 		pattern:  "*/*",
 		excludes: []string{"c/*", "*/a"},
-		matches:  []string{"a/b"},
+		matches:  []string{"a/b/"},
 		deps:     []string{".", "a", "b", "c"},
 	},
 	{
@@ -268,13 +268,13 @@ var globTestCases = []globTestCase{
 	{
 		pattern:  "*/*",
 		excludes: []string{"**/b"},
-		matches:  []string{"a/a", "b/a", "c/c", "c/f", "c/g", "c/h"},
+		matches:  []string{"a/a/", "b/a", "c/c", "c/f/", "c/g/", "c/h/"},
 		deps:     []string{".", "a", "b", "c"},
 	},
 	{
 		pattern:  "*/*",
 		excludes: []string{"a/**/*"},
-		matches:  []string{"b/a", "c/c", "c/f", "c/g", "c/h"},
+		matches:  []string{"b/a", "c/c", "c/f/", "c/g/", "c/h/"},
 		deps:     []string{".", "a", "b", "c"},
 	},
 	{
@@ -439,7 +439,7 @@ var globTestCases = []globTestCase{
 	},
 	{
 		pattern: ".t*",
-		matches: []string{".test", ".testing"},
+		matches: []string{".test/", ".testing"},
 		deps:    []string{"."},
 	},
 }
