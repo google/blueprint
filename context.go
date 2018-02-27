@@ -1097,7 +1097,7 @@ func getLocalStringListFromScope(scope *parser.Scope, v string) ([]string, scann
 				Pos: assignment.EqualsPos,
 			}
 		default:
-			panic(fmt.Errorf("unknown value type: %d", assignment.Value.Type))
+			panic(fmt.Errorf("unknown value type: %d", assignment.Value.Type()))
 		}
 	}
 }
@@ -1115,7 +1115,7 @@ func getStringFromScope(scope *parser.Scope, v string) (string, scanner.Position
 				Pos: assignment.EqualsPos,
 			}
 		default:
-			panic(fmt.Errorf("unknown value type: %d", assignment.Value.Type))
+			panic(fmt.Errorf("unknown value type: %d", assignment.Value.Type()))
 		}
 	}
 }
