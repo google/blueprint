@@ -39,7 +39,15 @@ var (
 		// Parallel compilation is only supported on >= go1.9
 		for _, r := range build.Default.ReleaseTags {
 			if r == "go1.9" {
-				return fmt.Sprintf("-c %d", runtime.NumCPU())
+				numCpu := runtime.NumCPU()
+				// This will cause us to recompile all go programs if the
+				// number of cpus changes. We don't get a lot of benefit from
+				// higher values, so cap this to make it cheaper to move trees
+				// between machines.
+				if numCpu > 8 {
+					numCpu = 8
+				}
+				return fmt.Sprintf("-c %d", numCpu)
 			}
 		}
 		return ""
