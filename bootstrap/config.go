@@ -15,7 +15,10 @@
 package bootstrap
 
 import (
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/google/blueprint"
 )
@@ -39,7 +42,16 @@ var (
 		return NinjaBuildDir
 	})
 	goRoot = bootstrapVariable("goRoot", func() string {
-		return runtime.GOROOT()
+		goroot := runtime.GOROOT()
+		// Prefer to omit absolute paths from the ninja file
+		if cwd, err := os.Getwd(); err == nil {
+			if relpath, err := filepath.Rel(cwd, goroot); err == nil {
+				if !strings.HasPrefix(relpath, "../") {
+					goroot = relpath
+				}
+			}
+		}
+		return goroot
 	})
 	compileCmd = bootstrapVariable("compileCmd", func() string {
 		return "$goRoot/pkg/tool/" + runtime.GOOS + "_" + runtime.GOARCH + "/compile"
