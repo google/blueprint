@@ -360,6 +360,7 @@ func (p *parser) evaluateOperator(value1, value2 Expression, operator rune,
 				v.Value += e2.(*String).Value
 			case *Int64:
 				v.Value += e2.(*Int64).Value
+				v.Token = ""
 			case *List:
 				v.Values = append(v.Values, e2.(*List).Values...)
 			case *Map:
@@ -469,6 +470,7 @@ func (p *parser) parseVariable() Expression {
 		value = &Bool{
 			LiteralPos: p.scanner.Position,
 			Value:      text == "true",
+			Token:      text,
 		}
 	default:
 		if p.eval {
@@ -528,6 +530,7 @@ func (p *parser) parseIntValue() *Int64 {
 	value := &Int64{
 		LiteralPos: literalPos,
 		Value:      i,
+		Token:      str,
 	}
 	p.accept(scanner.Int)
 	return value
