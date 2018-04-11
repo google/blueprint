@@ -66,20 +66,32 @@ func StringPtr(s string) *string {
 	return &s
 }
 
-// Bool takes a pointer to a bool and returns true iff the pointer is non-nil and points to a true
-// value.
-func Bool(b *bool) bool {
+// BoolDefault takes a pointer to a bool and returns the value pointed to by the pointer if it is non-nil,
+// or def if the pointer is nil.
+func BoolDefault(b *bool, def bool) bool {
 	if b != nil {
 		return *b
 	}
-	return false
+	return def
+}
+
+// Bool takes a pointer to a bool and returns true iff the pointer is non-nil and points to a true
+// value.
+func Bool(b *bool) bool {
+	return BoolDefault(b, false)
+}
+
+// String takes a pointer to a string and returns the value of the string if the pointer is non-nil,
+// or def if the pointer is nil.
+func StringDefault(s *string, def string) string {
+	if s != nil {
+		return *s
+	}
+	return def
 }
 
 // String takes a pointer to a string and returns the value of the string if the pointer is non-nil,
 // or an empty string.
 func String(s *string) string {
-	if s != nil {
-		return *s
-	}
-	return ""
+	return StringDefault(s, "")
 }

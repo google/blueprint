@@ -14,7 +14,12 @@
 
 package parser
 
-import "fmt"
+import (
+	"fmt"
+	"io"
+	"math"
+	"sort"
+)
 
 func AddStringToList(list *List, s string) (modified bool) {
 	for _, v := range list.Values {
@@ -49,4 +54,67 @@ func RemoveStringFromList(list *List, s string) (modified bool) {
 	}
 
 	return false
+}
+
+// A Patch represents a region of a text buffer to be replaced [Start, End) and its Replacement
+type Patch struct {
+	Start, End  int
+	Replacement string
+}
+
+// A PatchList is a list of sorted, non-overlapping Patch objects
+type PatchList []Patch
+
+type PatchOverlapError error
+
+// Add adds a Patch to a PatchList.  It returns a PatchOverlapError if the patch cannot be added.
+func (list *PatchList) Add(start, end int, replacement string) error {
+	patch := Patch{start, end, replacement}
+	if patch.Start > patch.End {
+		return fmt.Errorf("invalid patch, start %d is after end %d", patch.Start, patch.End)
+	}
+	for _, p := range *list {
+		if (patch.Start >= p.Start && patch.Start < p.End) ||
+			(patch.End >= p.Start && patch.End < p.End) ||
+			(p.Start >= patch.Start && p.Start < patch.End) ||
+			(p.Start == patch.Start && p.End == patch.End) {
+			return PatchOverlapError(fmt.Errorf("new patch %d-%d overlaps with existing patch %d-%d",
+				patch.Start, patch.End, p.Start, p.End))
+		}
+	}
+	*list = append(*list, patch)
+	list.sort()
+	return nil
+}
+
+func (list *PatchList) sort() {
+	sort.SliceStable(*list,
+		func(i, j int) bool {
+			return (*list)[i].Start < (*list)[j].Start
+		})
+}
+
+// Apply applies all the Patch objects in PatchList to the data from an input ReaderAt to an output Writer.
+func (list *PatchList) Apply(in io.ReaderAt, out io.Writer) error {
+	var offset int64
+	for _, patch := range *list {
+		toWrite := int64(patch.Start) - offset
+		written, err := io.Copy(out, io.NewSectionReader(in, offset, toWrite))
+		if err != nil {
+			return err
+		}
+		offset += toWrite
+		if written != toWrite {
+			return fmt.Errorf("unexpected EOF at %d", offset)
+		}
+
+		_, err = io.WriteString(out, patch.Replacement)
+		if err != nil {
+			return err
+		}
+
+		offset += int64(patch.End - patch.Start)
+	}
+	_, err := io.Copy(out, io.NewSectionReader(in, offset, math.MaxInt64-offset))
+	return err
 }
