@@ -1608,6 +1608,24 @@ type visitOrderer interface {
 	visit(modules []*moduleInfo, visit func(*moduleInfo) bool)
 }
 
+type unorderedVisitorImpl struct{}
+
+func (unorderedVisitorImpl) waitCount(module *moduleInfo) int {
+	return 0
+}
+
+func (unorderedVisitorImpl) propagate(module *moduleInfo) []*moduleInfo {
+	return nil
+}
+
+func (unorderedVisitorImpl) visit(modules []*moduleInfo, visit func(*moduleInfo) bool) {
+	for _, module := range modules {
+		if visit(module) {
+			return
+		}
+	}
+}
+
 type bottomUpVisitorImpl struct{}
 
 func (bottomUpVisitorImpl) waitCount(module *moduleInfo) int {
@@ -1657,20 +1675,26 @@ func (c *Context) parallelVisit(order visitOrderer, visit func(group *moduleInfo
 	cancelCh := make(chan bool)
 	count := 0
 	cancel := false
+	var backlog []*moduleInfo
+	const limit = 1000
 
 	for _, module := range c.modulesSorted {
 		module.waitingCount = order.waitCount(module)
 	}
 
 	visitOne := func(module *moduleInfo) {
-		count++
-		go func() {
-			ret := visit(module)
-			if ret {
-				cancelCh <- true
-			}
-			doneCh <- module
-		}()
+		if count < limit {
+			count++
+			go func() {
+				ret := visit(module)
+				if ret {
+					cancelCh <- true
+				}
+				doneCh <- module
+			}()
+		} else {
+			backlog = append(backlog, module)
+		}
 	}
 
 	for _, module := range c.modulesSorted {
@@ -1679,11 +1703,19 @@ func (c *Context) parallelVisit(order visitOrderer, visit func(group *moduleInfo
 		}
 	}
 
-	for count > 0 {
+	for count > 0 || len(backlog) > 0 {
 		select {
-		case cancel = <-cancelCh:
+		case <-cancelCh:
+			cancel = true
+			backlog = nil
 		case doneModule := <-doneCh:
+			count--
 			if !cancel {
+				for count < limit && len(backlog) > 0 {
+					toVisit := backlog[0]
+					backlog = backlog[1:]
+					visitOne(toVisit)
+				}
 				for _, module := range order.propagate(doneModule) {
 					module.waitingCount--
 					if module.waitingCount == 0 {
@@ -1691,7 +1723,6 @@ func (c *Context) parallelVisit(order visitOrderer, visit func(group *moduleInfo
 					}
 				}
 			}
-			count--
 		}
 	}
 }
@@ -2119,20 +2150,27 @@ func (c *Context) cloneModules() {
 		orig  Module
 		clone *moduleInfo
 	}
-	ch := make(chan update, 100)
-
-	for _, m := range c.modulesSorted {
-		go func(m *moduleInfo) {
+	ch := make(chan update)
+	doneCh := make(chan bool)
+	go func() {
+		c.parallelVisit(unorderedVisitorImpl{}, func(m *moduleInfo) bool {
 			origLogicModule := m.logicModule
 			m.logicModule, m.properties = c.cloneLogicModule(m)
 			ch <- update{origLogicModule, m}
-		}(m)
-	}
+			return false
+		})
+		doneCh <- true
+	}()
 
-	for i := 0; i < len(c.modulesSorted); i++ {
-		update := <-ch
-		delete(c.moduleInfo, update.orig)
-		c.moduleInfo[update.clone.logicModule] = update.clone
+	done := false
+	for !done {
+		select {
+		case <-doneCh:
+			done = true
+		case update := <-ch:
+			delete(c.moduleInfo, update.orig)
+			c.moduleInfo[update.clone.logicModule] = update.clone
+		}
 	}
 }
 
