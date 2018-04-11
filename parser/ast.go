@@ -21,9 +21,9 @@ import (
 )
 
 type Node interface {
-	// Pos returns the position of the first token in the Expression
+	// Pos returns the position of the first token in the Node
 	Pos() scanner.Position
-	// End returns the position of the beginning of the last token in the Expression
+	// End returns the position of the character after the last token in the Node
 	End() scanner.Position
 }
 
@@ -220,7 +220,7 @@ type Variable struct {
 }
 
 func (x *Variable) Pos() scanner.Position { return x.NamePos }
-func (x *Variable) End() scanner.Position { return x.NamePos }
+func (x *Variable) End() scanner.Position { return endPos(x.NamePos, len(x.Name)) }
 
 func (x *Variable) Copy() Expression {
 	ret := *x
@@ -244,7 +244,7 @@ type Map struct {
 }
 
 func (x *Map) Pos() scanner.Position { return x.LBracePos }
-func (x *Map) End() scanner.Position { return x.RBracePos }
+func (x *Map) End() scanner.Position { return endPos(x.RBracePos, 1) }
 
 func (x *Map) Copy() Expression {
 	ret := *x
@@ -302,7 +302,7 @@ type List struct {
 }
 
 func (x *List) Pos() scanner.Position { return x.LBracePos }
-func (x *List) End() scanner.Position { return x.RBracePos }
+func (x *List) End() scanner.Position { return endPos(x.RBracePos, 1) }
 
 func (x *List) Copy() Expression {
 	ret := *x
@@ -334,7 +334,7 @@ type String struct {
 }
 
 func (x *String) Pos() scanner.Position { return x.LiteralPos }
-func (x *String) End() scanner.Position { return x.LiteralPos }
+func (x *String) End() scanner.Position { return endPos(x.LiteralPos, len(x.Value)+2) }
 
 func (x *String) Copy() Expression {
 	ret := *x
@@ -356,10 +356,11 @@ func (x *String) Type() Type {
 type Int64 struct {
 	LiteralPos scanner.Position
 	Value      int64
+	Token      string
 }
 
 func (x *Int64) Pos() scanner.Position { return x.LiteralPos }
-func (x *Int64) End() scanner.Position { return x.LiteralPos }
+func (x *Int64) End() scanner.Position { return endPos(x.LiteralPos, len(x.Token)) }
 
 func (x *Int64) Copy() Expression {
 	ret := *x
@@ -381,10 +382,11 @@ func (x *Int64) Type() Type {
 type Bool struct {
 	LiteralPos scanner.Position
 	Value      bool
+	Token      string
 }
 
 func (x *Bool) Pos() scanner.Position { return x.LiteralPos }
-func (x *Bool) End() scanner.Position { return x.LiteralPos }
+func (x *Bool) End() scanner.Position { return endPos(x.LiteralPos, len(x.Token)) }
 
 func (x *Bool) Copy() Expression {
 	ret := *x
@@ -422,7 +424,8 @@ func (c Comment) Pos() scanner.Position {
 func (c Comment) End() scanner.Position {
 	pos := c.Slash
 	for _, comment := range c.Comment {
-		pos.Offset += len(comment)
+		pos.Offset += len(comment) + 1
+		pos.Column = len(comment) + 1
 	}
 	pos.Line += len(c.Comment) - 1
 	return pos
@@ -471,4 +474,10 @@ func (c Comment) Text() string {
 	}
 
 	return string(buf)
+}
+
+func endPos(pos scanner.Position, n int) scanner.Position {
+	pos.Offset += n
+	pos.Column += n
+	return pos
 }
