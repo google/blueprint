@@ -17,6 +17,8 @@ package parser
 import (
 	"bytes"
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 	"text/scanner"
 )
@@ -99,6 +101,7 @@ var validParseTestCases = []struct {
 							Value: &Bool{
 								LiteralPos: mkpos(20, 3, 12),
 								Value:      true,
+								Token:      "true",
 							},
 						},
 					},
@@ -128,6 +131,7 @@ var validParseTestCases = []struct {
 							Value: &Int64{
 								LiteralPos: mkpos(17, 3, 9),
 								Value:      4,
+								Token:      "4",
 							},
 						},
 					},
@@ -221,6 +225,7 @@ var validParseTestCases = []struct {
 										Value: &Bool{
 											LiteralPos: mkpos(33, 4, 13),
 											Value:      true,
+											Token:      "true",
 										},
 									},
 									{
@@ -239,6 +244,7 @@ var validParseTestCases = []struct {
 										Value: &Int64{
 											LiteralPos: mkpos(65, 6, 10),
 											Value:      36,
+											Token:      "36",
 										},
 									},
 								},
@@ -273,6 +279,7 @@ var validParseTestCases = []struct {
 							Value: &Bool{
 								LiteralPos: mkpos(60, 5, 12),
 								Value:      true,
+								Token:      "true",
 							},
 						},
 					},
@@ -350,6 +357,7 @@ var validParseTestCases = []struct {
 							Value: &Int64{
 								LiteralPos: mkpos(33, 4, 9),
 								Value:      4,
+								Token:      "4",
 							},
 						},
 					},
@@ -378,6 +386,7 @@ var validParseTestCases = []struct {
 							Value: &Int64{
 								LiteralPos: mkpos(73, 9, 9),
 								Value:      -5,
+								Token:      "-5",
 							},
 						},
 					},
@@ -637,6 +646,7 @@ var validParseTestCases = []struct {
 						&Int64{
 							LiteralPos: mkpos(9, 2, 9),
 							Value:      -4,
+							Token:      "-4",
 						},
 						&Operator{
 							OperatorPos: mkpos(17, 2, 17),
@@ -649,10 +659,12 @@ var validParseTestCases = []struct {
 								&Int64{
 									LiteralPos: mkpos(14, 2, 14),
 									Value:      -5,
+									Token:      "-5",
 								},
 								&Int64{
 									LiteralPos: mkpos(19, 2, 19),
 									Value:      6,
+									Token:      "6",
 								},
 							},
 						},
@@ -669,6 +681,7 @@ var validParseTestCases = []struct {
 						&Int64{
 							LiteralPos: mkpos(9, 2, 9),
 							Value:      -4,
+							Token:      "-4",
 						},
 						&Operator{
 							OperatorPos: mkpos(17, 2, 17),
@@ -681,10 +694,12 @@ var validParseTestCases = []struct {
 								&Int64{
 									LiteralPos: mkpos(14, 2, 14),
 									Value:      -5,
+									Token:      "-5",
 								},
 								&Int64{
 									LiteralPos: mkpos(19, 2, 19),
 									Value:      6,
+									Token:      "6",
 								},
 							},
 						},
@@ -712,10 +727,12 @@ var validParseTestCases = []struct {
 				Value: &Int64{
 					LiteralPos: mkpos(9, 2, 9),
 					Value:      1000000,
+					Token:      "1000000",
 				},
 				OrigValue: &Int64{
 					LiteralPos: mkpos(9, 2, 9),
 					Value:      1000000,
+					Token:      "1000000",
 				},
 				Assigner:   "=",
 				Referenced: true,
@@ -730,6 +747,7 @@ var validParseTestCases = []struct {
 					Value: &Int64{
 						LiteralPos: mkpos(9, 2, 9),
 						Value:      1000000,
+						Token:      "1000000",
 					},
 				},
 				OrigValue: &Variable{
@@ -738,6 +756,7 @@ var validParseTestCases = []struct {
 					Value: &Int64{
 						LiteralPos: mkpos(9, 2, 9),
 						Value:      1000000,
+						Token:      "1000000",
 					},
 				},
 				Assigner:   "=",
@@ -761,6 +780,7 @@ var validParseTestCases = []struct {
 							Value: &Int64{
 								LiteralPos: mkpos(9, 2, 9),
 								Value:      1000000,
+								Token:      "1000000",
 							},
 						},
 						&Variable{
@@ -772,6 +792,7 @@ var validParseTestCases = []struct {
 								Value: &Int64{
 									LiteralPos: mkpos(9, 2, 9),
 									Value:      1000000,
+									Token:      "1000000",
 								},
 							},
 						},
@@ -791,6 +812,7 @@ var validParseTestCases = []struct {
 							Value: &Int64{
 								LiteralPos: mkpos(9, 2, 9),
 								Value:      1000000,
+								Token:      "1000000",
 							},
 						},
 						&Variable{
@@ -802,6 +824,7 @@ var validParseTestCases = []struct {
 								Value: &Int64{
 									LiteralPos: mkpos(9, 2, 9),
 									Value:      1000000,
+									Token:      "1000000",
 								},
 							},
 						},
@@ -833,6 +856,7 @@ var validParseTestCases = []struct {
 										Value: &Int64{
 											LiteralPos: mkpos(9, 2, 9),
 											Value:      1000000,
+											Token:      "1000000",
 										},
 									},
 									&Variable{
@@ -844,6 +868,7 @@ var validParseTestCases = []struct {
 											Value: &Int64{
 												LiteralPos: mkpos(9, 2, 9),
 												Value:      1000000,
+												Token:      "1000000",
 											},
 										},
 									},
@@ -856,6 +881,7 @@ var validParseTestCases = []struct {
 							Value: &Int64{
 								LiteralPos: mkpos(9, 2, 9),
 								Value:      1000000,
+								Token:      "1000000",
 							},
 						},
 					},
@@ -883,6 +909,7 @@ var validParseTestCases = []struct {
 								Value: &Int64{
 									LiteralPos: mkpos(9, 2, 9),
 									Value:      1000000,
+									Token:      "1000000",
 								},
 							},
 							&Variable{
@@ -894,6 +921,7 @@ var validParseTestCases = []struct {
 									Value: &Int64{
 										LiteralPos: mkpos(9, 2, 9),
 										Value:      1000000,
+										Token:      "1000000",
 									},
 								},
 							},
@@ -912,6 +940,7 @@ var validParseTestCases = []struct {
 					Value: &Int64{
 						LiteralPos: mkpos(9, 2, 9),
 						Value:      1000000,
+						Token:      "1000000",
 					},
 				},
 				OrigValue: &Variable{
@@ -920,6 +949,7 @@ var validParseTestCases = []struct {
 					Value: &Int64{
 						LiteralPos: mkpos(9, 2, 9),
 						Value:      1000000,
+						Token:      "1000000",
 					},
 				},
 				Assigner: "+=",
@@ -985,48 +1015,110 @@ var validParseTestCases = []struct {
 }
 
 func TestParseValidInput(t *testing.T) {
-	for _, testCase := range validParseTestCases {
-		r := bytes.NewBufferString(testCase.input)
-		file, errs := ParseAndEval("", r, NewScope(nil))
-		if len(errs) != 0 {
-			t.Errorf("test case: %s", testCase.input)
-			t.Errorf("unexpected errors:")
-			for _, err := range errs {
-				t.Errorf("  %s", err)
-			}
-			t.FailNow()
-		}
-
-		if len(file.Defs) == len(testCase.defs) {
-			for i := range file.Defs {
-				if !reflect.DeepEqual(file.Defs[i], testCase.defs[i]) {
-					t.Errorf("test case: %s", testCase.input)
-					t.Errorf("incorrect defintion %d:", i)
-					t.Errorf("  expected: %s", testCase.defs[i])
-					t.Errorf("       got: %s", file.Defs[i])
+	for i, testCase := range validParseTestCases {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			r := bytes.NewBufferString(testCase.input)
+			file, errs := ParseAndEval("", r, NewScope(nil))
+			if len(errs) != 0 {
+				t.Errorf("test case: %s", testCase.input)
+				t.Errorf("unexpected errors:")
+				for _, err := range errs {
+					t.Errorf("  %s", err)
 				}
+				t.FailNow()
 			}
-		} else {
-			t.Errorf("test case: %s", testCase.input)
-			t.Errorf("length mismatch, expected %d definitions, got %d",
-				len(testCase.defs), len(file.Defs))
-		}
 
-		if len(file.Comments) == len(testCase.comments) {
-			for i := range file.Comments {
-				if !reflect.DeepEqual(file.Comments[i], testCase.comments[i]) {
-					t.Errorf("test case: %s", testCase.input)
-					t.Errorf("incorrect comment %d:", i)
-					t.Errorf("  expected: %s", testCase.comments[i])
-					t.Errorf("       got: %s", file.Comments[i])
+			if len(file.Defs) == len(testCase.defs) {
+				for i := range file.Defs {
+					if !reflect.DeepEqual(file.Defs[i], testCase.defs[i]) {
+						t.Errorf("test case: %s", testCase.input)
+						t.Errorf("incorrect defintion %d:", i)
+						t.Errorf("  expected: %s", testCase.defs[i])
+						t.Errorf("       got: %s", file.Defs[i])
+					}
 				}
+			} else {
+				t.Errorf("test case: %s", testCase.input)
+				t.Errorf("length mismatch, expected %d definitions, got %d",
+					len(testCase.defs), len(file.Defs))
 			}
-		} else {
-			t.Errorf("test case: %s", testCase.input)
-			t.Errorf("length mismatch, expected %d comments, got %d",
-				len(testCase.comments), len(file.Comments))
-		}
+
+			if len(file.Comments) == len(testCase.comments) {
+				for i := range file.Comments {
+					if !reflect.DeepEqual(file.Comments[i], testCase.comments[i]) {
+						t.Errorf("test case: %s", testCase.input)
+						t.Errorf("incorrect comment %d:", i)
+						t.Errorf("  expected: %s", testCase.comments[i])
+						t.Errorf("       got: %s", file.Comments[i])
+					}
+				}
+			} else {
+				t.Errorf("test case: %s", testCase.input)
+				t.Errorf("length mismatch, expected %d comments, got %d",
+					len(testCase.comments), len(file.Comments))
+			}
+		})
 	}
 }
 
 // TODO: Test error strings
+
+func TestParserEndPos(t *testing.T) {
+	in := `
+		module {
+			string: "string",
+			stringexp: "string1" + "string2",
+			int: -1,
+			intexp: -1 + 2,
+			list: ["a", "b"],
+			listexp: ["c"] + ["d"],
+			multilinelist: [
+				"e",
+				"f",
+			],
+			map: {
+				prop: "abc",
+			},
+		}
+	`
+
+	// Strip each line to make it easier to compute the previous "," from each property
+	lines := strings.Split(in, "\n")
+	for i := range lines {
+		lines[i] = strings.TrimSpace(lines[i])
+	}
+	in = strings.Join(lines, "\n")
+
+	r := bytes.NewBufferString(in)
+
+	file, errs := ParseAndEval("", r, NewScope(nil))
+	if len(errs) != 0 {
+		t.Errorf("unexpected errors:")
+		for _, err := range errs {
+			t.Errorf("  %s", err)
+		}
+		t.FailNow()
+	}
+
+	mod := file.Defs[0].(*Module)
+	modEnd := mkpos(len(in)-1, len(lines)-1, 2)
+	if mod.End() != modEnd {
+		t.Errorf("expected mod.End() %s, got %s", modEnd, mod.End())
+	}
+
+	nextPos := make([]scanner.Position, len(mod.Properties))
+	for i := 0; i < len(mod.Properties)-1; i++ {
+		nextPos[i] = mod.Properties[i+1].Pos()
+	}
+	nextPos[len(mod.Properties)-1] = mod.RBracePos
+
+	for i, cur := range mod.Properties {
+		endOffset := nextPos[i].Offset - len(",\n")
+		endLine := nextPos[i].Line - 1
+		endColumn := len(lines[endLine-1]) // scanner.Position.Line is starts at 1
+		endPos := mkpos(endOffset, endLine, endColumn)
+		if cur.End() != endPos {
+			t.Errorf("expected property %s End() %s@%d, got %s@%d", cur.Name, endPos, endPos.Offset, cur.End(), cur.End().Offset)
+		}
+	}
+}
