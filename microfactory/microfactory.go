@@ -400,7 +400,7 @@ func (p *GoPackage) Compile(config *Config, outDir string) error {
 		"-o", p.output,
 		"-p", p.Name,
 		"-complete", "-pack", "-nolocalimports")
-	if !isGo18 {
+	if !isGo18 && !config.Race {
 		cmd.Args = append(cmd.Args, "-c", fmt.Sprintf("%d", runtime.NumCPU()))
 	}
 	if config.Race {

@@ -126,20 +126,22 @@ func (s *SimpleNameInterface) ModuleFromName(moduleName string, namespace Namesp
 func (s *SimpleNameInterface) Rename(oldName string, newName string, namespace Namespace) (errs []error) {
 	existingGroup, exists := s.modules[newName]
 	if exists {
-		errs = append(errs,
+		return []error{
 			// seven characters at the start of the second line to align with the string "error: "
 			fmt.Errorf("renaming module %q to %q conflicts with existing module\n"+
 				"       %s <-- existing module defined here",
 				oldName, newName, existingGroup.modules[0].pos),
-		)
-		return errs
+		}
 	}
 
-	group := s.modules[oldName]
+	group, exists := s.modules[oldName]
+	if !exists {
+		return []error{fmt.Errorf("module %q to renamed to %q doesn't exist", oldName, newName)}
+	}
 	s.modules[newName] = group
 	delete(s.modules, group.name)
 	group.name = newName
-	return []error{}
+	return nil
 }
 
 func (s *SimpleNameInterface) AllModules() []ModuleGroup {
