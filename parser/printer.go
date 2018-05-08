@@ -173,15 +173,34 @@ func (p *printer) printMap(m *Map) {
 }
 
 func (p *printer) printOperator(operator *Operator) {
+	p.printOperatorInternal(operator, true)
+}
+
+func (p *printer) printOperatorInternal(operator *Operator, allowIndent bool) {
 	p.printExpression(operator.Args[0])
 	p.requestSpace()
 	p.printToken(string(operator.Operator), operator.OperatorPos)
+
+	indented := false
 	if operator.Args[0].End().Line == operator.Args[1].Pos().Line {
 		p.requestSpace()
 	} else {
+		if allowIndent {
+			indented = true
+			p.indent(p.curIndent() + 4)
+		}
 		p.requestNewline()
 	}
-	p.printExpression(operator.Args[1])
+
+	if op, isOp := operator.Args[1].(*Operator); isOp {
+		p.printOperatorInternal(op, false)
+	} else {
+		p.printExpression(operator.Args[1])
+	}
+
+	if indented {
+		p.unindent(p.pos)
+	}
 }
 
 func (p *printer) printProperty(property *Property) {
