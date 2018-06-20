@@ -1401,12 +1401,6 @@ func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName s
 	}
 
 	if m := c.findMatchingVariant(module, possibleDeps); m != nil {
-		for _, dep := range module.directDeps {
-			if m == dep.module {
-				// TODO(ccross): what if adding a dependency with a different tag?
-				return nil
-			}
-		}
 		module.directDeps = append(module.directDeps, depInfo{m, tag})
 		atomic.AddUint32(&c.depsModified, 1)
 		return nil
@@ -2386,7 +2380,7 @@ func (c *Context) processLocalBuildActions(out, in *localBuildActions,
 	return nil
 }
 
-func (c *Context) walkDeps(topModule *moduleInfo,
+func (c *Context) walkDeps(topModule *moduleInfo, allowDuplicates bool,
 	visitDown func(depInfo, *moduleInfo) bool, visitUp func(depInfo, *moduleInfo)) {
 
 	visited := make(map[*moduleInfo]bool)
@@ -2402,7 +2396,7 @@ func (c *Context) walkDeps(topModule *moduleInfo,
 	var walk func(module *moduleInfo)
 	walk = func(module *moduleInfo) {
 		for _, dep := range module.directDeps {
-			if !visited[dep.module] {
+			if allowDuplicates || !visited[dep.module] {
 				visited[dep.module] = true
 				visiting = dep.module
 				recurse := true
@@ -2884,7 +2878,7 @@ func (c *Context) VisitDepsDepthFirst(module Module, visit func(Module)) {
 		}
 	}()
 
-	c.walkDeps(topModule, nil, func(dep depInfo, parent *moduleInfo) {
+	c.walkDeps(topModule, false, nil, func(dep depInfo, parent *moduleInfo) {
 		visiting = dep.module
 		visit(dep.module.logicModule)
 	})
@@ -2902,7 +2896,7 @@ func (c *Context) VisitDepsDepthFirstIf(module Module, pred func(Module) bool, v
 		}
 	}()
 
-	c.walkDeps(topModule, nil, func(dep depInfo, parent *moduleInfo) {
+	c.walkDeps(topModule, false, nil, func(dep depInfo, parent *moduleInfo) {
 		if pred(dep.module.logicModule) {
 			visiting = dep.module
 			visit(dep.module.logicModule)
