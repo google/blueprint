@@ -164,7 +164,7 @@ type ModuleContext interface {
 	VisitDirectDepsIf(pred func(Module) bool, visit func(Module))
 	VisitDepsDepthFirst(visit func(Module))
 	VisitDepsDepthFirstIf(pred func(Module) bool, visit func(Module))
-	WalkDeps(visit func(Module, Module) bool)
+	WalkDeps(visit func(child, parent Module) bool)
 
 	ModuleSubDir() string
 
@@ -446,10 +446,10 @@ func (m *baseModuleContext) VisitDepsDepthFirstIf(pred func(Module) bool,
 }
 
 // WalkDeps calls visit for each transitive dependency, traversing the dependency tree in top down order.  visit may be
-// called multiple times for the same module if there are multiple paths through the dependency tree to the module or
-// multiple direct dependencies with different tags.  OtherModuleDependencyTag will return the tag for the currently
-// visited path to the module.  If visit returns false WalkDeps will not continue recursing down the current path.
-func (m *baseModuleContext) WalkDeps(visit func(Module, Module) bool) {
+// called multiple times for the same (child, parent) pair if there are multiple direct dependencies between the
+// child and parent with different tags.  OtherModuleDependencyTag will return the tag for the currently visited
+// (child, parent) pair.  If visit returns false WalkDeps will not continue recursing down to child.
+func (m *baseModuleContext) WalkDeps(visit func(child, parent Module) bool) {
 	m.context.walkDeps(m.module, true, func(dep depInfo, parent *moduleInfo) bool {
 		m.visitingParent = parent
 		m.visitingDep = dep
