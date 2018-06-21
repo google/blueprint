@@ -122,9 +122,9 @@ func TestContextParse(t *testing.T) {
 	}
 }
 
-// |---B===D       - represents a non-walkable edge
+// |===B---D       - represents a non-walkable edge
 // A               = represents a walkable edge
-// |===C---E===G
+// |===C===E---G
 //     |       |   A should not be visited because it's the root node.
 //     |===F===|   B, D and E should not be walked.
 func TestWalkDeps(t *testing.T) {
@@ -191,31 +191,29 @@ func TestWalkDeps(t *testing.T) {
 	topModule := ctx.modulesFromName("A", nil)[0]
 	ctx.walkDeps(topModule, false,
 		func(dep depInfo, parent *moduleInfo) bool {
+			outputDown += ctx.ModuleName(dep.module.logicModule)
 			if dep.module.logicModule.(Walker).Walk() {
-				outputDown += ctx.ModuleName(dep.module.logicModule)
 				return true
 			}
 			return false
 		},
 		func(dep depInfo, parent *moduleInfo) {
-			if dep.module.logicModule.(Walker).Walk() {
-				outputUp += ctx.ModuleName(dep.module.logicModule)
-			}
+			outputUp += ctx.ModuleName(dep.module.logicModule)
 		})
-	if outputDown != "CFG" {
-		t.Errorf("unexpected walkDeps behaviour: %s\ndown should be: CFG", outputDown)
+	if outputDown != "BCEFG" {
+		t.Errorf("unexpected walkDeps behaviour: %s\ndown should be: BCEFG", outputDown)
 	}
-	if outputUp != "GFC" {
-		t.Errorf("unexpected walkDeps behaviour: %s\nup should be: GFC", outputUp)
+	if outputUp != "BEGFC" {
+		t.Errorf("unexpected walkDeps behaviour: %s\nup should be: BEGFC", outputUp)
 	}
 }
 
-// |---B===D       - represents a non-walkable edge
-// A               = represents a walkable edge
-// |===C===E===\
-//     |       |   A should not be visited because it's the root node.
-//     |===F===G   B, D should not be walked.
-//         \===/   G should be visited multiple times
+// |===B---D           - represents a non-walkable edge
+// A                   = represents a walkable edge
+// |===C===E===\       A should not be visited because it's the root node.
+//     |       |       B, D should not be walked.
+//     |===F===G===H   G should be visited multiple times
+//         \===/       H should only be visited once
 func TestWalkDepsDuplicates(t *testing.T) {
 	ctx := NewContext()
 	ctx.MockFileSystem(map[string][]byte{
@@ -251,6 +249,11 @@ func TestWalkDepsDuplicates(t *testing.T) {
 
 			foo_module {
 			    name: "G",
+				deps: ["H"],
+			}
+
+			foo_module {
+			    name: "H",
 			}
 		`),
 	})
@@ -280,22 +283,20 @@ func TestWalkDepsDuplicates(t *testing.T) {
 	topModule := ctx.modulesFromName("A", nil)[0]
 	ctx.walkDeps(topModule, true,
 		func(dep depInfo, parent *moduleInfo) bool {
+			outputDown += ctx.ModuleName(dep.module.logicModule)
 			if dep.module.logicModule.(Walker).Walk() {
-				outputDown += ctx.ModuleName(dep.module.logicModule)
 				return true
 			}
 			return false
 		},
 		func(dep depInfo, parent *moduleInfo) {
-			if dep.module.logicModule.(Walker).Walk() {
-				outputUp += ctx.ModuleName(dep.module.logicModule)
-			}
+			outputUp += ctx.ModuleName(dep.module.logicModule)
 		})
-	if outputDown != "CEGFGG" {
-		t.Errorf("unexpected walkDeps behaviour: %s\ndown should be: CEGFGG", outputDown)
+	if outputDown != "BCEGHFGG" {
+		t.Errorf("unexpected walkDeps behaviour: %s\ndown should be: BCEGHFGG", outputDown)
 	}
-	if outputUp != "GEGGFC" {
-		t.Errorf("unexpected walkDeps behaviour: %s\nup should be: GEGGFC", outputUp)
+	if outputUp != "BHGEGGFC" {
+		t.Errorf("unexpected walkDeps behaviour: %s\nup should be: BHGEGGFC", outputUp)
 	}
 }
 
