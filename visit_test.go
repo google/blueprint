@@ -83,6 +83,9 @@ func visitMutator(ctx TopDownMutatorContext) {
 //   D
 //   |
 //   E
+//  / \
+//  \ /
+//   F
 func setupVisitTest(t *testing.T) *Context {
 	ctx := NewContext()
 	ctx.RegisterModuleType("visit_module", newVisitModule)
@@ -113,6 +116,11 @@ func setupVisitTest(t *testing.T) *Context {
 	
 			visit_module {
 				name: "E",
+				visit: ["F", "F"],
+			}
+
+			visit_module {
+				name: "F",
 			}
 		`),
 	})
@@ -142,10 +150,16 @@ func TestVisit(t *testing.T) {
 	ctx := setupVisitTest(t)
 
 	topModule := ctx.modulesFromName("A", nil)[0].logicModule.(*visitModule)
-	assertString(t, topModule.properties.VisitDepsDepthFirst, "EDCB")
-	assertString(t, topModule.properties.VisitDepsDepthFirstIf, "EDC")
+	assertString(t, topModule.properties.VisitDepsDepthFirst, "FEDCB")
+	assertString(t, topModule.properties.VisitDepsDepthFirstIf, "FEDC")
 	assertString(t, topModule.properties.VisitDirectDeps, "B")
 	assertString(t, topModule.properties.VisitDirectDepsIf, "")
+
+	eModule := ctx.modulesFromName("E", nil)[0].logicModule.(*visitModule)
+	assertString(t, eModule.properties.VisitDepsDepthFirst, "F")
+	assertString(t, eModule.properties.VisitDepsDepthFirstIf, "F")
+	assertString(t, eModule.properties.VisitDirectDeps, "FF")
+	assertString(t, eModule.properties.VisitDirectDepsIf, "FF")
 }
 
 func assertString(t *testing.T, got, expected string) {
