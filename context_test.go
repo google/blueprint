@@ -189,7 +189,7 @@ func TestWalkDeps(t *testing.T) {
 	var outputDown string
 	var outputUp string
 	topModule := ctx.modulesFromName("A", nil)[0]
-	ctx.walkDeps(topModule,
+	ctx.walkDeps(topModule, false,
 		func(dep depInfo, parent *moduleInfo) bool {
 			if dep.module.logicModule.(Walker).Walk() {
 				outputDown += ctx.ModuleName(dep.module.logicModule)
@@ -203,10 +203,99 @@ func TestWalkDeps(t *testing.T) {
 			}
 		})
 	if outputDown != "CFG" {
-		t.Fatalf("unexpected walkDeps behaviour: %s\ndown should be: CFG", outputDown)
+		t.Errorf("unexpected walkDeps behaviour: %s\ndown should be: CFG", outputDown)
 	}
 	if outputUp != "GFC" {
-		t.Fatalf("unexpected walkDeps behaviour: %s\nup should be: GFC", outputUp)
+		t.Errorf("unexpected walkDeps behaviour: %s\nup should be: GFC", outputUp)
+	}
+}
+
+// |---B===D       - represents a non-walkable edge
+// A               = represents a walkable edge
+// |===C===E===\
+//     |       |   A should not be visited because it's the root node.
+//     |===F===G   B, D should not be walked.
+//         \===/   G should be visited multiple times
+func TestWalkDepsDuplicates(t *testing.T) {
+	ctx := NewContext()
+	ctx.MockFileSystem(map[string][]byte{
+		"Blueprints": []byte(`
+			foo_module {
+			    name: "A",
+			    deps: ["B", "C"],
+			}
+
+			bar_module {
+			    name: "B",
+			    deps: ["D"],
+			}
+
+			foo_module {
+			    name: "C",
+			    deps: ["E", "F"],
+			}
+
+			foo_module {
+			    name: "D",
+			}
+
+			foo_module {
+			    name: "E",
+			    deps: ["G"],
+			}
+
+			foo_module {
+			    name: "F",
+			    deps: ["G", "G"],
+			}
+
+			foo_module {
+			    name: "G",
+			}
+		`),
+	})
+
+	ctx.RegisterModuleType("foo_module", newFooModule)
+	ctx.RegisterModuleType("bar_module", newBarModule)
+	_, errs := ctx.ParseBlueprintsFiles("Blueprints")
+	if len(errs) > 0 {
+		t.Errorf("unexpected parse errors:")
+		for _, err := range errs {
+			t.Errorf("  %s", err)
+		}
+		t.FailNow()
+	}
+
+	_, errs = ctx.ResolveDependencies(nil)
+	if len(errs) > 0 {
+		t.Errorf("unexpected dep errors:")
+		for _, err := range errs {
+			t.Errorf("  %s", err)
+		}
+		t.FailNow()
+	}
+
+	var outputDown string
+	var outputUp string
+	topModule := ctx.modulesFromName("A", nil)[0]
+	ctx.walkDeps(topModule, true,
+		func(dep depInfo, parent *moduleInfo) bool {
+			if dep.module.logicModule.(Walker).Walk() {
+				outputDown += ctx.ModuleName(dep.module.logicModule)
+				return true
+			}
+			return false
+		},
+		func(dep depInfo, parent *moduleInfo) {
+			if dep.module.logicModule.(Walker).Walk() {
+				outputUp += ctx.ModuleName(dep.module.logicModule)
+			}
+		})
+	if outputDown != "CEGFGG" {
+		t.Errorf("unexpected walkDeps behaviour: %s\ndown should be: CEGFGG", outputDown)
+	}
+	if outputUp != "GEGGFC" {
+		t.Errorf("unexpected walkDeps behaviour: %s\nup should be: GEGGFC", outputUp)
 	}
 }
 
