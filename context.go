@@ -2397,15 +2397,15 @@ func (c *Context) walkDeps(topModule *moduleInfo, allowDuplicates bool,
 	walk = func(module *moduleInfo) {
 		for _, dep := range module.directDeps {
 			if allowDuplicates || !visited[dep.module] {
-				visited[dep.module] = true
 				visiting = dep.module
 				recurse := true
 				if visitDown != nil {
 					recurse = visitDown(dep, module)
 				}
-				if recurse {
+				if recurse && !visited[dep.module] {
 					walk(dep.module)
 				}
+				visited[dep.module] = true
 				if visitUp != nil {
 					visitUp(dep, module)
 				}
