@@ -33,7 +33,7 @@ foo {}
 	},
 	{
 		input: `
-foo{name= "abc",num= 4,}
+foo(name= "abc",num= 4,)
 `,
 		output: `
 foo {
