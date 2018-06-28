@@ -302,8 +302,10 @@ func (p *parser) parseProperty(isModule, compat bool) (property *Property) {
 	pos := p.scanner.Position
 
 	if isModule {
-		if compat && p.tok == ':' {
-			p.accept(':')
+		if compat {
+			if !p.accept(':') {
+				return
+			}
 		} else {
 			if !p.accept('=') {
 				return
