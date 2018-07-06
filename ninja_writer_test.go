@@ -74,6 +74,12 @@ var ninjaWriterTestCases = []struct {
 	},
 	{
 		input: func(w *ninjaWriter) {
+			ck(w.Subninja("build.ninja"))
+		},
+		output: "subninja build.ninja\n",
+	},
+	{
+		input: func(w *ninjaWriter) {
 			ck(w.BlankLine())
 		},
 		output: "\n",
