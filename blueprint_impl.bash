@@ -28,6 +28,8 @@ source "${BLUEPRINTDIR}/microfactory/microfactory.bash"
 
 BUILDDIR="${BUILDDIR}/.minibootstrap" build_go minibp github.com/google/blueprint/bootstrap/minibp
 
+BUILDDIR="${BUILDDIR}/.minibootstrap" build_go bpglob github.com/google/blueprint/bootstrap/bpglob
+
 # Build the bootstrap build.ninja
 "${NINJA}" -w dupbuild=err -f "${BUILDDIR}/.minibootstrap/build.ninja"
 
