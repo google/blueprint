@@ -193,6 +193,12 @@ func (n *ninjaWriter) Default(targets ...string) error {
 	return wrapper.Flush()
 }
 
+func (n *ninjaWriter) Subninja(file string) error {
+	n.justDidBlankLine = false
+	_, err := fmt.Fprintf(n.writer, "subninja %s\n", file)
+	return err
+}
+
 func (n *ninjaWriter) BlankLine() (err error) {
 	// We don't output multiple blank lines in a row.
 	if !n.justDidBlankLine {

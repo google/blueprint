@@ -7,8 +7,11 @@
 
 ninja_required_version = 1.7.0
 
+myGlobs = ${bootstrapBuildDir}/.minibootstrap/build-globs.ninja
+subninja ${myGlobs}
+
 rule build.ninja
-    command = ${builder} ${extraArgs} -b ${bootstrapBuildDir} -n ${builddir} -d ${out}.d -o ${out} ${in}
+    command = ${builder} ${extraArgs} -b ${bootstrapBuildDir} -n ${builddir} -d ${out}.d -globFile ${myGlobs} -o ${out} ${in}
     deps = gcc
     depfile = ${out}.d
     description = ${builder} ${out}

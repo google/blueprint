@@ -47,6 +47,10 @@ type SingletonContext interface {
 	// set at most one time for a single build, later calls are ignored.
 	SetNinjaBuildDir(pctx PackageContext, value string)
 
+	// AddSubninja adds a ninja file to include with subninja. This should likely
+	// only ever be used inside bootstrap to handle glob rules.
+	AddSubninja(file string)
+
 	// Eval takes a string with embedded ninja variables, and returns a string
 	// with all of the variables recursively expanded. Any variables references
 	// are expanded in the scope of the PackageContext.
@@ -201,6 +205,10 @@ func (s *singletonContext) SetNinjaBuildDir(pctx PackageContext, value string) {
 	}
 
 	s.context.setNinjaBuildDir(ninjaValue)
+}
+
+func (s *singletonContext) AddSubninja(file string) {
+	s.context.subninjas = append(s.context.subninjas, file)
 }
 
 func (s *singletonContext) VisitAllModules(visit func(Module)) {
