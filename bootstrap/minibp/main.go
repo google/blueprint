@@ -37,8 +37,12 @@ func (c Config) GeneratingPrimaryBuilder() bool {
 	return c.generatingPrimaryBuilder
 }
 
-func (c Config) RemoveAbandonedFilesUnder() []string {
-	return []string{filepath.Join(bootstrap.BuildDir, ".bootstrap")}
+func (c Config) RemoveAbandonedFilesUnder() (under, exempt []string) {
+	if c.generatingPrimaryBuilder {
+		under = []string{filepath.Join(bootstrap.BuildDir, ".bootstrap")}
+		exempt = []string{filepath.Join(bootstrap.BuildDir, ".bootstrap", "build.ninja")}
+	}
+	return
 }
 
 func main() {
