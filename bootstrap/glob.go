@@ -15,6 +15,7 @@
 package bootstrap
 
 import (
+	"bytes"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -40,7 +41,7 @@ import (
 // in a build failure with a "missing and no known rule to make it" error.
 
 var (
-	globCmd = filepath.Join("$BinDir", "bpglob")
+	globCmd = filepath.Join(miniBootstrapDir, "bpglob")
 
 	// globRule rule traverses directories to produce a list of files that match $glob
 	// and writes it to $out if it has changed, and writes the directories to $out.d
@@ -111,6 +112,7 @@ func joinWithPrefixAndQuote(strs []string, prefix string) string {
 // primary builder if the results change.
 type globSingleton struct {
 	globLister func() []blueprint.GlobPath
+	writeRule  bool
 }
 
 func globSingletonFactory(ctx *blueprint.Context) func() blueprint.Singleton {
@@ -124,15 +126,52 @@ func globSingletonFactory(ctx *blueprint.Context) func() blueprint.Singleton {
 func (s *globSingleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	for _, g := range s.globLister() {
 		fileListFile := filepath.Join(BuildDir, ".glob", g.Name)
-		depFile := fileListFile + ".d"
 
-		fileList := strings.Join(g.Files, "\n") + "\n"
-		pathtools.WriteFileIfChanged(fileListFile, []byte(fileList), 0666)
-		deptools.WriteDepFile(depFile, fileListFile, g.Deps)
+		if s.writeRule {
+			depFile := fileListFile + ".d"
 
-		GlobFile(ctx, g.Pattern, g.Excludes, fileListFile, depFile)
+			fileList := strings.Join(g.Files, "\n") + "\n"
+			pathtools.WriteFileIfChanged(fileListFile, []byte(fileList), 0666)
+			deptools.WriteDepFile(depFile, fileListFile, g.Deps)
 
-		// Make build.ninja depend on the fileListFile
-		ctx.AddNinjaFileDeps(fileListFile)
+			GlobFile(ctx, g.Pattern, g.Excludes, fileListFile, depFile)
+		} else {
+			// Make build.ninja depend on the fileListFile
+			ctx.AddNinjaFileDeps(fileListFile)
+		}
 	}
+}
+
+func generateGlobNinjaFile(globLister func() []blueprint.GlobPath) ([]byte, []error) {
+	ctx := blueprint.NewContext()
+	ctx.RegisterSingletonType("glob", func() blueprint.Singleton {
+		return &globSingleton{
+			globLister: globLister,
+			writeRule:  true,
+		}
+	})
+
+	extraDeps, errs := ctx.ResolveDependencies(nil)
+	if len(extraDeps) > 0 {
+		return nil, []error{fmt.Errorf("shouldn't have extra deps")}
+	}
+	if len(errs) > 0 {
+		return nil, errs
+	}
+
+	extraDeps, errs = ctx.PrepareBuildActions(nil)
+	if len(extraDeps) > 0 {
+		return nil, []error{fmt.Errorf("shouldn't have extra deps")}
+	}
+	if len(errs) > 0 {
+		return nil, errs
+	}
+
+	buf := bytes.NewBuffer(nil)
+	err := ctx.WriteBuildFile(buf)
+	if err != nil {
+		return nil, []error{err}
+	}
+
+	return buf.Bytes(), nil
 }

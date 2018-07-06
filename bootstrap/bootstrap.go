@@ -17,6 +17,8 @@ package bootstrap
 import (
 	"fmt"
 	"go/build"
+	"io/ioutil"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -118,14 +120,14 @@ var (
 
 	generateBuildNinja = pctx.StaticRule("build.ninja",
 		blueprint.RuleParams{
-			Command:     "$builder $extra -b $buildDir -n $ninjaBuildDir -d $out.d -o $out $in",
+			Command:     "$builder $extra -b $buildDir -n $ninjaBuildDir -d $out.d -globFile $globFile -o $out $in",
 			CommandDeps: []string{"$builder"},
 			Description: "$builder $out",
 			Deps:        blueprint.DepsGCC,
 			Depfile:     "$out.d",
 			Restat:      true,
 		},
-		"builder", "extra", "generator")
+		"builder", "extra", "generator", "globFile")
 
 	// Work around a Ninja issue.  See https://github.com/martine/ninja/pull/634
 	phony = pctx.StaticRule("phony",
@@ -668,32 +670,33 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	topLevelBlueprints := filepath.Join("$srcDir",
 		filepath.Base(s.config.topLevelBlueprintsFile))
 
-	mainNinjaFile := filepath.Join("$buildDir", "build.ninja")
-	primaryBuilderNinjaFile := filepath.Join(bootstrapDir, "build.ninja")
-
 	ctx.SetNinjaBuildDir(pctx, "${ninjaBuildDir}")
 
-	// Build the main build.ninja
-	ctx.Build(pctx, blueprint.BuildParams{
-		Rule:    generateBuildNinja,
-		Outputs: []string{mainNinjaFile},
-		Inputs:  []string{topLevelBlueprints},
-		Args: map[string]string{
-			"builder": primaryBuilderFile,
-			"extra":   primaryBuilderExtraFlags,
-		},
-	})
+	if s.config.stage == StagePrimary {
+		mainNinjaFile := filepath.Join("$buildDir", "build.ninja")
+		primaryBuilderNinjaGlobFile := filepath.Join(BuildDir, bootstrapSubDir, "build-globs.ninja")
 
-	// Add a way to rebuild the primary build.ninja so that globs works
-	ctx.Build(pctx, blueprint.BuildParams{
-		Rule:    generateBuildNinja,
-		Outputs: []string{primaryBuilderNinjaFile},
-		Inputs:  []string{topLevelBlueprints},
-		Args: map[string]string{
-			"builder": minibpFile,
-			"extra":   extraSharedFlagString,
-		},
-	})
+		if _, err := os.Stat(primaryBuilderNinjaGlobFile); os.IsNotExist(err) {
+			err = ioutil.WriteFile(primaryBuilderNinjaGlobFile, nil, 0666)
+			if err != nil {
+				ctx.Errorf("Failed to create empty ninja file: %s", err)
+			}
+		}
+
+		ctx.AddSubninja(primaryBuilderNinjaGlobFile)
+
+		// Build the main build.ninja
+		ctx.Build(pctx, blueprint.BuildParams{
+			Rule:    generateBuildNinja,
+			Outputs: []string{mainNinjaFile},
+			Inputs:  []string{topLevelBlueprints},
+			Args: map[string]string{
+				"builder":  primaryBuilderFile,
+				"extra":    primaryBuilderExtraFlags,
+				"globFile": primaryBuilderNinjaGlobFile,
+			},
+		})
+	}
 
 	if s.config.stage == StageMain {
 		if primaryBuilderName == "minibp" {
