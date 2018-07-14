@@ -516,3 +516,51 @@ func testGlob(t *testing.T, fs FileSystem, testCase globTestCase) {
 		t.Errorf("expected: %#v", testCase.deps)
 	}
 }
+
+func TestMatch(t *testing.T) {
+	testCases := []struct {
+		pattern, name string
+		match         bool
+	}{
+		{"a/*", "b/", false},
+		{"a/*", "b/a", false},
+		{"a/*", "b/b/", false},
+		{"a/*", "b/b/c", false},
+		{"a/**/*", "b/", false},
+		{"a/**/*", "b/a", false},
+		{"a/**/*", "b/b/", false},
+		{"a/**/*", "b/b/c", false},
+
+		{"a/*", "a/", false},
+		{"a/*", "a/a", true},
+		{"a/*", "a/b/", false},
+		{"a/*", "a/b/c", false},
+
+		{"a/*/", "a/", false},
+		{"a/*/", "a/a", false},
+		{"a/*/", "a/b/", true},
+		{"a/*/", "a/b/c", false},
+
+		{"a/**/*", "a/", false},
+		{"a/**/*", "a/a", true},
+		{"a/**/*", "a/b/", false},
+		{"a/**/*", "a/b/c", true},
+
+		{"a/**/*/", "a/", false},
+		{"a/**/*/", "a/a", false},
+		{"a/**/*/", "a/b/", true},
+		{"a/**/*/", "a/b/c", false},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.pattern+","+test.name, func(t *testing.T) {
+			match, err := Match(test.pattern, test.name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if match != test.match {
+				t.Errorf("want: %v, got %v", test.match, match)
+			}
+		})
+	}
+}
