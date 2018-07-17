@@ -222,6 +222,18 @@ func Match(pattern, name string) (bool, error) {
 		return false, GlobLastRecursiveErr
 	}
 
+	patternDir := pattern[len(pattern)-1] == '/'
+	nameDir := name[len(name)-1] == '/'
+
+	if patternDir != nameDir {
+		return false, nil
+	}
+
+	if nameDir {
+		name = name[:len(name)-1]
+		pattern = pattern[:len(pattern)-1]
+	}
+
 	for {
 		var patternFile, nameFile string
 		pattern, patternFile = saneSplit(pattern)
