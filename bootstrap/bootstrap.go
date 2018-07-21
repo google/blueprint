@@ -358,7 +358,7 @@ type goBinary struct {
 			TestSrcs []string
 		}
 
-		Tool_dir bool `blueprint:mutated`
+		Tool_dir bool `blueprint:"mutated"`
 	}
 
 	installPath string
