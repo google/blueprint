@@ -18,7 +18,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"testing"
 )
 
@@ -59,7 +58,26 @@ var globTestCases = []globTestCase{
 		matches: []string{"a/a/a"},
 		deps:    []string{".", "a", "b", "c", "a/a"},
 	},
-
+	{
+		pattern: "c/*/?",
+		matches: []string{"c/h/h"},
+		deps:    []string{"c", "c/f", "c/g", "c/h"},
+	},
+	{
+		pattern: "c/*/[gh]*",
+		matches: []string{"c/g/g.ext", "c/h/h"},
+		deps:    []string{"c", "c/f", "c/g", "c/h"},
+	},
+	{
+		pattern: "c/*/[fgh]*",
+		matches: []string{"c/f/f.ext", "c/g/g.ext", "c/h/h"},
+		deps:    []string{"c", "c/f", "c/g", "c/h"},
+	},
+	{
+		pattern: "c/*/[f-h]*",
+		matches: []string{"c/f/f.ext", "c/g/g.ext", "c/h/h"},
+		deps:    []string{"c", "c/f", "c/g", "c/h"},
+	},
 	// ./ directory tests
 	{
 		pattern: "./*",
@@ -469,8 +487,8 @@ func TestMockGlob(t *testing.T) {
 
 	mock := MockFs(mockFiles)
 
-	for i, testCase := range globTestCases {
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
+	for _, testCase := range globTestCases {
+		t.Run(testCase.pattern, func(t *testing.T) {
 			testGlob(t, mock, testCase)
 		})
 	}
@@ -479,21 +497,71 @@ func TestMockGlob(t *testing.T) {
 func TestGlob(t *testing.T) {
 	os.Chdir("testdata")
 	defer os.Chdir("..")
-	for i, testCase := range globTestCases {
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
+	for _, testCase := range globTestCases {
+		t.Run(testCase.pattern, func(t *testing.T) {
 			testGlob(t, OsFs, testCase)
 		})
 	}
 }
 
+var globEscapeTestCases = []globTestCase{
+	{
+		pattern: `**/*`,
+		matches: []string{`*`, `**/`, `?`, `a/`, `b`, `**/*`, `**/a`, `**/b/`, `**/b/b`, `a/a`},
+		deps:    []string{`.`, `**`, `**/b`, `a`},
+	},
+	{
+		pattern: `**/\*`,
+		matches: []string{`*`, `**/*`},
+		deps:    []string{`.`, `**`, `**/b`, `a`},
+	},
+	{
+		pattern: `\*\*/*`,
+		matches: []string{`**/*`, `**/a`, `**/b/`},
+		deps:    []string{`.`, `**`},
+	},
+	{
+		pattern: `\*\*/**/*`,
+		matches: []string{`**/*`, `**/a`, `**/b/`, `**/b/b`},
+		deps:    []string{`.`, `**`, `**/b`},
+	},
+}
+
+func TestGlobEscapes(t *testing.T) {
+	files := []string{
+		`*`,
+		`**/*`,
+		`**/a`,
+		`**/b/b`,
+		`?`,
+		`a/a`,
+		`b`,
+	}
+
+	mockFiles := make(map[string][]byte)
+
+	for _, f := range files {
+		mockFiles[f] = nil
+	}
+
+	mock := MockFs(mockFiles)
+
+	for _, testCase := range globEscapeTestCases {
+		t.Run(testCase.pattern, func(t *testing.T) {
+			testGlob(t, mock, testCase)
+		})
+	}
+
+}
+
 func testGlob(t *testing.T, fs FileSystem, testCase globTestCase) {
 	matches, deps, err := fs.Glob(testCase.pattern, testCase.excludes)
 	if err != testCase.err {
-		t.Errorf(" pattern: %q", testCase.pattern)
-		if testCase.excludes != nil {
-			t.Errorf("excludes: %q", testCase.excludes)
+		if err == nil {
+			t.Fatalf("missing error: %s", testCase.err)
+		} else {
+			t.Fatalf("error: %s", err)
 		}
-		t.Errorf("   error: %s", err)
 		return
 	}
 
@@ -550,6 +618,55 @@ func TestMatch(t *testing.T) {
 		{"a/**/*/", "a/a", false},
 		{"a/**/*/", "a/b/", true},
 		{"a/**/*/", "a/b/c", false},
+
+		{`a/\*\*/\*`, `a/**/*`, true},
+		{`a/\*\*/\*`, `a/a/*`, false},
+		{`a/\*\*/\*`, `a/**/a`, false},
+		{`a/\*\*/\*`, `a/a/a`, false},
+
+		{`a/**/\*`, `a/**/*`, true},
+		{`a/**/\*`, `a/a/*`, true},
+		{`a/**/\*`, `a/**/a`, false},
+		{`a/**/\*`, `a/a/a`, false},
+
+		{`a/\*\*/*`, `a/**/*`, true},
+		{`a/\*\*/*`, `a/a/*`, false},
+		{`a/\*\*/*`, `a/**/a`, true},
+		{`a/\*\*/*`, `a/a/a`, false},
+
+		{`*/**/a`, `a/a/a`, true},
+		{`*/**/a`, `*/a/a`, true},
+		{`*/**/a`, `a/**/a`, true},
+		{`*/**/a`, `*/**/a`, true},
+
+		{`\*/\*\*/a`, `a/a/a`, false},
+		{`\*/\*\*/a`, `*/a/a`, false},
+		{`\*/\*\*/a`, `a/**/a`, false},
+		{`\*/\*\*/a`, `*/**/a`, true},
+
+		{`a/?`, `a/?`, true},
+		{`a/?`, `a/a`, true},
+		{`a/\?`, `a/?`, true},
+		{`a/\?`, `a/a`, false},
+
+		{`a/?`, `a/?`, true},
+		{`a/?`, `a/a`, true},
+		{`a/\?`, `a/?`, true},
+		{`a/\?`, `a/a`, false},
+
+		{`a/[a-c]`, `a/b`, true},
+		{`a/[abc]`, `a/b`, true},
+
+		{`a/\[abc]`, `a/b`, false},
+		{`a/\[abc]`, `a/[abc]`, true},
+
+		{`a/\[abc\]`, `a/b`, false},
+		{`a/\[abc\]`, `a/[abc]`, true},
+
+		{`a/?`, `a/?`, true},
+		{`a/?`, `a/a`, true},
+		{`a/\?`, `a/?`, true},
+		{`a/\?`, `a/a`, false},
 	}
 
 	for _, test := range testCases {
