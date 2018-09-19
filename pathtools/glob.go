@@ -137,7 +137,7 @@ func glob(fs FileSystem, pattern string, hasRecursive bool) (matches, dirs []str
 				matches = append(matches, recurseDirs...)
 			} else {
 				dirs = append(dirs, m)
-				newMatches, err := fs.glob(filepath.Join(m, file))
+				newMatches, err := fs.glob(filepath.Join(MatchEscape(m), file))
 				if err != nil {
 					return nil, nil, err
 				}
@@ -425,4 +425,16 @@ func WriteFileIfChanged(filename string, data []byte, perm os.FileMode) error {
 	}
 
 	return nil
+}
+
+var matchEscaper = strings.NewReplacer(
+	`*`, `\*`,
+	`?`, `\?`,
+	`[`, `\[`,
+	`]`, `\]`,
+)
+
+// MatchEscape returns its inputs with characters that would be interpreted by
+func MatchEscape(s string) string {
+	return matchEscaper.Replace(s)
 }
