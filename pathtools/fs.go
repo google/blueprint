@@ -17,7 +17,6 @@ package pathtools
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -66,6 +65,7 @@ type FileSystem interface {
 	Glob(pattern string, excludes []string) (matches, dirs []string, err error)
 	glob(pattern string) (matches []string, err error)
 	IsDir(name string) (bool, error)
+	IsSymlink(name string) (bool, error)
 	Lstat(name string) (os.FileInfo, error)
 	ListDirsRecursive(name string) (dirs []string, err error)
 }
@@ -88,9 +88,17 @@ func (osFs) Exists(name string) (bool, bool, error) {
 func (osFs) IsDir(name string) (bool, error) {
 	info, err := os.Stat(name)
 	if err != nil {
-		return false, fmt.Errorf("unexpected error after glob: %s", err)
+		return false, err
 	}
 	return info.IsDir(), nil
+}
+
+func (osFs) IsSymlink(name string) (bool, error) {
+	if info, err := os.Lstat(name); err != nil {
+		return false, err
+	} else {
+		return info.Mode()&os.ModeSymlink != 0, nil
+	}
 }
 
 func (fs osFs) Glob(pattern string, excludes []string) (matches, dirs []string, err error) {
@@ -163,6 +171,10 @@ func (m *mockFs) Exists(name string) (bool, bool, error) {
 
 func (m *mockFs) IsDir(name string) (bool, error) {
 	return m.dirs[filepath.Clean(name)], nil
+}
+
+func (m *mockFs) IsSymlink(name string) (bool, error) {
+	return false, nil
 }
 
 func (m *mockFs) Glob(pattern string, excludes []string) (matches, dirs []string, err error) {

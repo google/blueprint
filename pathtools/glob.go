@@ -73,9 +73,17 @@ func startGlob(fs FileSystem, pattern string, excludes []string) (matches, deps 
 	}
 
 	for i, match := range matches {
-		if isDir, err := fs.IsDir(match); err != nil {
-			return nil, nil, fmt.Errorf("IsDir(%s): %s", match, err.Error())
-		} else if isDir {
+		isDir, err := fs.IsDir(match)
+		if os.IsNotExist(err) {
+			if isSymlink, _ := fs.IsSymlink(match); isSymlink {
+				return nil, nil, fmt.Errorf("%s: dangling symlink", match)
+			}
+		}
+		if err != nil {
+			return nil, nil, fmt.Errorf("%s: %s", match, err.Error())
+		}
+
+		if isDir {
 			matches[i] = match + "/"
 		}
 	}
@@ -126,9 +134,17 @@ func glob(fs FileSystem, pattern string, hasRecursive bool) (matches, dirs []str
 	}
 
 	for _, m := range dirMatches {
-		if isDir, err := fs.IsDir(m); err != nil {
+		isDir, err := fs.IsDir(m)
+		if os.IsNotExist(err) {
+			if isSymlink, _ := fs.IsSymlink(m); isSymlink {
+				return nil, nil, fmt.Errorf("dangling symlink: %s", m)
+			}
+		}
+		if err != nil {
 			return nil, nil, fmt.Errorf("unexpected error after glob: %s", err)
-		} else if isDir {
+		}
+
+		if isDir {
 			if file == "**" {
 				recurseDirs, err := fs.ListDirsRecursive(m)
 				if err != nil {
