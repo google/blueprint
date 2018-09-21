@@ -212,7 +212,18 @@ func (s *singletonContext) AddSubninja(file string) {
 }
 
 func (s *singletonContext) VisitAllModules(visit func(Module)) {
-	s.context.VisitAllModules(visit)
+	var visitingModule Module
+	defer func() {
+		if r := recover(); r != nil {
+			panic(newPanicErrorf(r, "VisitAllModules(%s) for module %s",
+				funcName(visit), visitingModule))
+		}
+	}()
+
+	s.context.VisitAllModules(func(m Module) {
+		visitingModule = m
+		visit(m)
+	})
 }
 
 func (s *singletonContext) VisitAllModulesIf(pred func(Module) bool,

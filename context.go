@@ -719,7 +719,6 @@ func (c *Context) WalkBlueprintsFiles(rootDir string, filePaths []string,
 	descendantsMap, err := findBlueprintDescendants(filePaths)
 	if err != nil {
 		panic(err.Error())
-		return nil, []error{err}
 	}
 	blueprintsSet := make(map[string]bool)
 
