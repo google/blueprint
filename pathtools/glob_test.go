@@ -565,6 +565,49 @@ func TestGlobEscapes(t *testing.T) {
 
 }
 
+var globSymlinkTestCases = []globTestCase{
+	{
+		pattern: `**/*`,
+		matches: []string{"a/", "b/", "c/", "d/", "e", "a/a/", "a/a/a", "b/a/", "b/a/a", "c/a", "d/a"},
+		deps:    []string{".", "a", "a/a", "b", "b/a", "c", "d"},
+	},
+}
+
+func TestMockGlobSymlinks(t *testing.T) {
+	files := []string{
+		"a/a/a",
+		"b -> a",
+		"c -> a/a",
+		"d -> c",
+		"e -> a/a/a",
+	}
+
+	mockFiles := make(map[string][]byte)
+
+	for _, f := range files {
+		mockFiles[f] = nil
+	}
+
+	mock := MockFs(mockFiles)
+
+	for _, testCase := range globSymlinkTestCases {
+		t.Run(testCase.pattern, func(t *testing.T) {
+			testGlob(t, mock, testCase)
+		})
+	}
+}
+
+func TestGlobSymlinks(t *testing.T) {
+	os.Chdir("testdata/symlinks")
+	defer os.Chdir("../..")
+
+	for _, testCase := range globSymlinkTestCases {
+		t.Run(testCase.pattern, func(t *testing.T) {
+			testGlob(t, OsFs, testCase)
+		})
+	}
+}
+
 func testGlob(t *testing.T, fs FileSystem, testCase globTestCase) {
 	t.Helper()
 	matches, deps, err := fs.Glob(testCase.pattern, testCase.excludes)

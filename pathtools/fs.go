@@ -16,6 +16,7 @@ package pathtools
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -93,6 +94,9 @@ type FileSystem interface {
 
 	// ListDirsRecursive returns a list of all the directories in a path, following symlinks.
 	ListDirsRecursive(name string) (dirs []string, err error)
+
+	// ReadDirNames returns a list of everything in a directory.
+	ReadDirNames(name string) ([]string, error)
 }
 
 // osFs implements FileSystem using the local disk.
@@ -140,24 +144,23 @@ func (osFs) Lstat(path string) (stats os.FileInfo, err error) {
 
 // Returns a list of all directories under dir
 func (osFs) ListDirsRecursive(name string) (dirs []string, err error) {
-	// TODO: follow symbolic links
-	err = filepath.Walk(name, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
+	return listDirsRecursive(OsFs, name)
+}
 
-		if info.Mode().IsDir() {
-			name := info.Name()
-			if name[0] == '.' && name != "." {
-				return filepath.SkipDir
-			}
+func (osFs) ReadDirNames(name string) ([]string, error) {
+	dir, err := os.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer dir.Close()
 
-			dirs = append(dirs, path)
-		}
-		return nil
-	})
+	contents, err := dir.Readdirnames(-1)
+	if err != nil {
+		return nil, err
+	}
 
-	return dirs, err
+	sort.Strings(contents)
+	return contents, nil
 }
 
 type mockFs struct {
@@ -348,21 +351,95 @@ func (m *mockFs) Lstat(name string) (os.FileInfo, error) {
 	return &ms, nil
 }
 
-func (m *mockFs) ListDirsRecursive(name string) (dirs []string, err error) {
+func (m *mockFs) ReadDirNames(name string) ([]string, error) {
 	name = filepath.Clean(name)
-	dirs = append(dirs, name)
-	if name == "." {
-		name = ""
-	} else if name != "/" {
-		name = name + "/"
+	name = m.followSymlinks(name)
+
+	exists, isDir, err := m.Exists(name)
+	if err != nil {
+		return nil, err
 	}
+	if !exists {
+		return nil, os.ErrNotExist
+	}
+	if !isDir {
+		return nil, os.NewSyscallError("readdir", syscall.ENOTDIR)
+	}
+
+	var ret []string
 	for _, f := range m.all {
-		if _, isDir := m.dirs[f]; isDir && filepath.Base(f)[0] != '.' {
-			if strings.HasPrefix(f, name) &&
-				strings.HasPrefix(f, "/") == strings.HasPrefix(name, "/") {
-				dirs = append(dirs, f)
+		dir, file := saneSplit(f)
+		if dir == name && len(file) > 0 && file[0] != '.' {
+			ret = append(ret, file)
+		}
+	}
+	return ret, nil
+}
+
+func (m *mockFs) ListDirsRecursive(name string) ([]string, error) {
+	return listDirsRecursive(m, name)
+}
+
+func listDirsRecursive(fs FileSystem, name string) ([]string, error) {
+	name = filepath.Clean(name)
+
+	isDir, err := fs.IsDir(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if !isDir {
+		return nil, nil
+	}
+
+	dirs := []string{name}
+
+	subDirs, err := listDirsRecursiveRelative(fs, name, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, d := range subDirs {
+		dirs = append(dirs, filepath.Join(name, d))
+	}
+
+	return dirs, nil
+}
+
+func listDirsRecursiveRelative(fs FileSystem, name string, depth int) ([]string, error) {
+	depth++
+	if depth > 255 {
+		return nil, fmt.Errorf("too many symlinks")
+	}
+	contents, err := fs.ReadDirNames(name)
+	if err != nil {
+		return nil, err
+	}
+
+	var dirs []string
+	for _, f := range contents {
+		if f[0] == '.' {
+			continue
+		}
+		f = filepath.Join(name, f)
+		if isDir, _ := fs.IsDir(f); isDir {
+			dirs = append(dirs, f)
+			subDirs, err := listDirsRecursiveRelative(fs, f, depth)
+			if err != nil {
+				return nil, err
+			}
+			for _, s := range subDirs {
+				dirs = append(dirs, filepath.Join(f, s))
 			}
 		}
+	}
+
+	for i, d := range dirs {
+		rel, err := filepath.Rel(name, d)
+		if err != nil {
+			return nil, err
+		}
+		dirs[i] = rel
 	}
 
 	return dirs, nil

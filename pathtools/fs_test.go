@@ -101,7 +101,7 @@ func TestMockFs_followSymlinks(t *testing.T) {
 	}
 }
 
-func TestMockFs_IsDir(t *testing.T) {
+func TestFs_IsDir(t *testing.T) {
 	testCases := []struct {
 		name  string
 		isDir bool
@@ -149,15 +149,74 @@ func TestMockFs_IsDir(t *testing.T) {
 	}
 
 	mock := symlinkMockFs()
+	fsList := []FileSystem{mock, OsFs}
+	names := []string{"mock", "os"}
 
-	for _, test := range testCases {
-		t.Run(test.name, func(t *testing.T) {
-			got, err := mock.IsDir(test.name)
-			if !reflect.DeepEqual(err, test.err) {
-				t.Errorf("want: %v, got %v", test.err, err)
+	os.Chdir("testdata/dangling")
+	defer os.Chdir("../..")
+
+	for i, fs := range fsList {
+		t.Run(names[i], func(t *testing.T) {
+			for _, test := range testCases {
+				t.Run(test.name, func(t *testing.T) {
+					got, err := fs.IsDir(test.name)
+					checkErr(t, test.err, err)
+					if got != test.isDir {
+						t.Errorf("want: %v, got %v", test.isDir, got)
+					}
+				})
 			}
-			if got != test.isDir {
-				t.Errorf("want: %v, got %v", test.isDir, got)
+		})
+	}
+}
+
+func TestFs_ListDirsRecursive(t *testing.T) {
+	testCases := []struct {
+		name string
+		dirs []string
+		err  error
+	}{
+		{".", []string{".", "a", "a/a", "b", "b/a", "c", "d"}, nil},
+
+		{"a", []string{"a", "a/a"}, nil},
+		{"a/a", []string{"a/a"}, nil},
+		{"a/a/a", nil, nil},
+
+		{"b", []string{"b", "b/a"}, nil},
+		{"b/a", []string{"b/a"}, nil},
+		{"b/a/a", nil, nil},
+
+		{"c", []string{"c"}, nil},
+		{"c/a", nil, nil},
+
+		{"d", []string{"d"}, nil},
+		{"d/a", nil, nil},
+
+		{"e", nil, nil},
+
+		{"dangling", nil, os.ErrNotExist},
+
+		{"missing", nil, os.ErrNotExist},
+	}
+
+	mock := symlinkMockFs()
+	fsList := []FileSystem{mock, OsFs}
+	names := []string{"mock", "os"}
+
+	os.Chdir("testdata/dangling")
+	defer os.Chdir("../..")
+
+	for i, fs := range fsList {
+		t.Run(names[i], func(t *testing.T) {
+
+			for _, test := range testCases {
+				t.Run(test.name, func(t *testing.T) {
+					got, err := fs.ListDirsRecursive(test.name)
+					checkErr(t, test.err, err)
+					if !reflect.DeepEqual(got, test.dirs) {
+						t.Errorf("want: %v, got %v", test.dirs, got)
+					}
+				})
 			}
 		})
 	}
@@ -202,16 +261,39 @@ func TestMockFs_glob(t *testing.T) {
 	}
 
 	mock := symlinkMockFs()
+	fsList := []FileSystem{mock, OsFs}
+	names := []string{"mock", "os"}
 
-	for _, test := range testCases {
-		t.Run(test.pattern, func(t *testing.T) {
-			got, err := mock.glob(test.pattern)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(got, test.files) {
-				t.Errorf("want: %v, got %v", test.files, got)
+	os.Chdir("testdata/dangling")
+	defer os.Chdir("../..")
+
+	for i, fs := range fsList {
+		t.Run(names[i], func(t *testing.T) {
+			for _, test := range testCases {
+				t.Run(test.pattern, func(t *testing.T) {
+					got, err := fs.glob(test.pattern)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !reflect.DeepEqual(got, test.files) {
+						t.Errorf("want: %v, got %v", test.files, got)
+					}
+				})
 			}
 		})
+	}
+}
+
+func checkErr(t *testing.T, want, got error) {
+	t.Helper()
+	if os.IsNotExist(want) {
+		if os.IsNotExist(got) != os.IsNotExist(want) {
+			t.Errorf("want: IsNotExist(err) = %v, got IsNotExist(%v) = %v",
+				os.IsNotExist(want), got, os.IsNotExist(got))
+		}
+	} else if (got != nil) != (want != nil) {
+		t.Errorf("want: %v, got %v", want, got)
+	} else if got != nil && got.Error() != want.Error() {
+		t.Errorf("want: %v, got %v", want, got)
 	}
 }
