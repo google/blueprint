@@ -114,16 +114,16 @@ var globTestCases = []globTestCase{
 
 	// absolute tests
 	{
-		pattern: filepath.Join(pwd, "testdata/c/*/*.ext"),
+		pattern: filepath.Join(pwd, "testdata/glob/c/*/*.ext"),
 		matches: []string{
-			filepath.Join(pwd, "testdata/c/f/f.ext"),
-			filepath.Join(pwd, "testdata/c/g/g.ext"),
+			filepath.Join(pwd, "testdata/glob/c/f/f.ext"),
+			filepath.Join(pwd, "testdata/glob/c/g/g.ext"),
 		},
 		deps: []string{
-			filepath.Join(pwd, "testdata/c"),
-			filepath.Join(pwd, "testdata/c/f"),
-			filepath.Join(pwd, "testdata/c/g"),
-			filepath.Join(pwd, "testdata/c/h"),
+			filepath.Join(pwd, "testdata/glob/c"),
+			filepath.Join(pwd, "testdata/glob/c/f"),
+			filepath.Join(pwd, "testdata/glob/c/g"),
+			filepath.Join(pwd, "testdata/glob/c/h"),
 		},
 	},
 
@@ -170,23 +170,23 @@ var globTestCases = []globTestCase{
 
 	// absolute recursive tests
 	{
-		pattern: filepath.Join(pwd, "testdata/**/*.ext"),
+		pattern: filepath.Join(pwd, "testdata/glob/**/*.ext"),
 		matches: []string{
-			filepath.Join(pwd, "testdata/d.ext"),
-			filepath.Join(pwd, "testdata/e.ext"),
-			filepath.Join(pwd, "testdata/c/f/f.ext"),
-			filepath.Join(pwd, "testdata/c/g/g.ext"),
+			filepath.Join(pwd, "testdata/glob/d.ext"),
+			filepath.Join(pwd, "testdata/glob/e.ext"),
+			filepath.Join(pwd, "testdata/glob/c/f/f.ext"),
+			filepath.Join(pwd, "testdata/glob/c/g/g.ext"),
 		},
 		deps: []string{
-			filepath.Join(pwd, "testdata"),
-			filepath.Join(pwd, "testdata/a"),
-			filepath.Join(pwd, "testdata/a/a"),
-			filepath.Join(pwd, "testdata/a/b"),
-			filepath.Join(pwd, "testdata/b"),
-			filepath.Join(pwd, "testdata/c"),
-			filepath.Join(pwd, "testdata/c/f"),
-			filepath.Join(pwd, "testdata/c/g"),
-			filepath.Join(pwd, "testdata/c/h"),
+			filepath.Join(pwd, "testdata/glob"),
+			filepath.Join(pwd, "testdata/glob/a"),
+			filepath.Join(pwd, "testdata/glob/a/a"),
+			filepath.Join(pwd, "testdata/glob/a/b"),
+			filepath.Join(pwd, "testdata/glob/b"),
+			filepath.Join(pwd, "testdata/glob/c"),
+			filepath.Join(pwd, "testdata/glob/c/f"),
+			filepath.Join(pwd, "testdata/glob/c/g"),
+			filepath.Join(pwd, "testdata/glob/c/h"),
 		},
 	},
 
@@ -250,29 +250,29 @@ var globTestCases = []globTestCase{
 
 	// absolute exclude tests
 	{
-		pattern:  filepath.Join(pwd, "testdata/c/*/*.ext"),
-		excludes: []string{filepath.Join(pwd, "testdata/c/*/f.ext")},
+		pattern:  filepath.Join(pwd, "testdata/glob/c/*/*.ext"),
+		excludes: []string{filepath.Join(pwd, "testdata/glob/c/*/f.ext")},
 		matches: []string{
-			filepath.Join(pwd, "testdata/c/g/g.ext"),
+			filepath.Join(pwd, "testdata/glob/c/g/g.ext"),
 		},
 		deps: []string{
-			filepath.Join(pwd, "testdata/c"),
-			filepath.Join(pwd, "testdata/c/f"),
-			filepath.Join(pwd, "testdata/c/g"),
-			filepath.Join(pwd, "testdata/c/h"),
+			filepath.Join(pwd, "testdata/glob/c"),
+			filepath.Join(pwd, "testdata/glob/c/f"),
+			filepath.Join(pwd, "testdata/glob/c/g"),
+			filepath.Join(pwd, "testdata/glob/c/h"),
 		},
 	},
 	{
-		pattern:  filepath.Join(pwd, "testdata/c/*/*.ext"),
-		excludes: []string{filepath.Join(pwd, "testdata/c/f/*.ext")},
+		pattern:  filepath.Join(pwd, "testdata/glob/c/*/*.ext"),
+		excludes: []string{filepath.Join(pwd, "testdata/glob/c/f/*.ext")},
 		matches: []string{
-			filepath.Join(pwd, "testdata/c/g/g.ext"),
+			filepath.Join(pwd, "testdata/glob/c/g/g.ext"),
 		},
 		deps: []string{
-			filepath.Join(pwd, "testdata/c"),
-			filepath.Join(pwd, "testdata/c/f"),
-			filepath.Join(pwd, "testdata/c/g"),
-			filepath.Join(pwd, "testdata/c/h"),
+			filepath.Join(pwd, "testdata/glob/c"),
+			filepath.Join(pwd, "testdata/glob/c/f"),
+			filepath.Join(pwd, "testdata/glob/c/g"),
+			filepath.Join(pwd, "testdata/glob/c/h"),
 		},
 	},
 
@@ -322,16 +322,16 @@ var globTestCases = []globTestCase{
 
 	// absoulte recursive exclude tests
 	{
-		pattern:  filepath.Join(pwd, "testdata/c/*/*.ext"),
-		excludes: []string{filepath.Join(pwd, "testdata/**/f.ext")},
+		pattern:  filepath.Join(pwd, "testdata/glob/c/*/*.ext"),
+		excludes: []string{filepath.Join(pwd, "testdata/glob/**/f.ext")},
 		matches: []string{
-			filepath.Join(pwd, "testdata/c/g/g.ext"),
+			filepath.Join(pwd, "testdata/glob/c/g/g.ext"),
 		},
 		deps: []string{
-			filepath.Join(pwd, "testdata/c"),
-			filepath.Join(pwd, "testdata/c/f"),
-			filepath.Join(pwd, "testdata/c/g"),
-			filepath.Join(pwd, "testdata/c/h"),
+			filepath.Join(pwd, "testdata/glob/c"),
+			filepath.Join(pwd, "testdata/glob/c/f"),
+			filepath.Join(pwd, "testdata/glob/c/g"),
+			filepath.Join(pwd, "testdata/glob/c/h"),
 		},
 	},
 
@@ -482,7 +482,7 @@ func TestMockGlob(t *testing.T) {
 
 	for _, f := range files {
 		mockFiles[f] = nil
-		mockFiles[filepath.Join(pwd, "testdata", f)] = nil
+		mockFiles[filepath.Join(pwd, "testdata/glob", f)] = nil
 	}
 
 	mock := MockFs(mockFiles)
@@ -495,8 +495,8 @@ func TestMockGlob(t *testing.T) {
 }
 
 func TestGlob(t *testing.T) {
-	os.Chdir("testdata")
-	defer os.Chdir("..")
+	os.Chdir("testdata/glob")
+	defer os.Chdir("../..")
 	for _, testCase := range globTestCases {
 		t.Run(testCase.pattern, func(t *testing.T) {
 			testGlob(t, OsFs, testCase)
@@ -527,7 +527,7 @@ var globEscapeTestCases = []globTestCase{
 	},
 }
 
-func TestGlobEscapes(t *testing.T) {
+func TestMockGlobEscapes(t *testing.T) {
 	files := []string{
 		`*`,
 		`**/*`,
@@ -554,7 +554,19 @@ func TestGlobEscapes(t *testing.T) {
 
 }
 
+func TestGlobEscapes(t *testing.T) {
+	os.Chdir("testdata/escapes")
+	defer os.Chdir("../..")
+	for _, testCase := range globEscapeTestCases {
+		t.Run(testCase.pattern, func(t *testing.T) {
+			testGlob(t, OsFs, testCase)
+		})
+	}
+
+}
+
 func testGlob(t *testing.T, fs FileSystem, testCase globTestCase) {
+	t.Helper()
 	matches, deps, err := fs.Glob(testCase.pattern, testCase.excludes)
 	if err != testCase.err {
 		if err == nil {
