@@ -29,6 +29,13 @@ import (
 
 // Based on Andrew Gerrand's "10 things you (probably) dont' know about Go"
 
+type ShouldFollowSymlinks bool
+
+const (
+	FollowSymlinks     = ShouldFollowSymlinks(true)
+	DontFollowSymlinks = ShouldFollowSymlinks(false)
+)
+
 var OsFs FileSystem = osFs{}
 
 func MockFs(files map[string][]byte) FileSystem {
@@ -78,7 +85,7 @@ type FileSystem interface {
 	// Exists returns whether the file exists and whether it is a directory.  Follows symlinks.
 	Exists(name string) (bool, bool, error)
 
-	Glob(pattern string, excludes []string) (matches, dirs []string, err error)
+	Glob(pattern string, excludes []string, follow ShouldFollowSymlinks) (matches, dirs []string, err error)
 	glob(pattern string) (matches []string, err error)
 
 	// IsDir returns true if the path points to a directory, false it it points to a file.  Follows symlinks.
@@ -92,8 +99,8 @@ type FileSystem interface {
 	// Lstat returns info on a file without following symlinks.
 	Lstat(name string) (os.FileInfo, error)
 
-	// ListDirsRecursive returns a list of all the directories in a path, following symlinks.
-	ListDirsRecursive(name string) (dirs []string, err error)
+	// ListDirsRecursive returns a list of all the directories in a path, following symlinks if requested.
+	ListDirsRecursive(name string, follow ShouldFollowSymlinks) (dirs []string, err error)
 
 	// ReadDirNames returns a list of everything in a directory.
 	ReadDirNames(name string) ([]string, error)
@@ -130,8 +137,8 @@ func (osFs) IsSymlink(name string) (bool, error) {
 	}
 }
 
-func (fs osFs) Glob(pattern string, excludes []string) (matches, dirs []string, err error) {
-	return startGlob(fs, pattern, excludes)
+func (fs osFs) Glob(pattern string, excludes []string, follow ShouldFollowSymlinks) (matches, dirs []string, err error) {
+	return startGlob(fs, pattern, excludes, follow)
 }
 
 func (osFs) glob(pattern string) ([]string, error) {
@@ -143,8 +150,8 @@ func (osFs) Lstat(path string) (stats os.FileInfo, err error) {
 }
 
 // Returns a list of all directories under dir
-func (osFs) ListDirsRecursive(name string) (dirs []string, err error) {
-	return listDirsRecursive(OsFs, name)
+func (osFs) ListDirsRecursive(name string, follow ShouldFollowSymlinks) (dirs []string, err error) {
+	return listDirsRecursive(OsFs, name, follow)
 }
 
 func (osFs) ReadDirNames(name string) ([]string, error) {
@@ -272,8 +279,8 @@ func (m *mockFs) IsSymlink(name string) (bool, error) {
 	return false, os.ErrNotExist
 }
 
-func (m *mockFs) Glob(pattern string, excludes []string) (matches, dirs []string, err error) {
-	return startGlob(m, pattern, excludes)
+func (m *mockFs) Glob(pattern string, excludes []string, follow ShouldFollowSymlinks) (matches, dirs []string, err error) {
+	return startGlob(m, pattern, excludes, follow)
 }
 
 func unescapeGlob(s string) string {
@@ -376,11 +383,11 @@ func (m *mockFs) ReadDirNames(name string) ([]string, error) {
 	return ret, nil
 }
 
-func (m *mockFs) ListDirsRecursive(name string) ([]string, error) {
-	return listDirsRecursive(m, name)
+func (m *mockFs) ListDirsRecursive(name string, follow ShouldFollowSymlinks) ([]string, error) {
+	return listDirsRecursive(m, name, follow)
 }
 
-func listDirsRecursive(fs FileSystem, name string) ([]string, error) {
+func listDirsRecursive(fs FileSystem, name string, follow ShouldFollowSymlinks) ([]string, error) {
 	name = filepath.Clean(name)
 
 	isDir, err := fs.IsDir(name)
@@ -394,7 +401,7 @@ func listDirsRecursive(fs FileSystem, name string) ([]string, error) {
 
 	dirs := []string{name}
 
-	subDirs, err := listDirsRecursiveRelative(fs, name, 0)
+	subDirs, err := listDirsRecursiveRelative(fs, name, follow, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -406,7 +413,7 @@ func listDirsRecursive(fs FileSystem, name string) ([]string, error) {
 	return dirs, nil
 }
 
-func listDirsRecursiveRelative(fs FileSystem, name string, depth int) ([]string, error) {
+func listDirsRecursiveRelative(fs FileSystem, name string, follow ShouldFollowSymlinks, depth int) ([]string, error) {
 	depth++
 	if depth > 255 {
 		return nil, fmt.Errorf("too many symlinks")
@@ -422,9 +429,12 @@ func listDirsRecursiveRelative(fs FileSystem, name string, depth int) ([]string,
 			continue
 		}
 		f = filepath.Join(name, f)
+		if isSymlink, _ := fs.IsSymlink(f); isSymlink && follow == DontFollowSymlinks {
+			continue
+		}
 		if isDir, _ := fs.IsDir(f); isDir {
 			dirs = append(dirs, f)
-			subDirs, err := listDirsRecursiveRelative(fs, f, depth)
+			subDirs, err := listDirsRecursiveRelative(fs, f, follow, depth)
 			if err != nil {
 				return nil, err
 			}

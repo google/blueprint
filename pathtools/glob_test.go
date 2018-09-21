@@ -489,7 +489,7 @@ func TestMockGlob(t *testing.T) {
 
 	for _, testCase := range globTestCases {
 		t.Run(testCase.pattern, func(t *testing.T) {
-			testGlob(t, mock, testCase)
+			testGlob(t, mock, testCase, FollowSymlinks)
 		})
 	}
 }
@@ -499,7 +499,7 @@ func TestGlob(t *testing.T) {
 	defer os.Chdir("../..")
 	for _, testCase := range globTestCases {
 		t.Run(testCase.pattern, func(t *testing.T) {
-			testGlob(t, OsFs, testCase)
+			testGlob(t, OsFs, testCase, FollowSymlinks)
 		})
 	}
 }
@@ -548,7 +548,7 @@ func TestMockGlobEscapes(t *testing.T) {
 
 	for _, testCase := range globEscapeTestCases {
 		t.Run(testCase.pattern, func(t *testing.T) {
-			testGlob(t, mock, testCase)
+			testGlob(t, mock, testCase, FollowSymlinks)
 		})
 	}
 
@@ -559,7 +559,7 @@ func TestGlobEscapes(t *testing.T) {
 	defer os.Chdir("../..")
 	for _, testCase := range globEscapeTestCases {
 		t.Run(testCase.pattern, func(t *testing.T) {
-			testGlob(t, OsFs, testCase)
+			testGlob(t, OsFs, testCase, FollowSymlinks)
 		})
 	}
 
@@ -570,6 +570,11 @@ var globSymlinkTestCases = []globTestCase{
 		pattern: `**/*`,
 		matches: []string{"a/", "b/", "c/", "d/", "e", "a/a/", "a/a/a", "b/a/", "b/a/a", "c/a", "d/a"},
 		deps:    []string{".", "a", "a/a", "b", "b/a", "c", "d"},
+	},
+	{
+		pattern: `b/**/*`,
+		matches: []string{"b/a/", "b/a/a"},
+		deps:    []string{"b", "b/a"},
 	},
 }
 
@@ -592,7 +597,7 @@ func TestMockGlobSymlinks(t *testing.T) {
 
 	for _, testCase := range globSymlinkTestCases {
 		t.Run(testCase.pattern, func(t *testing.T) {
-			testGlob(t, mock, testCase)
+			testGlob(t, mock, testCase, FollowSymlinks)
 		})
 	}
 }
@@ -603,14 +608,113 @@ func TestGlobSymlinks(t *testing.T) {
 
 	for _, testCase := range globSymlinkTestCases {
 		t.Run(testCase.pattern, func(t *testing.T) {
-			testGlob(t, OsFs, testCase)
+			testGlob(t, OsFs, testCase, FollowSymlinks)
 		})
 	}
 }
 
-func testGlob(t *testing.T, fs FileSystem, testCase globTestCase) {
+var globDontFollowSymlinkTestCases = []globTestCase{
+	{
+		pattern: `**/*`,
+		matches: []string{"a/", "b", "c", "d", "e", "a/a/", "a/a/a"},
+		deps:    []string{".", "a", "a/a"},
+	},
+	{
+		pattern: `b/**/*`,
+		matches: []string{"b/a/", "b/a/a"},
+		deps:    []string{"b", "b/a"},
+	},
+}
+
+func TestMockGlobDontFollowSymlinks(t *testing.T) {
+	files := []string{
+		"a/a/a",
+		"b -> a",
+		"c -> a/a",
+		"d -> c",
+		"e -> a/a/a",
+	}
+
+	mockFiles := make(map[string][]byte)
+
+	for _, f := range files {
+		mockFiles[f] = nil
+	}
+
+	mock := MockFs(mockFiles)
+
+	for _, testCase := range globDontFollowSymlinkTestCases {
+		t.Run(testCase.pattern, func(t *testing.T) {
+			testGlob(t, mock, testCase, DontFollowSymlinks)
+		})
+	}
+}
+
+func TestGlobDontFollowSymlinks(t *testing.T) {
+	os.Chdir("testdata/symlinks")
+	defer os.Chdir("../..")
+
+	for _, testCase := range globDontFollowSymlinkTestCases {
+		t.Run(testCase.pattern, func(t *testing.T) {
+			testGlob(t, OsFs, testCase, DontFollowSymlinks)
+		})
+	}
+}
+
+var globDontFollowDanglingSymlinkTestCases = []globTestCase{
+	{
+		pattern: `**/*`,
+		matches: []string{"a/", "b", "c", "d", "dangling", "e", "f", "a/a/", "a/a/a", "a/a/f"},
+		deps:    []string{".", "a", "a/a"},
+	},
+	{
+		pattern: `dangling`,
+		matches: []string{"dangling"},
+		deps:    []string{"dangling"},
+	},
+}
+
+func TestMockGlobDontFollowDanglingSymlinks(t *testing.T) {
+	files := []string{
+		"a/a/a",
+		"a/a/f -> ../../f",
+		"b -> a",
+		"c -> a/a",
+		"d -> c",
+		"e -> a/a/a",
+		"f",
+		"dangling -> missing",
+	}
+
+	mockFiles := make(map[string][]byte)
+
+	for _, f := range files {
+		mockFiles[f] = nil
+	}
+
+	mock := MockFs(mockFiles)
+
+	for _, testCase := range globDontFollowDanglingSymlinkTestCases {
+		t.Run(testCase.pattern, func(t *testing.T) {
+			testGlob(t, mock, testCase, DontFollowSymlinks)
+		})
+	}
+}
+
+func TestGlobDontFollowDanglingSymlinks(t *testing.T) {
+	os.Chdir("testdata/dangling")
+	defer os.Chdir("../..")
+
+	for _, testCase := range globDontFollowDanglingSymlinkTestCases {
+		t.Run(testCase.pattern, func(t *testing.T) {
+			testGlob(t, OsFs, testCase, DontFollowSymlinks)
+		})
+	}
+}
+
+func testGlob(t *testing.T, fs FileSystem, testCase globTestCase, follow ShouldFollowSymlinks) {
 	t.Helper()
-	matches, deps, err := fs.Glob(testCase.pattern, testCase.excludes)
+	matches, deps, err := fs.Glob(testCase.pattern, testCase.excludes, follow)
 	if err != testCase.err {
 		if err == nil {
 			t.Fatalf("missing error: %s", testCase.err)
