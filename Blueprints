@@ -67,6 +67,7 @@ bootstrap_go_package {
         "pathtools/glob.go",
     ],
     testSrcs: [
+        "pathtools/fs_test.go",
         "pathtools/glob_test.go",
     ],
 }

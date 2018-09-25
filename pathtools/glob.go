@@ -39,15 +39,17 @@ var GlobLastRecursiveErr = errors.New("pattern ** as last path element")
 // In general ModuleContext.GlobWithDeps or SingletonContext.GlobWithDeps
 // should be used instead, as they will automatically set up dependencies
 // to rerun the primary builder when the list of matching files changes.
-func Glob(pattern string, excludes []string) (matches, deps []string, err error) {
-	return startGlob(OsFs, pattern, excludes)
+func Glob(pattern string, excludes []string, follow ShouldFollowSymlinks) (matches, deps []string, err error) {
+	return startGlob(OsFs, pattern, excludes, follow)
 }
 
-func startGlob(fs FileSystem, pattern string, excludes []string) (matches, deps []string, err error) {
+func startGlob(fs FileSystem, pattern string, excludes []string,
+	follow ShouldFollowSymlinks) (matches, deps []string, err error) {
+
 	if filepath.Base(pattern) == "**" {
 		return nil, nil, GlobLastRecursiveErr
 	} else {
-		matches, deps, err = glob(fs, pattern, false)
+		matches, deps, err = glob(fs, pattern, false, follow)
 	}
 
 	if err != nil {
@@ -73,10 +75,24 @@ func startGlob(fs FileSystem, pattern string, excludes []string) (matches, deps 
 	}
 
 	for i, match := range matches {
-		if isDir, err := fs.IsDir(match); err != nil {
-			return nil, nil, fmt.Errorf("IsDir(%s): %s", match, err.Error())
-		} else if isDir {
-			matches[i] = match + "/"
+		isSymlink, err := fs.IsSymlink(match)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !(isSymlink && follow == DontFollowSymlinks) {
+			isDir, err := fs.IsDir(match)
+			if os.IsNotExist(err) {
+				if isSymlink {
+					return nil, nil, fmt.Errorf("%s: dangling symlink", match)
+				}
+			}
+			if err != nil {
+				return nil, nil, fmt.Errorf("%s: %s", match, err.Error())
+			}
+
+			if isDir {
+				matches[i] = match + "/"
+			}
 		}
 	}
 
@@ -85,7 +101,9 @@ func startGlob(fs FileSystem, pattern string, excludes []string) (matches, deps 
 
 // glob is a recursive helper function to handle globbing each level of the pattern individually,
 // allowing searched directories to be tracked.  Also handles the recursive glob pattern, **.
-func glob(fs FileSystem, pattern string, hasRecursive bool) (matches, dirs []string, err error) {
+func glob(fs FileSystem, pattern string, hasRecursive bool,
+	follow ShouldFollowSymlinks) (matches, dirs []string, err error) {
+
 	if !isWild(pattern) {
 		// If there are no wilds in the pattern, check whether the file exists or not.
 		// Uses filepath.Glob instead of manually statting to get consistent results.
@@ -120,17 +138,25 @@ func glob(fs FileSystem, pattern string, hasRecursive bool) (matches, dirs []str
 		hasRecursive = true
 	}
 
-	dirMatches, dirs, err := glob(fs, dir, hasRecursive)
+	dirMatches, dirs, err := glob(fs, dir, hasRecursive, follow)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	for _, m := range dirMatches {
-		if isDir, err := fs.IsDir(m); err != nil {
+		isDir, err := fs.IsDir(m)
+		if os.IsNotExist(err) {
+			if isSymlink, _ := fs.IsSymlink(m); isSymlink {
+				return nil, nil, fmt.Errorf("dangling symlink: %s", m)
+			}
+		}
+		if err != nil {
 			return nil, nil, fmt.Errorf("unexpected error after glob: %s", err)
-		} else if isDir {
+		}
+
+		if isDir {
 			if file == "**" {
-				recurseDirs, err := fs.ListDirsRecursive(m)
+				recurseDirs, err := fs.ListDirsRecursive(m, follow)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -317,7 +343,7 @@ func GlobPatternList(patterns []string, prefix string) (globedList []string, dep
 
 	for _, pattern := range patterns {
 		if isWild(pattern) {
-			matches, deps, err = Glob(filepath.Join(prefix, pattern), nil)
+			matches, deps, err = Glob(filepath.Join(prefix, pattern), nil, FollowSymlinks)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -361,7 +387,7 @@ func HasGlob(in []string) bool {
 // should be used instead, as they will automatically set up dependencies
 // to rerun the primary builder when the list of matching files changes.
 func GlobWithDepFile(glob, fileListFile, depFile string, excludes []string) (files []string, err error) {
-	files, deps, err := Glob(glob, excludes)
+	files, deps, err := Glob(glob, excludes, FollowSymlinks)
 	if err != nil {
 		return nil, err
 	}
