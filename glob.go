@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/google/blueprint/pathtools"
 )
 
 type GlobPath struct {
@@ -59,7 +61,7 @@ func (c *Context) glob(pattern string, excludes []string) ([]string, error) {
 	}
 
 	// Get a globbed file list
-	files, deps, err := c.fs.Glob(pattern, excludes)
+	files, deps, err := c.fs.Glob(pattern, excludes, pathtools.FollowSymlinks)
 	if err != nil {
 		return nil, err
 	}
