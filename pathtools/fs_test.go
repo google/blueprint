@@ -135,17 +135,17 @@ func TestFs_IsDir(t *testing.T) {
 		{"b/missing", false, os.ErrNotExist},
 		{"c/missing", false, os.ErrNotExist},
 		{"d/missing", false, os.ErrNotExist},
-		{"e/missing", false, os.NewSyscallError("stat e/missing", syscall.ENOTDIR)},
+		{"e/missing", false, syscall.ENOTDIR},
 		{"dangling/missing", false, os.ErrNotExist},
 
 		{"a/missing/missing", false, os.ErrNotExist},
 		{"b/missing/missing", false, os.ErrNotExist},
 		{"c/missing/missing", false, os.ErrNotExist},
 		{"d/missing/missing", false, os.ErrNotExist},
-		{"e/missing/missing", false, os.NewSyscallError("stat e/missing/missing", syscall.ENOTDIR)},
+		{"e/missing/missing", false, syscall.ENOTDIR},
 		{"dangling/missing/missing", false, os.ErrNotExist},
 
-		{"c/f/missing", false, os.NewSyscallError("stat c/f/missing", syscall.ENOTDIR)},
+		{"c/f/missing", false, syscall.ENOTDIR},
 	}
 
 	mock := symlinkMockFs()
@@ -336,16 +336,29 @@ func TestMockFs_glob(t *testing.T) {
 	}
 }
 
+func syscallError(err error) error {
+	if serr, ok := err.(*os.SyscallError); ok {
+		return serr.Err.(syscall.Errno)
+	} else if serr, ok := err.(syscall.Errno); ok {
+		return serr
+	} else {
+		return nil
+	}
+}
+
 func checkErr(t *testing.T, want, got error) {
 	t.Helper()
-	if os.IsNotExist(want) {
-		if os.IsNotExist(got) != os.IsNotExist(want) {
-			t.Errorf("want: IsNotExist(err) = %v, got IsNotExist(%v) = %v",
-				os.IsNotExist(want), got, os.IsNotExist(got))
-		}
-	} else if (got != nil) != (want != nil) {
-		t.Errorf("want: %v, got %v", want, got)
-	} else if got != nil && got.Error() != want.Error() {
-		t.Errorf("want: %v, got %v", want, got)
+	if (got != nil) != (want != nil) {
+		t.Fatalf("want: %v, got %v", want, got)
 	}
+
+	if os.IsNotExist(got) == os.IsNotExist(want) {
+		return
+	}
+
+	if syscallError(got) == syscallError(want) {
+		return
+	}
+
+	t.Fatalf("want: %v, got %v", want, got)
 }
