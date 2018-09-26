@@ -66,7 +66,7 @@ func TestMockFs_followSymlinks(t *testing.T) {
 		{"c/f", "f"},
 
 		{"d/a", "a/a/a"},
-		{"c/f", "f"},
+		{"d/f", "f"},
 
 		{"e", "a/a/a"},
 
