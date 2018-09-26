@@ -78,9 +78,16 @@ func MockFs(files map[string][]byte) FileSystem {
 	return fs
 }
 
+type ReaderAtSeekerCloser interface {
+	io.Reader
+	io.ReaderAt
+	io.Seeker
+	io.Closer
+}
+
 type FileSystem interface {
 	// Open opens a file for reading.  Follows symlinks.
-	Open(name string) (io.ReadCloser, error)
+	Open(name string) (ReaderAtSeekerCloser, error)
 
 	// Exists returns whether the file exists and whether it is a directory.  Follows symlinks.
 	Exists(name string) (bool, bool, error)
@@ -109,7 +116,7 @@ type FileSystem interface {
 // osFs implements FileSystem using the local disk.
 type osFs struct{}
 
-func (osFs) Open(name string) (io.ReadCloser, error) { return os.Open(name) }
+func (osFs) Open(name string) (ReaderAtSeekerCloser, error) { return os.Open(name) }
 func (osFs) Exists(name string) (bool, bool, error) {
 	stat, err := os.Stat(name)
 	if err == nil {
@@ -202,7 +209,7 @@ func (m *mockFs) followSymlinks(name string) string {
 	return name
 }
 
-func (m *mockFs) Open(name string) (io.ReadCloser, error) {
+func (m *mockFs) Open(name string) (ReaderAtSeekerCloser, error) {
 	name = filepath.Clean(name)
 	name = m.followSymlinks(name)
 	if f, ok := m.files[name]; ok {
