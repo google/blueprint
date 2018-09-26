@@ -16,7 +16,6 @@ package pathtools
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -24,20 +23,35 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
+	"time"
 )
 
 // Based on Andrew Gerrand's "10 things you (probably) dont' know about Go"
+
+type ShouldFollowSymlinks bool
+
+const (
+	FollowSymlinks     = ShouldFollowSymlinks(true)
+	DontFollowSymlinks = ShouldFollowSymlinks(false)
+)
 
 var OsFs FileSystem = osFs{}
 
 func MockFs(files map[string][]byte) FileSystem {
 	fs := &mockFs{
-		files: make(map[string][]byte, len(files)),
-		dirs:  make(map[string]bool),
-		all:   []string(nil),
+		files:    make(map[string][]byte, len(files)),
+		dirs:     make(map[string]bool),
+		symlinks: make(map[string]string),
+		all:      []string(nil),
 	}
 
 	for f, b := range files {
+		if tokens := strings.SplitN(f, "->", 2); len(tokens) == 2 {
+			fs.symlinks[strings.TrimSpace(tokens[0])] = strings.TrimSpace(tokens[1])
+			continue
+		}
+
 		fs.files[filepath.Clean(f)] = b
 		dir := filepath.Dir(f)
 		for dir != "." && dir != "/" {
@@ -55,19 +69,41 @@ func MockFs(files map[string][]byte) FileSystem {
 		fs.all = append(fs.all, d)
 	}
 
+	for s := range fs.symlinks {
+		fs.all = append(fs.all, s)
+	}
+
 	sort.Strings(fs.all)
 
 	return fs
 }
 
 type FileSystem interface {
+	// Open opens a file for reading.  Follows symlinks.
 	Open(name string) (io.ReadCloser, error)
+
+	// Exists returns whether the file exists and whether it is a directory.  Follows symlinks.
 	Exists(name string) (bool, bool, error)
-	Glob(pattern string, excludes []string) (matches, dirs []string, err error)
+
+	Glob(pattern string, excludes []string, follow ShouldFollowSymlinks) (matches, dirs []string, err error)
 	glob(pattern string) (matches []string, err error)
+
+	// IsDir returns true if the path points to a directory, false it it points to a file.  Follows symlinks.
+	// Returns os.ErrNotExist if the path does not exist or is a symlink to a path that does not exist.
 	IsDir(name string) (bool, error)
+
+	// IsSymlink returns true if the path points to a symlink, even if that symlink points to a path that does
+	// not exist.  Returns os.ErrNotExist if the path does not exist.
+	IsSymlink(name string) (bool, error)
+
+	// Lstat returns info on a file without following symlinks.
 	Lstat(name string) (os.FileInfo, error)
-	ListDirsRecursive(name string) (dirs []string, err error)
+
+	// ListDirsRecursive returns a list of all the directories in a path, following symlinks if requested.
+	ListDirsRecursive(name string, follow ShouldFollowSymlinks) (dirs []string, err error)
+
+	// ReadDirNames returns a list of everything in a directory.
+	ReadDirNames(name string) ([]string, error)
 }
 
 // osFs implements FileSystem using the local disk.
@@ -88,13 +124,21 @@ func (osFs) Exists(name string) (bool, bool, error) {
 func (osFs) IsDir(name string) (bool, error) {
 	info, err := os.Stat(name)
 	if err != nil {
-		return false, fmt.Errorf("unexpected error after glob: %s", err)
+		return false, err
 	}
 	return info.IsDir(), nil
 }
 
-func (fs osFs) Glob(pattern string, excludes []string) (matches, dirs []string, err error) {
-	return startGlob(fs, pattern, excludes)
+func (osFs) IsSymlink(name string) (bool, error) {
+	if info, err := os.Lstat(name); err != nil {
+		return false, err
+	} else {
+		return info.Mode()&os.ModeSymlink != 0, nil
+	}
+}
+
+func (fs osFs) Glob(pattern string, excludes []string, follow ShouldFollowSymlinks) (matches, dirs []string, err error) {
+	return startGlob(fs, pattern, excludes, follow)
 }
 
 func (osFs) glob(pattern string) ([]string, error) {
@@ -106,33 +150,61 @@ func (osFs) Lstat(path string) (stats os.FileInfo, err error) {
 }
 
 // Returns a list of all directories under dir
-func (osFs) ListDirsRecursive(name string) (dirs []string, err error) {
-	err = filepath.Walk(name, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
+func (osFs) ListDirsRecursive(name string, follow ShouldFollowSymlinks) (dirs []string, err error) {
+	return listDirsRecursive(OsFs, name, follow)
+}
 
-		if info.Mode().IsDir() {
-			name := info.Name()
-			if name[0] == '.' && name != "." {
-				return filepath.SkipDir
-			}
+func (osFs) ReadDirNames(name string) ([]string, error) {
+	dir, err := os.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer dir.Close()
 
-			dirs = append(dirs, path)
-		}
-		return nil
-	})
+	contents, err := dir.Readdirnames(-1)
+	if err != nil {
+		return nil, err
+	}
 
-	return dirs, err
+	sort.Strings(contents)
+	return contents, nil
 }
 
 type mockFs struct {
-	files map[string][]byte
-	dirs  map[string]bool
-	all   []string
+	files    map[string][]byte
+	dirs     map[string]bool
+	symlinks map[string]string
+	all      []string
+}
+
+func (m *mockFs) followSymlinks(name string) string {
+	dir, file := saneSplit(name)
+	if dir != "." && dir != "/" {
+		dir = m.followSymlinks(dir)
+	}
+	name = filepath.Join(dir, file)
+
+	for i := 0; i < 255; i++ {
+		i++
+		if i > 255 {
+			panic("symlink loop")
+		}
+		to, exists := m.symlinks[name]
+		if !exists {
+			break
+		}
+		if filepath.IsAbs(to) {
+			name = to
+		} else {
+			name = filepath.Join(dir, to)
+		}
+	}
+	return name
 }
 
 func (m *mockFs) Open(name string) (io.ReadCloser, error) {
+	name = filepath.Clean(name)
+	name = m.followSymlinks(name)
 	if f, ok := m.files[name]; ok {
 		return struct {
 			io.Closer
@@ -152,6 +224,7 @@ func (m *mockFs) Open(name string) (io.ReadCloser, error) {
 
 func (m *mockFs) Exists(name string) (bool, bool, error) {
 	name = filepath.Clean(name)
+	name = m.followSymlinks(name)
 	if _, ok := m.files[name]; ok {
 		return ok, false, nil
 	}
@@ -162,50 +235,221 @@ func (m *mockFs) Exists(name string) (bool, bool, error) {
 }
 
 func (m *mockFs) IsDir(name string) (bool, error) {
-	return m.dirs[filepath.Clean(name)], nil
+	dir := filepath.Dir(name)
+	if dir != "." && dir != "/" {
+		isDir, err := m.IsDir(dir)
+
+		if serr, ok := err.(*os.SyscallError); ok && serr.Err == syscall.ENOTDIR {
+			isDir = false
+		} else if err != nil {
+			return false, err
+		}
+
+		if !isDir {
+			return false, os.NewSyscallError("stat "+name, syscall.ENOTDIR)
+		}
+	}
+
+	name = filepath.Clean(name)
+	name = m.followSymlinks(name)
+
+	if _, ok := m.dirs[name]; ok {
+		return true, nil
+	}
+	if _, ok := m.files[name]; ok {
+		return false, nil
+	}
+	return false, os.ErrNotExist
 }
 
-func (m *mockFs) Glob(pattern string, excludes []string) (matches, dirs []string, err error) {
-	return startGlob(m, pattern, excludes)
+func (m *mockFs) IsSymlink(name string) (bool, error) {
+	dir, file := saneSplit(name)
+	dir = m.followSymlinks(dir)
+	name = filepath.Join(dir, file)
+
+	if _, isSymlink := m.symlinks[name]; isSymlink {
+		return true, nil
+	}
+	if _, isDir := m.dirs[name]; isDir {
+		return false, nil
+	}
+	if _, isFile := m.files[name]; isFile {
+		return false, nil
+	}
+	return false, os.ErrNotExist
+}
+
+func (m *mockFs) Glob(pattern string, excludes []string, follow ShouldFollowSymlinks) (matches, dirs []string, err error) {
+	return startGlob(m, pattern, excludes, follow)
+}
+
+func unescapeGlob(s string) string {
+	i := 0
+	for i < len(s) {
+		if s[i] == '\\' {
+			s = s[:i] + s[i+1:]
+		} else {
+			i++
+		}
+	}
+	return s
 }
 
 func (m *mockFs) glob(pattern string) ([]string, error) {
+	dir, file := saneSplit(pattern)
+
+	dir = unescapeGlob(dir)
+	toDir := m.followSymlinks(dir)
+
 	var matches []string
 	for _, f := range m.all {
-		match, err := filepath.Match(pattern, f)
-		if err != nil {
-			return nil, err
-		}
-		if f == "." && f != pattern {
-			// filepath.Glob won't return "." unless the pattern was "."
-			match = false
-		}
-		if match {
-			matches = append(matches, f)
+		fDir, fFile := saneSplit(f)
+		if toDir == fDir {
+			match, err := filepath.Match(file, fFile)
+			if err != nil {
+				return nil, err
+			}
+			if f == "." && f != pattern {
+				// filepath.Glob won't return "." unless the pattern was "."
+				match = false
+			}
+			if match {
+				matches = append(matches, filepath.Join(dir, fFile))
+			}
 		}
 	}
 	return matches, nil
 }
 
-func (m *mockFs) Lstat(path string) (stats os.FileInfo, err error) {
-	return nil, errors.New("Lstat is not yet implemented in MockFs")
+type mockStat struct {
+	name string
+	size int64
+	mode os.FileMode
 }
 
-func (m *mockFs) ListDirsRecursive(name string) (dirs []string, err error) {
+func (ms *mockStat) Name() string       { return ms.name }
+func (ms *mockStat) IsDir() bool        { return ms.Mode().IsDir() }
+func (ms *mockStat) Size() int64        { return ms.size }
+func (ms *mockStat) Mode() os.FileMode  { return ms.mode }
+func (ms *mockStat) ModTime() time.Time { return time.Time{} }
+func (ms *mockStat) Sys() interface{}   { return nil }
+
+func (m *mockFs) Lstat(name string) (os.FileInfo, error) {
 	name = filepath.Clean(name)
-	dirs = append(dirs, name)
-	if name == "." {
-		name = ""
-	} else if name != "/" {
-		name = name + "/"
+
+	ms := mockStat{
+		name: name,
+		size: int64(len(m.files[name])),
 	}
+
+	if isSymlink, err := m.IsSymlink(name); err != nil {
+		// IsSymlink handles ErrNotExist
+		return nil, err
+	} else if isSymlink {
+		ms.mode = os.ModeSymlink
+	} else if isDir, err := m.IsDir(name); err != nil {
+		return nil, err
+	} else if isDir {
+		ms.mode = os.ModeDir
+	} else {
+		ms.mode = 0
+	}
+
+	return &ms, nil
+}
+
+func (m *mockFs) ReadDirNames(name string) ([]string, error) {
+	name = filepath.Clean(name)
+	name = m.followSymlinks(name)
+
+	exists, isDir, err := m.Exists(name)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, os.ErrNotExist
+	}
+	if !isDir {
+		return nil, os.NewSyscallError("readdir", syscall.ENOTDIR)
+	}
+
+	var ret []string
 	for _, f := range m.all {
-		if _, isDir := m.dirs[f]; isDir && filepath.Base(f)[0] != '.' {
-			if strings.HasPrefix(f, name) &&
-				strings.HasPrefix(f, "/") == strings.HasPrefix(name, "/") {
-				dirs = append(dirs, f)
+		dir, file := saneSplit(f)
+		if dir == name && len(file) > 0 && file[0] != '.' {
+			ret = append(ret, file)
+		}
+	}
+	return ret, nil
+}
+
+func (m *mockFs) ListDirsRecursive(name string, follow ShouldFollowSymlinks) ([]string, error) {
+	return listDirsRecursive(m, name, follow)
+}
+
+func listDirsRecursive(fs FileSystem, name string, follow ShouldFollowSymlinks) ([]string, error) {
+	name = filepath.Clean(name)
+
+	isDir, err := fs.IsDir(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if !isDir {
+		return nil, nil
+	}
+
+	dirs := []string{name}
+
+	subDirs, err := listDirsRecursiveRelative(fs, name, follow, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, d := range subDirs {
+		dirs = append(dirs, filepath.Join(name, d))
+	}
+
+	return dirs, nil
+}
+
+func listDirsRecursiveRelative(fs FileSystem, name string, follow ShouldFollowSymlinks, depth int) ([]string, error) {
+	depth++
+	if depth > 255 {
+		return nil, fmt.Errorf("too many symlinks")
+	}
+	contents, err := fs.ReadDirNames(name)
+	if err != nil {
+		return nil, err
+	}
+
+	var dirs []string
+	for _, f := range contents {
+		if f[0] == '.' {
+			continue
+		}
+		f = filepath.Join(name, f)
+		if isSymlink, _ := fs.IsSymlink(f); isSymlink && follow == DontFollowSymlinks {
+			continue
+		}
+		if isDir, _ := fs.IsDir(f); isDir {
+			dirs = append(dirs, f)
+			subDirs, err := listDirsRecursiveRelative(fs, f, follow, depth)
+			if err != nil {
+				return nil, err
+			}
+			for _, s := range subDirs {
+				dirs = append(dirs, filepath.Join(f, s))
 			}
 		}
+	}
+
+	for i, d := range dirs {
+		rel, err := filepath.Rel(name, d)
+		if err != nil {
+			return nil, err
+		}
+		dirs[i] = rel
 	}
 
 	return dirs, nil
