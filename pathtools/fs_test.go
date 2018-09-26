@@ -274,6 +274,75 @@ func TestFs_ListDirsRecursiveDontFollowSymlinks(t *testing.T) {
 	}
 }
 
+func TestFs_Readlink(t *testing.T) {
+	testCases := []struct {
+		from, to string
+		err      error
+	}{
+		{".", "", syscall.EINVAL},
+		{"/", "", syscall.EINVAL},
+
+		{"a", "", syscall.EINVAL},
+		{"a/a", "", syscall.EINVAL},
+		{"a/a/a", "", syscall.EINVAL},
+		{"a/a/f", "../../f", nil},
+
+		{"b", "a", nil},
+		{"b/a", "", syscall.EINVAL},
+		{"b/a/a", "", syscall.EINVAL},
+		{"b/a/f", "../../f", nil},
+
+		{"c", "a/a", nil},
+		{"c/a", "", syscall.EINVAL},
+		{"c/f", "../../f", nil},
+
+		{"d/a", "", syscall.EINVAL},
+		{"d/f", "../../f", nil},
+
+		{"e", "a/a/a", nil},
+
+		{"f", "", syscall.EINVAL},
+
+		{"dangling", "missing", nil},
+
+		{"a/missing", "", os.ErrNotExist},
+		{"b/missing", "", os.ErrNotExist},
+		{"c/missing", "", os.ErrNotExist},
+		{"d/missing", "", os.ErrNotExist},
+		{"e/missing", "", os.ErrNotExist},
+		{"dangling/missing", "", os.ErrNotExist},
+
+		{"a/missing/missing", "", os.ErrNotExist},
+		{"b/missing/missing", "", os.ErrNotExist},
+		{"c/missing/missing", "", os.ErrNotExist},
+		{"d/missing/missing", "", os.ErrNotExist},
+		{"e/missing/missing", "", os.ErrNotExist},
+		{"dangling/missing/missing", "", os.ErrNotExist},
+	}
+
+	mock := symlinkMockFs()
+	fsList := []FileSystem{mock, OsFs}
+	names := []string{"mock", "os"}
+
+	os.Chdir("testdata/dangling")
+	defer os.Chdir("../..")
+
+	for i, fs := range fsList {
+		t.Run(names[i], func(t *testing.T) {
+
+			for _, test := range testCases {
+				t.Run(test.from, func(t *testing.T) {
+					got, err := fs.Readlink(test.from)
+					checkErr(t, test.err, err)
+					if got != test.to {
+						t.Errorf("fs.Readlink(%q) want: %q, got %q", test.from, test.to, got)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestMockFs_glob(t *testing.T) {
 	testCases := []struct {
 		pattern string

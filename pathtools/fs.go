@@ -111,6 +111,9 @@ type FileSystem interface {
 
 	// ReadDirNames returns a list of everything in a directory.
 	ReadDirNames(name string) ([]string, error)
+
+	// Readlink returns the destination of the named symbolic link.
+	Readlink(name string) (string, error)
 }
 
 // osFs implements FileSystem using the local disk.
@@ -175,6 +178,10 @@ func (osFs) ReadDirNames(name string) ([]string, error) {
 
 	sort.Strings(contents)
 	return contents, nil
+}
+
+func (osFs) Readlink(name string) (string, error) {
+	return os.Readlink(name)
 }
 
 type mockFs struct {
@@ -392,6 +399,26 @@ func (m *mockFs) ReadDirNames(name string) ([]string, error) {
 
 func (m *mockFs) ListDirsRecursive(name string, follow ShouldFollowSymlinks) ([]string, error) {
 	return listDirsRecursive(m, name, follow)
+}
+
+func (m *mockFs) Readlink(name string) (string, error) {
+	dir, file := saneSplit(name)
+	dir = m.followSymlinks(dir)
+
+	origName := name
+	name = filepath.Join(dir, file)
+
+	if dest, isSymlink := m.symlinks[name]; isSymlink {
+		return dest, nil
+	}
+
+	if exists, _, err := m.Exists(name); err != nil {
+		return "", err
+	} else if !exists {
+		return "", os.ErrNotExist
+	} else {
+		return "", os.NewSyscallError("readlink: "+origName, syscall.EINVAL)
+	}
 }
 
 func listDirsRecursive(fs FileSystem, name string, follow ShouldFollowSymlinks) ([]string, error) {
