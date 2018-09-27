@@ -343,6 +343,84 @@ func TestFs_Readlink(t *testing.T) {
 	}
 }
 
+func TestFs_Lstat(t *testing.T) {
+	testCases := []struct {
+		name string
+		mode os.FileMode
+		size int64
+		err  error
+	}{
+		{".", os.ModeDir, 0, nil},
+		{"/", os.ModeDir, 0, nil},
+
+		{"a", os.ModeDir, 0, nil},
+		{"a/a", os.ModeDir, 0, nil},
+		{"a/a/a", 0, 0, nil},
+		{"a/a/f", os.ModeSymlink, 7, nil},
+
+		{"b", os.ModeSymlink, 1, nil},
+		{"b/a", os.ModeDir, 0, nil},
+		{"b/a/a", 0, 0, nil},
+		{"b/a/f", os.ModeSymlink, 7, nil},
+
+		{"c", os.ModeSymlink, 3, nil},
+		{"c/a", 0, 0, nil},
+		{"c/f", os.ModeSymlink, 7, nil},
+
+		{"d/a", 0, 0, nil},
+		{"d/f", os.ModeSymlink, 7, nil},
+
+		{"e", os.ModeSymlink, 5, nil},
+
+		{"f", 0, 0, nil},
+
+		{"dangling", os.ModeSymlink, 7, nil},
+
+		{"a/missing", 0, 0, os.ErrNotExist},
+		{"b/missing", 0, 0, os.ErrNotExist},
+		{"c/missing", 0, 0, os.ErrNotExist},
+		{"d/missing", 0, 0, os.ErrNotExist},
+		{"e/missing", 0, 0, os.ErrNotExist},
+		{"dangling/missing", 0, 0, os.ErrNotExist},
+
+		{"a/missing/missing", 0, 0, os.ErrNotExist},
+		{"b/missing/missing", 0, 0, os.ErrNotExist},
+		{"c/missing/missing", 0, 0, os.ErrNotExist},
+		{"d/missing/missing", 0, 0, os.ErrNotExist},
+		{"e/missing/missing", 0, 0, os.ErrNotExist},
+		{"dangling/missing/missing", 0, 0, os.ErrNotExist},
+	}
+
+	mock := symlinkMockFs()
+	fsList := []FileSystem{mock, OsFs}
+	names := []string{"mock", "os"}
+
+	os.Chdir("testdata/dangling")
+	defer os.Chdir("../..")
+
+	for i, fs := range fsList {
+		t.Run(names[i], func(t *testing.T) {
+
+			for _, test := range testCases {
+				t.Run(test.name, func(t *testing.T) {
+					got, err := fs.Lstat(test.name)
+					checkErr(t, test.err, err)
+					if err != nil {
+						return
+					}
+					if got.Mode()&os.ModeType != test.mode {
+						t.Errorf("fs.Readlink(%q).Mode()&os.ModeType want: %x, got %x",
+							test.name, test.mode, got.Mode()&os.ModeType)
+					}
+					if test.mode == 0 && got.Size() != test.size {
+						t.Errorf("fs.Readlink(%q).Size() want: %d, got %d", test.name, test.size, got.Size())
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestMockFs_glob(t *testing.T) {
 	testCases := []struct {
 		pattern string
