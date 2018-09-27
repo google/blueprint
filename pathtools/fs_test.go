@@ -409,11 +409,89 @@ func TestFs_Lstat(t *testing.T) {
 						return
 					}
 					if got.Mode()&os.ModeType != test.mode {
-						t.Errorf("fs.Readlink(%q).Mode()&os.ModeType want: %x, got %x",
+						t.Errorf("fs.Lstat(%q).Mode()&os.ModeType want: %x, got %x",
 							test.name, test.mode, got.Mode()&os.ModeType)
 					}
 					if test.mode == 0 && got.Size() != test.size {
-						t.Errorf("fs.Readlink(%q).Size() want: %d, got %d", test.name, test.size, got.Size())
+						t.Errorf("fs.Lstat(%q).Size() want: %d, got %d", test.name, test.size, got.Size())
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestFs_Stat(t *testing.T) {
+	testCases := []struct {
+		name string
+		mode os.FileMode
+		size int64
+		err  error
+	}{
+		{".", os.ModeDir, 0, nil},
+		{"/", os.ModeDir, 0, nil},
+
+		{"a", os.ModeDir, 0, nil},
+		{"a/a", os.ModeDir, 0, nil},
+		{"a/a/a", 0, 0, nil},
+		{"a/a/f", 0, 0, nil},
+
+		{"b", os.ModeDir, 0, nil},
+		{"b/a", os.ModeDir, 0, nil},
+		{"b/a/a", 0, 0, nil},
+		{"b/a/f", 0, 0, nil},
+
+		{"c", os.ModeDir, 0, nil},
+		{"c/a", 0, 0, nil},
+		{"c/f", 0, 0, nil},
+
+		{"d/a", 0, 0, nil},
+		{"d/f", 0, 0, nil},
+
+		{"e", 0, 0, nil},
+
+		{"f", 0, 0, nil},
+
+		{"dangling", 0, 0, os.ErrNotExist},
+
+		{"a/missing", 0, 0, os.ErrNotExist},
+		{"b/missing", 0, 0, os.ErrNotExist},
+		{"c/missing", 0, 0, os.ErrNotExist},
+		{"d/missing", 0, 0, os.ErrNotExist},
+		{"e/missing", 0, 0, os.ErrNotExist},
+		{"dangling/missing", 0, 0, os.ErrNotExist},
+
+		{"a/missing/missing", 0, 0, os.ErrNotExist},
+		{"b/missing/missing", 0, 0, os.ErrNotExist},
+		{"c/missing/missing", 0, 0, os.ErrNotExist},
+		{"d/missing/missing", 0, 0, os.ErrNotExist},
+		{"e/missing/missing", 0, 0, os.ErrNotExist},
+		{"dangling/missing/missing", 0, 0, os.ErrNotExist},
+	}
+
+	mock := symlinkMockFs()
+	fsList := []FileSystem{mock, OsFs}
+	names := []string{"mock", "os"}
+
+	os.Chdir("testdata/dangling")
+	defer os.Chdir("../..")
+
+	for i, fs := range fsList {
+		t.Run(names[i], func(t *testing.T) {
+
+			for _, test := range testCases {
+				t.Run(test.name, func(t *testing.T) {
+					got, err := fs.Stat(test.name)
+					checkErr(t, test.err, err)
+					if err != nil {
+						return
+					}
+					if got.Mode()&os.ModeType != test.mode {
+						t.Errorf("fs.Stat(%q).Mode()&os.ModeType want: %x, got %x",
+							test.name, test.mode, got.Mode()&os.ModeType)
+					}
+					if test.mode == 0 && got.Size() != test.size {
+						t.Errorf("fs.Stat(%q).Size() want: %d, got %d", test.name, test.size, got.Size())
 					}
 				})
 			}

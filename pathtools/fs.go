@@ -106,6 +106,9 @@ type FileSystem interface {
 	// Lstat returns info on a file without following symlinks.
 	Lstat(name string) (os.FileInfo, error)
 
+	// Lstat returns info on a file.
+	Stat(name string) (os.FileInfo, error)
+
 	// ListDirsRecursive returns a list of all the directories in a path, following symlinks if requested.
 	ListDirsRecursive(name string, follow ShouldFollowSymlinks) (dirs []string, err error)
 
@@ -157,6 +160,10 @@ func (osFs) glob(pattern string) ([]string, error) {
 
 func (osFs) Lstat(path string) (stats os.FileInfo, err error) {
 	return os.Lstat(path)
+}
+
+func (osFs) Stat(path string) (stats os.FileInfo, err error) {
+	return os.Stat(path)
 }
 
 // Returns a list of all directories under dir
@@ -349,24 +356,46 @@ func (ms *mockStat) ModTime() time.Time { return time.Time{} }
 func (ms *mockStat) Sys() interface{}   { return nil }
 
 func (m *mockFs) Lstat(name string) (os.FileInfo, error) {
-	name = filepath.Clean(name)
+	dir, file := saneSplit(name)
+	dir = m.followSymlinks(dir)
+	name = filepath.Join(dir, file)
 
 	ms := mockStat{
-		name: name,
+		name: file,
+	}
+
+	if symlink, isSymlink := m.symlinks[name]; isSymlink {
+		ms.mode = os.ModeSymlink
+		ms.size = int64(len(symlink))
+	} else if _, isDir := m.dirs[name]; isDir {
+		ms.mode = os.ModeDir
+	} else if _, isFile := m.files[name]; isFile {
+		ms.mode = 0
+		ms.size = int64(len(m.files[name]))
+	} else {
+		return nil, os.ErrNotExist
+	}
+
+	return &ms, nil
+}
+
+func (m *mockFs) Stat(name string) (os.FileInfo, error) {
+	name = filepath.Clean(name)
+	origName := name
+	name = m.followSymlinks(name)
+
+	ms := mockStat{
+		name: filepath.Base(origName),
 		size: int64(len(m.files[name])),
 	}
 
-	if isSymlink, err := m.IsSymlink(name); err != nil {
-		// IsSymlink handles ErrNotExist
-		return nil, err
-	} else if isSymlink {
-		ms.mode = os.ModeSymlink
-	} else if isDir, err := m.IsDir(name); err != nil {
-		return nil, err
-	} else if isDir {
+	if _, isDir := m.dirs[name]; isDir {
 		ms.mode = os.ModeDir
-	} else {
+	} else if _, isFile := m.files[name]; isFile {
 		ms.mode = 0
+		ms.size = int64(len(m.files[name]))
+	} else {
+		return nil, os.ErrNotExist
 	}
 
 	return &ms, nil
