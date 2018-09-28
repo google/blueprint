@@ -78,9 +78,16 @@ func MockFs(files map[string][]byte) FileSystem {
 	return fs
 }
 
+type ReaderAtSeekerCloser interface {
+	io.Reader
+	io.ReaderAt
+	io.Seeker
+	io.Closer
+}
+
 type FileSystem interface {
 	// Open opens a file for reading.  Follows symlinks.
-	Open(name string) (io.ReadCloser, error)
+	Open(name string) (ReaderAtSeekerCloser, error)
 
 	// Exists returns whether the file exists and whether it is a directory.  Follows symlinks.
 	Exists(name string) (bool, bool, error)
@@ -99,17 +106,23 @@ type FileSystem interface {
 	// Lstat returns info on a file without following symlinks.
 	Lstat(name string) (os.FileInfo, error)
 
+	// Lstat returns info on a file.
+	Stat(name string) (os.FileInfo, error)
+
 	// ListDirsRecursive returns a list of all the directories in a path, following symlinks if requested.
 	ListDirsRecursive(name string, follow ShouldFollowSymlinks) (dirs []string, err error)
 
 	// ReadDirNames returns a list of everything in a directory.
 	ReadDirNames(name string) ([]string, error)
+
+	// Readlink returns the destination of the named symbolic link.
+	Readlink(name string) (string, error)
 }
 
 // osFs implements FileSystem using the local disk.
 type osFs struct{}
 
-func (osFs) Open(name string) (io.ReadCloser, error) { return os.Open(name) }
+func (osFs) Open(name string) (ReaderAtSeekerCloser, error) { return os.Open(name) }
 func (osFs) Exists(name string) (bool, bool, error) {
 	stat, err := os.Stat(name)
 	if err == nil {
@@ -149,6 +162,10 @@ func (osFs) Lstat(path string) (stats os.FileInfo, err error) {
 	return os.Lstat(path)
 }
 
+func (osFs) Stat(path string) (stats os.FileInfo, err error) {
+	return os.Stat(path)
+}
+
 // Returns a list of all directories under dir
 func (osFs) ListDirsRecursive(name string, follow ShouldFollowSymlinks) (dirs []string, err error) {
 	return listDirsRecursive(OsFs, name, follow)
@@ -168,6 +185,10 @@ func (osFs) ReadDirNames(name string) ([]string, error) {
 
 	sort.Strings(contents)
 	return contents, nil
+}
+
+func (osFs) Readlink(name string) (string, error) {
+	return os.Readlink(name)
 }
 
 type mockFs struct {
@@ -202,7 +223,7 @@ func (m *mockFs) followSymlinks(name string) string {
 	return name
 }
 
-func (m *mockFs) Open(name string) (io.ReadCloser, error) {
+func (m *mockFs) Open(name string) (ReaderAtSeekerCloser, error) {
 	name = filepath.Clean(name)
 	name = m.followSymlinks(name)
 	if f, ok := m.files[name]; ok {
@@ -335,24 +356,46 @@ func (ms *mockStat) ModTime() time.Time { return time.Time{} }
 func (ms *mockStat) Sys() interface{}   { return nil }
 
 func (m *mockFs) Lstat(name string) (os.FileInfo, error) {
-	name = filepath.Clean(name)
+	dir, file := saneSplit(name)
+	dir = m.followSymlinks(dir)
+	name = filepath.Join(dir, file)
 
 	ms := mockStat{
-		name: name,
+		name: file,
+	}
+
+	if symlink, isSymlink := m.symlinks[name]; isSymlink {
+		ms.mode = os.ModeSymlink
+		ms.size = int64(len(symlink))
+	} else if _, isDir := m.dirs[name]; isDir {
+		ms.mode = os.ModeDir
+	} else if _, isFile := m.files[name]; isFile {
+		ms.mode = 0
+		ms.size = int64(len(m.files[name]))
+	} else {
+		return nil, os.ErrNotExist
+	}
+
+	return &ms, nil
+}
+
+func (m *mockFs) Stat(name string) (os.FileInfo, error) {
+	name = filepath.Clean(name)
+	origName := name
+	name = m.followSymlinks(name)
+
+	ms := mockStat{
+		name: filepath.Base(origName),
 		size: int64(len(m.files[name])),
 	}
 
-	if isSymlink, err := m.IsSymlink(name); err != nil {
-		// IsSymlink handles ErrNotExist
-		return nil, err
-	} else if isSymlink {
-		ms.mode = os.ModeSymlink
-	} else if isDir, err := m.IsDir(name); err != nil {
-		return nil, err
-	} else if isDir {
+	if _, isDir := m.dirs[name]; isDir {
 		ms.mode = os.ModeDir
-	} else {
+	} else if _, isFile := m.files[name]; isFile {
 		ms.mode = 0
+		ms.size = int64(len(m.files[name]))
+	} else {
+		return nil, os.ErrNotExist
 	}
 
 	return &ms, nil
@@ -385,6 +428,26 @@ func (m *mockFs) ReadDirNames(name string) ([]string, error) {
 
 func (m *mockFs) ListDirsRecursive(name string, follow ShouldFollowSymlinks) ([]string, error) {
 	return listDirsRecursive(m, name, follow)
+}
+
+func (m *mockFs) Readlink(name string) (string, error) {
+	dir, file := saneSplit(name)
+	dir = m.followSymlinks(dir)
+
+	origName := name
+	name = filepath.Join(dir, file)
+
+	if dest, isSymlink := m.symlinks[name]; isSymlink {
+		return dest, nil
+	}
+
+	if exists, _, err := m.Exists(name); err != nil {
+		return "", err
+	} else if !exists {
+		return "", os.ErrNotExist
+	} else {
+		return "", os.NewSyscallError("readlink: "+origName, syscall.EINVAL)
+	}
 }
 
 func listDirsRecursive(fs FileSystem, name string, follow ShouldFollowSymlinks) ([]string, error) {
