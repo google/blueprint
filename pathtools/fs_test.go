@@ -66,7 +66,7 @@ func TestMockFs_followSymlinks(t *testing.T) {
 		{"c/f", "f"},
 
 		{"d/a", "a/a/a"},
-		{"c/f", "f"},
+		{"d/f", "f"},
 
 		{"e", "a/a/a"},
 
@@ -135,17 +135,17 @@ func TestFs_IsDir(t *testing.T) {
 		{"b/missing", false, os.ErrNotExist},
 		{"c/missing", false, os.ErrNotExist},
 		{"d/missing", false, os.ErrNotExist},
-		{"e/missing", false, os.NewSyscallError("stat e/missing", syscall.ENOTDIR)},
+		{"e/missing", false, syscall.ENOTDIR},
 		{"dangling/missing", false, os.ErrNotExist},
 
 		{"a/missing/missing", false, os.ErrNotExist},
 		{"b/missing/missing", false, os.ErrNotExist},
 		{"c/missing/missing", false, os.ErrNotExist},
 		{"d/missing/missing", false, os.ErrNotExist},
-		{"e/missing/missing", false, os.NewSyscallError("stat e/missing/missing", syscall.ENOTDIR)},
+		{"e/missing/missing", false, syscall.ENOTDIR},
 		{"dangling/missing/missing", false, os.ErrNotExist},
 
-		{"c/f/missing", false, os.NewSyscallError("stat c/f/missing", syscall.ENOTDIR)},
+		{"c/f/missing", false, syscall.ENOTDIR},
 	}
 
 	mock := symlinkMockFs()
@@ -274,6 +274,231 @@ func TestFs_ListDirsRecursiveDontFollowSymlinks(t *testing.T) {
 	}
 }
 
+func TestFs_Readlink(t *testing.T) {
+	testCases := []struct {
+		from, to string
+		err      error
+	}{
+		{".", "", syscall.EINVAL},
+		{"/", "", syscall.EINVAL},
+
+		{"a", "", syscall.EINVAL},
+		{"a/a", "", syscall.EINVAL},
+		{"a/a/a", "", syscall.EINVAL},
+		{"a/a/f", "../../f", nil},
+
+		{"b", "a", nil},
+		{"b/a", "", syscall.EINVAL},
+		{"b/a/a", "", syscall.EINVAL},
+		{"b/a/f", "../../f", nil},
+
+		{"c", "a/a", nil},
+		{"c/a", "", syscall.EINVAL},
+		{"c/f", "../../f", nil},
+
+		{"d/a", "", syscall.EINVAL},
+		{"d/f", "../../f", nil},
+
+		{"e", "a/a/a", nil},
+
+		{"f", "", syscall.EINVAL},
+
+		{"dangling", "missing", nil},
+
+		{"a/missing", "", os.ErrNotExist},
+		{"b/missing", "", os.ErrNotExist},
+		{"c/missing", "", os.ErrNotExist},
+		{"d/missing", "", os.ErrNotExist},
+		{"e/missing", "", os.ErrNotExist},
+		{"dangling/missing", "", os.ErrNotExist},
+
+		{"a/missing/missing", "", os.ErrNotExist},
+		{"b/missing/missing", "", os.ErrNotExist},
+		{"c/missing/missing", "", os.ErrNotExist},
+		{"d/missing/missing", "", os.ErrNotExist},
+		{"e/missing/missing", "", os.ErrNotExist},
+		{"dangling/missing/missing", "", os.ErrNotExist},
+	}
+
+	mock := symlinkMockFs()
+	fsList := []FileSystem{mock, OsFs}
+	names := []string{"mock", "os"}
+
+	os.Chdir("testdata/dangling")
+	defer os.Chdir("../..")
+
+	for i, fs := range fsList {
+		t.Run(names[i], func(t *testing.T) {
+
+			for _, test := range testCases {
+				t.Run(test.from, func(t *testing.T) {
+					got, err := fs.Readlink(test.from)
+					checkErr(t, test.err, err)
+					if got != test.to {
+						t.Errorf("fs.Readlink(%q) want: %q, got %q", test.from, test.to, got)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestFs_Lstat(t *testing.T) {
+	testCases := []struct {
+		name string
+		mode os.FileMode
+		size int64
+		err  error
+	}{
+		{".", os.ModeDir, 0, nil},
+		{"/", os.ModeDir, 0, nil},
+
+		{"a", os.ModeDir, 0, nil},
+		{"a/a", os.ModeDir, 0, nil},
+		{"a/a/a", 0, 0, nil},
+		{"a/a/f", os.ModeSymlink, 7, nil},
+
+		{"b", os.ModeSymlink, 1, nil},
+		{"b/a", os.ModeDir, 0, nil},
+		{"b/a/a", 0, 0, nil},
+		{"b/a/f", os.ModeSymlink, 7, nil},
+
+		{"c", os.ModeSymlink, 3, nil},
+		{"c/a", 0, 0, nil},
+		{"c/f", os.ModeSymlink, 7, nil},
+
+		{"d/a", 0, 0, nil},
+		{"d/f", os.ModeSymlink, 7, nil},
+
+		{"e", os.ModeSymlink, 5, nil},
+
+		{"f", 0, 0, nil},
+
+		{"dangling", os.ModeSymlink, 7, nil},
+
+		{"a/missing", 0, 0, os.ErrNotExist},
+		{"b/missing", 0, 0, os.ErrNotExist},
+		{"c/missing", 0, 0, os.ErrNotExist},
+		{"d/missing", 0, 0, os.ErrNotExist},
+		{"e/missing", 0, 0, os.ErrNotExist},
+		{"dangling/missing", 0, 0, os.ErrNotExist},
+
+		{"a/missing/missing", 0, 0, os.ErrNotExist},
+		{"b/missing/missing", 0, 0, os.ErrNotExist},
+		{"c/missing/missing", 0, 0, os.ErrNotExist},
+		{"d/missing/missing", 0, 0, os.ErrNotExist},
+		{"e/missing/missing", 0, 0, os.ErrNotExist},
+		{"dangling/missing/missing", 0, 0, os.ErrNotExist},
+	}
+
+	mock := symlinkMockFs()
+	fsList := []FileSystem{mock, OsFs}
+	names := []string{"mock", "os"}
+
+	os.Chdir("testdata/dangling")
+	defer os.Chdir("../..")
+
+	for i, fs := range fsList {
+		t.Run(names[i], func(t *testing.T) {
+
+			for _, test := range testCases {
+				t.Run(test.name, func(t *testing.T) {
+					got, err := fs.Lstat(test.name)
+					checkErr(t, test.err, err)
+					if err != nil {
+						return
+					}
+					if got.Mode()&os.ModeType != test.mode {
+						t.Errorf("fs.Lstat(%q).Mode()&os.ModeType want: %x, got %x",
+							test.name, test.mode, got.Mode()&os.ModeType)
+					}
+					if test.mode == 0 && got.Size() != test.size {
+						t.Errorf("fs.Lstat(%q).Size() want: %d, got %d", test.name, test.size, got.Size())
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestFs_Stat(t *testing.T) {
+	testCases := []struct {
+		name string
+		mode os.FileMode
+		size int64
+		err  error
+	}{
+		{".", os.ModeDir, 0, nil},
+		{"/", os.ModeDir, 0, nil},
+
+		{"a", os.ModeDir, 0, nil},
+		{"a/a", os.ModeDir, 0, nil},
+		{"a/a/a", 0, 0, nil},
+		{"a/a/f", 0, 0, nil},
+
+		{"b", os.ModeDir, 0, nil},
+		{"b/a", os.ModeDir, 0, nil},
+		{"b/a/a", 0, 0, nil},
+		{"b/a/f", 0, 0, nil},
+
+		{"c", os.ModeDir, 0, nil},
+		{"c/a", 0, 0, nil},
+		{"c/f", 0, 0, nil},
+
+		{"d/a", 0, 0, nil},
+		{"d/f", 0, 0, nil},
+
+		{"e", 0, 0, nil},
+
+		{"f", 0, 0, nil},
+
+		{"dangling", 0, 0, os.ErrNotExist},
+
+		{"a/missing", 0, 0, os.ErrNotExist},
+		{"b/missing", 0, 0, os.ErrNotExist},
+		{"c/missing", 0, 0, os.ErrNotExist},
+		{"d/missing", 0, 0, os.ErrNotExist},
+		{"e/missing", 0, 0, os.ErrNotExist},
+		{"dangling/missing", 0, 0, os.ErrNotExist},
+
+		{"a/missing/missing", 0, 0, os.ErrNotExist},
+		{"b/missing/missing", 0, 0, os.ErrNotExist},
+		{"c/missing/missing", 0, 0, os.ErrNotExist},
+		{"d/missing/missing", 0, 0, os.ErrNotExist},
+		{"e/missing/missing", 0, 0, os.ErrNotExist},
+		{"dangling/missing/missing", 0, 0, os.ErrNotExist},
+	}
+
+	mock := symlinkMockFs()
+	fsList := []FileSystem{mock, OsFs}
+	names := []string{"mock", "os"}
+
+	os.Chdir("testdata/dangling")
+	defer os.Chdir("../..")
+
+	for i, fs := range fsList {
+		t.Run(names[i], func(t *testing.T) {
+
+			for _, test := range testCases {
+				t.Run(test.name, func(t *testing.T) {
+					got, err := fs.Stat(test.name)
+					checkErr(t, test.err, err)
+					if err != nil {
+						return
+					}
+					if got.Mode()&os.ModeType != test.mode {
+						t.Errorf("fs.Stat(%q).Mode()&os.ModeType want: %x, got %x",
+							test.name, test.mode, got.Mode()&os.ModeType)
+					}
+					if test.mode == 0 && got.Size() != test.size {
+						t.Errorf("fs.Stat(%q).Size() want: %d, got %d", test.name, test.size, got.Size())
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestMockFs_glob(t *testing.T) {
 	testCases := []struct {
 		pattern string
@@ -336,16 +561,29 @@ func TestMockFs_glob(t *testing.T) {
 	}
 }
 
+func syscallError(err error) error {
+	if serr, ok := err.(*os.SyscallError); ok {
+		return serr.Err.(syscall.Errno)
+	} else if serr, ok := err.(syscall.Errno); ok {
+		return serr
+	} else {
+		return nil
+	}
+}
+
 func checkErr(t *testing.T, want, got error) {
 	t.Helper()
-	if os.IsNotExist(want) {
-		if os.IsNotExist(got) != os.IsNotExist(want) {
-			t.Errorf("want: IsNotExist(err) = %v, got IsNotExist(%v) = %v",
-				os.IsNotExist(want), got, os.IsNotExist(got))
-		}
-	} else if (got != nil) != (want != nil) {
-		t.Errorf("want: %v, got %v", want, got)
-	} else if got != nil && got.Error() != want.Error() {
-		t.Errorf("want: %v, got %v", want, got)
+	if (got != nil) != (want != nil) {
+		t.Fatalf("want: %v, got %v", want, got)
 	}
+
+	if os.IsNotExist(got) == os.IsNotExist(want) {
+		return
+	}
+
+	if syscallError(got) == syscallError(want) {
+		return
+	}
+
+	t.Fatalf("want: %v, got %v", want, got)
 }
