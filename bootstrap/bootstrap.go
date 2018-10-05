@@ -57,18 +57,22 @@ var (
 
 	compile = pctx.StaticRule("compile",
 		blueprint.RuleParams{
-			Command: "GOROOT='$goRoot' $compileCmd $parallelCompile -o $out " +
-				"-p $pkgPath -complete $incFlags -pack $in",
+			Command: "GOROOT='$goRoot' $compileCmd $parallelCompile -o $out.tmp " +
+				"-p $pkgPath -complete $incFlags -pack $in && " +
+				"if cmp --quiet $out.tmp $out; then rm $out.tmp; else mv -f $out.tmp $out; fi",
 			CommandDeps: []string{"$compileCmd"},
 			Description: "compile $out",
+			Restat:      true,
 		},
 		"pkgPath", "incFlags")
 
 	link = pctx.StaticRule("link",
 		blueprint.RuleParams{
-			Command:     "GOROOT='$goRoot' $linkCmd -o $out $libDirFlags $in",
+			Command: "GOROOT='$goRoot' $linkCmd -o $out.tmp $libDirFlags $in && " +
+				"if cmp --quiet $out.tmp $out; then rm $out.tmp; else mv -f $out.tmp $out; fi",
 			CommandDeps: []string{"$linkCmd"},
 			Description: "link $out",
+			Restat:      true,
 		},
 		"libDirFlags")
 
@@ -435,10 +439,12 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 
 	buildGoPackage(ctx, objDir, name, archiveFile, srcs, genSrcs)
 
+	var linkDeps []string
 	var libDirFlags []string
 	ctx.VisitDepsDepthFirstIf(isGoPackageProducer,
 		func(module blueprint.Module) {
 			dep := module.(goPackageProducer)
+			linkDeps = append(linkDeps, dep.GoPackageTarget())
 			libDir := dep.GoPkgRoot()
 			libDirFlags = append(libDirFlags, "-L "+libDir)
 			deps = append(deps, dep.GoTestTargets()...)
@@ -450,11 +456,12 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 	}
 
 	ctx.Build(pctx, blueprint.BuildParams{
-		Rule:     link,
-		Outputs:  []string{aoutFile},
-		Inputs:   []string{archiveFile},
-		Args:     linkArgs,
-		Optional: true,
+		Rule:      link,
+		Outputs:   []string{aoutFile},
+		Inputs:    []string{archiveFile},
+		Implicits: linkDeps,
+		Args:      linkArgs,
+		Optional:  true,
 	})
 
 	ctx.Build(pctx, blueprint.BuildParams{
@@ -554,11 +561,13 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 		Optional: true,
 	})
 
+	var linkDeps []string
 	libDirFlags := []string{"-L " + testRoot}
 	testDeps := []string{}
 	ctx.VisitDepsDepthFirstIf(isGoPackageProducer,
 		func(module blueprint.Module) {
 			dep := module.(goPackageProducer)
+			linkDeps = append(linkDeps, dep.GoPackageTarget())
 			libDir := dep.GoPkgRoot()
 			libDirFlags = append(libDirFlags, "-L "+libDir)
 			testDeps = append(testDeps, dep.GoTestTargets()...)
@@ -577,9 +586,10 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 	})
 
 	ctx.Build(pctx, blueprint.BuildParams{
-		Rule:    link,
-		Outputs: []string{testFile},
-		Inputs:  []string{testArchive},
+		Rule:      link,
+		Outputs:   []string{testFile},
+		Inputs:    []string{testArchive},
+		Implicits: linkDeps,
 		Args: map[string]string{
 			"libDirFlags": strings.Join(libDirFlags, " "),
 		},

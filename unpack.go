@@ -163,7 +163,9 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 		case reflect.Slice:
 			elemType := field.Type.Elem()
 			if elemType.Kind() != reflect.String {
-				panic(fmt.Errorf("field %s is a non-string slice", propertyName))
+				if !proptools.HasTag(field, "blueprint", "mutated") {
+					panic(fmt.Errorf("field %s is a non-string slice", propertyName))
+				}
 			}
 		case reflect.Interface:
 			if fieldValue.IsNil() {

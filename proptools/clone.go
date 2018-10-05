@@ -52,9 +52,6 @@ func CopyProperties(dstValue, srcValue reflect.Value) {
 			CopyProperties(dstFieldValue, srcFieldValue)
 		case reflect.Slice:
 			if !srcFieldValue.IsNil() {
-				if field.Type.Elem().Kind() != reflect.String {
-					panic(fmt.Errorf("can't copy field %q: slice elements are not strings", field.Name))
-				}
 				if srcFieldValue != dstFieldValue {
 					newSlice := reflect.MakeSlice(field.Type, srcFieldValue.Len(),
 						srcFieldValue.Len())
