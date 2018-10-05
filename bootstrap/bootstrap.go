@@ -561,11 +561,13 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 		Optional: true,
 	})
 
+	var linkDeps []string
 	libDirFlags := []string{"-L " + testRoot}
 	testDeps := []string{}
 	ctx.VisitDepsDepthFirstIf(isGoPackageProducer,
 		func(module blueprint.Module) {
 			dep := module.(goPackageProducer)
+			linkDeps = append(linkDeps, dep.GoPackageTarget())
 			libDir := dep.GoPkgRoot()
 			libDirFlags = append(libDirFlags, "-L "+libDir)
 			testDeps = append(testDeps, dep.GoTestTargets()...)
@@ -584,9 +586,10 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 	})
 
 	ctx.Build(pctx, blueprint.BuildParams{
-		Rule:    link,
-		Outputs: []string{testFile},
-		Inputs:  []string{testArchive},
+		Rule:      link,
+		Outputs:   []string{testFile},
+		Inputs:    []string{testArchive},
+		Implicits: linkDeps,
 		Args: map[string]string{
 			"libDirFlags": strings.Join(libDirFlags, " "),
 		},
