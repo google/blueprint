@@ -71,6 +71,19 @@ var clonePropertiesTestCases = []struct {
 		out: &struct{ S []string }{},
 	},
 	{
+		// Clone slice of structs
+		in: &struct{ S []struct{ T string } }{
+			S: []struct{ T string }{
+				{"string1"}, {"string2"},
+			},
+		},
+		out: &struct{ S []struct{ T string } }{
+			S: []struct{ T string }{
+				{"string1"}, {"string2"},
+			},
+		},
+	},
+	{
 		// Clone pointer to bool
 		in: &struct{ B1, B2 *bool }{
 			B1: BoolPtr(true),
@@ -315,6 +328,17 @@ var cloneEmptyPropertiesTestCases = []struct {
 		// Clone nil slice
 		in:  &struct{ S []string }{},
 		out: &struct{ S []string }{},
+	},
+	{
+		// Clone slice of structs
+		in: &struct{ S []struct{ T string } }{
+			S: []struct{ T string }{
+				{"string1"}, {"string2"},
+			},
+		},
+		out: &struct{ S []struct{ T string } }{
+			S: []struct{ T string }(nil),
+		},
 	},
 	{
 		// Clone pointer to bool
