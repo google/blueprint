@@ -111,13 +111,15 @@ var validUnpackTestCases = []struct {
 		`,
 		output: []interface{}{
 			struct {
-				Stuff []string
-				Empty []string
-				Nil   []string
+				Stuff     []string
+				Empty     []string
+				Nil       []string
+				NonString []struct{ S string } `blueprint:"mutated"`
 			}{
-				Stuff: []string{"asdf", "jkl;", "qwert", "uiop", "bnm,"},
-				Empty: []string{},
-				Nil:   nil,
+				Stuff:     []string{"asdf", "jkl;", "qwert", "uiop", "bnm,"},
+				Empty:     []string{},
+				Nil:       nil,
+				NonString: nil,
 			},
 		},
 	},
