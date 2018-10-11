@@ -1297,8 +1297,8 @@ func (c *Context) addModule(module *moduleInfo) []error {
 			&BlueprintError{
 				Err: fmt.Errorf("property 'name' is missing from a module"),
 				Pos: module.pos,
-	    },
-	  }
+			},
+		}
 	}
 	c.moduleInfo[module.logicModule] = module
 
