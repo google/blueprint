@@ -482,3 +482,29 @@ func TestWalkingWithSyntaxError(t *testing.T) {
 	}
 
 }
+
+func TestParseFailsForModuleWithoutName(t *testing.T) {
+	ctx := NewContext()
+	ctx.MockFileSystem(map[string][]byte{
+		"Blueprints": []byte(`
+			foo_module {
+			    name: "A",
+			}
+			
+			bar_module {
+			    deps: ["A"],
+			}
+		`),
+	})
+	ctx.RegisterModuleType("foo_module", newFooModule)
+	ctx.RegisterModuleType("bar_module", newBarModule)
+
+	_, errs := ctx.ParseBlueprintsFiles("Blueprints")
+
+	expectedErrs := []error{
+		errors.New(`Blueprints:6:4: property 'name' is missing from a module`),
+	}
+	if fmt.Sprintf("%s", expectedErrs) != fmt.Sprintf("%s", errs) {
+		t.Errorf("Incorrect errors; expected:\n%s\ngot:\n%s", expectedErrs, errs)
+	}
+}
