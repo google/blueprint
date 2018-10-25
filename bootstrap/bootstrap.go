@@ -561,7 +561,7 @@ func buildGoTest(ctx blueprint.ModuleContext, testRoot, testPkgArchive,
 		Optional: true,
 	})
 
-	var linkDeps []string
+	linkDeps := []string{testPkgArchive}
 	libDirFlags := []string{"-L " + testRoot}
 	testDeps := []string{}
 	ctx.VisitDepsDepthFirstIf(isGoPackageProducer,
