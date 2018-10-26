@@ -41,6 +41,7 @@ var (
 	runGoTests     bool
 	noGC           bool
 	moduleListFile string
+	emptyNinjaFile bool
 
 	BuildDir      string
 	NinjaBuildDir string
@@ -60,6 +61,7 @@ func init() {
 	flag.BoolVar(&noGC, "nogc", false, "turn off GC for debugging")
 	flag.BoolVar(&runGoTests, "t", false, "build and run go tests during bootstrap")
 	flag.StringVar(&moduleListFile, "l", "", "file that lists filepaths to parse")
+	flag.BoolVar(&emptyNinjaFile, "empty-ninja-file", false, "write out a 0-byte ninja file")
 }
 
 func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...string) {
@@ -122,7 +124,9 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 
 	bootstrapConfig := &Config{
 		stage: stage,
+
 		topLevelBlueprintsFile: flag.Arg(0),
+		emptyNinjaFile:         emptyNinjaFile,
 		runGoTests:             runGoTests,
 		moduleListFile:         moduleListFile,
 	}
@@ -173,6 +177,10 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	err = ctx.WriteBuildFile(buf)
 	if err != nil {
 		fatalf("error generating Ninja file contents: %s", err)
+	}
+
+	if stage == StageMain && emptyNinjaFile {
+		buf.Reset()
 	}
 
 	const outFilePermissions = 0666
