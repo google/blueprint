@@ -93,6 +93,11 @@ done
 # If RUN_TESTS is set, behave like -t was passed in as an option.
 [ ! -z "$RUN_TESTS" ] && EXTRA_ARGS="${EXTRA_ARGS} -t"
 
+# If EMPTY_NINJA_FILE is set, have the primary build write out a 0-byte ninja
+# file instead of a full length one. Useful if you don't plan on executing the
+# build, but want to verify the primary builder execution.
+[ ! -z "$EMPTY_NINJA_FILE" ] && EXTRA_ARGS="${EXTRA_ARGS} --empty-ninja-file"
+
 # Allow the caller to pass in a list of module files
 if [ -z "${BLUEPRINT_LIST_FILE}" ]; then
   BLUEPRINT_LIST_FILE="${BUILDDIR}/.bootstrap/bplist"
