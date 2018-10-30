@@ -105,6 +105,7 @@ type Config struct {
 
 	topLevelBlueprintsFile string
 
+	emptyNinjaFile bool
 	runGoTests     bool
 	moduleListFile string
 }

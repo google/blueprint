@@ -650,6 +650,9 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	if s.config.moduleListFile != "" {
 		extraSharedFlagArray = append(extraSharedFlagArray, "-l", s.config.moduleListFile)
 	}
+	if s.config.emptyNinjaFile {
+		extraSharedFlagArray = append(extraSharedFlagArray, "--empty-ninja-file")
+	}
 	extraSharedFlagString := strings.Join(extraSharedFlagArray, " ")
 
 	var primaryBuilderName, primaryBuilderExtraFlags string
