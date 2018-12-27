@@ -148,7 +148,14 @@ func processModule(module *parser.Module, moduleName string,
 		}
 	}
 
-	return false, nil
+	prop := parser.Property{Name: *parameter, Value: &parser.List{}}
+	modified, errs = processParameter(prop.Value, *parameter, moduleName, file)
+
+	if modified {
+		module.Properties = append(module.Properties, &prop)
+	}
+
+	return modified, errs
 }
 
 func processParameter(value parser.Expression, paramName, moduleName string,
