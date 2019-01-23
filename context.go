@@ -3113,7 +3113,10 @@ func (c *Context) writeNinjaRequiredVersion(nw *ninjaWriter) error {
 
 func (c *Context) writeSubninjas(nw *ninjaWriter) error {
 	for _, subninja := range c.subninjas {
-		nw.Subninja(subninja)
+		err := nw.Subninja(subninja)
+		if err != nil {
+			return err
+		}
 	}
 	return nw.BlankLine()
 }
