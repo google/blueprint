@@ -22,6 +22,7 @@ import (
 	"go/token"
 	"html/template"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -63,6 +64,52 @@ func funcToPkgPath(f string) (string, error) {
 	pkgPath += p[0]
 
 	return pkgPath, nil
+}
+
+func (r *Reader) ModuleType(name string, factory reflect.Value) (*ModuleType, error) {
+	f := runtime.FuncForPC(factory.Pointer())
+
+	pkgPath, err := funcToPkgPath(f.Name())
+	if err != nil {
+		return nil, err
+	}
+
+	factoryName := strings.TrimPrefix(f.Name(), pkgPath+".")
+
+	text, err := r.moduleTypeDocs(pkgPath, factoryName)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ModuleType{
+		Name:    name,
+		PkgPath: pkgPath,
+		Text:    text,
+	}, nil
+}
+
+func (r *Reader) moduleTypeDocs(pkgPath, name string) (string, error) {
+	pkg, err := r.pkg(pkgPath)
+	if err != nil {
+		return "", err
+	}
+
+	for _, fn := range pkg.Funcs {
+		if fn.Name == name {
+			return fn.Doc, nil
+		}
+	}
+
+	// The doc package may associate the method with the type it returns, so iterate through those too
+	for _, typ := range pkg.Types {
+		for _, fn := range typ.Funcs {
+			if fn.Name == name {
+				return fn.Doc, nil
+			}
+		}
+	}
+
+	return "", nil
 }
 
 // Return the PropertyStruct associated with a property struct type.  The type should be in the

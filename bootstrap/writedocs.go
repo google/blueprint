@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"io/ioutil"
 	"path/filepath"
+	"reflect"
 
 	"github.com/google/blueprint"
 	"github.com/google/blueprint/bootstrap/bpdoc"
@@ -60,7 +61,12 @@ func ModuleTypeDocs(ctx *blueprint.Context) ([]*bpdoc.ModuleType, error) {
 		}
 	})
 
-	return bpdoc.ModuleTypes(pkgFiles, ctx.ModuleTypePropertyStructs())
+	factories := make(map[string]reflect.Value)
+	for moduleType, factory := range ctx.ModuleTypeFactories() {
+		factories[moduleType] = reflect.ValueOf(factory)
+	}
+
+	return bpdoc.ModuleTypes(pkgFiles, factories, ctx.ModuleTypePropertyStructs())
 }
 
 func writeDocs(ctx *blueprint.Context, filename string) error {

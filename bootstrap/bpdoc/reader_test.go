@@ -89,6 +89,22 @@ func init() {
 	}
 }
 
+func TestModuleTypeDocs(t *testing.T) {
+	r := NewReader(pkgFiles)
+	mt, err := r.ModuleType("foo_module", reflect.ValueOf(foo))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if mt.Text != "foo docs.\n" {
+		t.Errorf("unexpected docs %q", mt.Text)
+	}
+
+	if mt.PkgPath != pkgPath {
+		t.Errorf("expected pkgpath %q, got %q", pkgPath, mt.PkgPath)
+	}
+}
+
 func TestPropertyStruct(t *testing.T) {
 	r := NewReader(pkgFiles)
 	ps, err := r.PropertyStruct(pkgPath, "props", reflect.ValueOf(props{A: "B"}))

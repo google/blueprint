@@ -9,12 +9,13 @@ import (
 	"github.com/google/blueprint/proptools"
 )
 
-func ModuleTypes(pkgFiles map[string][]string, moduleTypePropertyStructs map[string][]interface{}) ([]*ModuleType, error) {
+func ModuleTypes(pkgFiles map[string][]string, moduleTypeFactories map[string]reflect.Value,
+	moduleTypePropertyStructs map[string][]interface{}) ([]*ModuleType, error) {
 	r := NewReader(pkgFiles)
 
 	var moduleTypeList []*ModuleType
 	for moduleType, propertyStructs := range moduleTypePropertyStructs {
-		mt, err := getModuleType(r, moduleType, propertyStructs)
+		mt, err := getModuleType(r, moduleType, moduleTypeFactories[moduleType], propertyStructs)
 		if err != nil {
 			return nil, err
 		}
@@ -30,11 +31,12 @@ func ModuleTypes(pkgFiles map[string][]string, moduleTypePropertyStructs map[str
 	return moduleTypeList, nil
 }
 
-func getModuleType(r *Reader, moduleTypeName string,
+func getModuleType(r *Reader, moduleTypeName string, factory reflect.Value,
 	propertyStructs []interface{}) (*ModuleType, error) {
-	mt := &ModuleType{
-		Name: moduleTypeName,
-		//Text: r.ModuleTypeDocs(moduleType),
+
+	mt, err := r.ModuleType(moduleTypeName, factory)
+	if err != nil {
+		return nil, err
 	}
 
 	for _, s := range propertyStructs {
@@ -246,6 +248,9 @@ type ModuleType struct {
 	// Name is the string that will appear in Blueprints files when defining a new module of
 	// this type.
 	Name string
+
+	// This is the full package path that contains the module type
+	PkgPath string
 
 	// Text is the contents of the comment documenting the module type
 	Text string
