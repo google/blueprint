@@ -15,9 +15,10 @@
 package bootstrap
 
 import (
-	"bytes"
+	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -173,20 +174,39 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	}
 	deps = append(deps, extraDeps...)
 
-	buf := bytes.NewBuffer(nil)
-	err = ctx.WriteBuildFile(buf)
-	if err != nil {
-		fatalf("error generating Ninja file contents: %s", err)
-	}
-
-	if stage == StageMain && emptyNinjaFile {
-		buf.Reset()
-	}
-
 	const outFilePermissions = 0666
-	err = ioutil.WriteFile(outFile, buf.Bytes(), outFilePermissions)
+	var out io.Writer
+	var f *os.File
+	var buf *bufio.Writer
+
+	if stage != StageMain || !emptyNinjaFile {
+		f, err = os.OpenFile(outFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, outFilePermissions)
+		if err != nil {
+			fatalf("error opening Ninja file: %s", err)
+		}
+		buf = bufio.NewWriter(f)
+		out = buf
+	} else {
+		out = ioutil.Discard
+	}
+
+	err = ctx.WriteBuildFile(out)
 	if err != nil {
-		fatalf("error writing %s: %s", outFile, err)
+		fatalf("error writing Ninja file contents: %s", err)
+	}
+
+	if buf != nil {
+		err = buf.Flush()
+		if err != nil {
+			fatalf("error flushing Ninja file contents: %s", err)
+		}
+	}
+
+	if f != nil {
+		err = f.Close()
+		if err != nil {
+			fatalf("error closing Ninja file: %s", err)
+		}
 	}
 
 	if globFile != "" {

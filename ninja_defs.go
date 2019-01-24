@@ -410,7 +410,10 @@ func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*packageContext]string)
 	}
 
 	if !b.Optional {
-		nw.Default(outputs...)
+		err = nw.Default(outputs...)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nw.BlankLine()
