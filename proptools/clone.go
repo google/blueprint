@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
-	"sync/atomic"
 )
 
 func CloneProperties(structValue reflect.Value) reflect.Value {
@@ -248,28 +247,17 @@ func cloneEmptyProperties(dstValue, srcValue reflect.Value) {
 	}
 }
 
-// reflect.Type.Field allocates a []int{} to hold the index every time it is called, which ends up
-// being a significant portion of the GC pressure.  It can't reuse the same one in case a caller
-// modifies the backing array through the slice.  Since we don't modify it, cache the result
-// locally to reduce allocations.
-type typeFieldMap map[reflect.Type][]reflect.StructField
-
-var (
-	// Stores an atomic pointer to map caching Type to its StructField
-	typeFieldCache atomic.Value
-	// Lock used by slow path updating the cache pointer
-	typeFieldCacheWriterLock sync.Mutex
-)
-
-func init() {
-	typeFieldCache.Store(make(typeFieldMap))
-}
+var typeFieldCache sync.Map
 
 func typeFields(typ reflect.Type) []reflect.StructField {
+	// reflect.Type.Field allocates a []int{} to hold the index every time it is called, which ends up
+	// being a significant portion of the GC pressure.  It can't reuse the same one in case a caller
+	// modifies the backing array through the slice.  Since we don't modify it, cache the result
+	// locally to reduce allocations.
+
 	// Fast path
-	cache := typeFieldCache.Load().(typeFieldMap)
-	if typeFields, ok := cache[typ]; ok {
-		return typeFields
+	if typeFields, ok := typeFieldCache.Load(typ); ok {
+		return typeFields.([]reflect.StructField)
 	}
 
 	// Slow path
@@ -279,18 +267,7 @@ func typeFields(typ reflect.Type) []reflect.StructField {
 		typeFields[i] = typ.Field(i)
 	}
 
-	typeFieldCacheWriterLock.Lock()
-	defer typeFieldCacheWriterLock.Unlock()
-
-	old := typeFieldCache.Load().(typeFieldMap)
-	cache = make(typeFieldMap)
-	for k, v := range old {
-		cache[k] = v
-	}
-
-	cache[typ] = typeFields
-
-	typeFieldCache.Store(cache)
+	typeFieldCache.Store(typ, typeFields)
 
 	return typeFields
 }
