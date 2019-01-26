@@ -15,7 +15,7 @@ import (
 
 // ModuleTypeDocs returns a list of bpdoc.ModuleType objects that contain information relevant
 // to generating documentation for module types supported by the primary builder.
-func ModuleTypeDocs(ctx *blueprint.Context) ([]*bpdoc.ModuleType, error) {
+func ModuleTypeDocs(ctx *blueprint.Context, factories map[string]reflect.Value) ([]*bpdoc.ModuleType, error) {
 	// Find the module that's marked as the "primary builder", which means it's
 	// creating the binary that we'll use to generate the non-bootstrap
 	// build.ninja file.
@@ -61,16 +61,22 @@ func ModuleTypeDocs(ctx *blueprint.Context) ([]*bpdoc.ModuleType, error) {
 		}
 	})
 
-	factories := make(map[string]reflect.Value)
-	for moduleType, factory := range ctx.ModuleTypeFactories() {
-		factories[moduleType] = reflect.ValueOf(factory)
+	mergedFactories := make(map[string]reflect.Value)
+	for moduleType, factory := range factories {
+		mergedFactories[moduleType] = factory
 	}
 
-	return bpdoc.ModuleTypes(pkgFiles, factories, ctx.ModuleTypePropertyStructs())
+	for moduleType, factory := range ctx.ModuleTypeFactories() {
+		if _, exists := mergedFactories[moduleType]; !exists {
+			mergedFactories[moduleType] = reflect.ValueOf(factory)
+		}
+	}
+
+	return bpdoc.ModuleTypes(pkgFiles, mergedFactories, ctx.ModuleTypePropertyStructs())
 }
 
 func writeDocs(ctx *blueprint.Context, filename string) error {
-	moduleTypeList, err := ModuleTypeDocs(ctx)
+	moduleTypeList, err := ModuleTypeDocs(ctx, nil)
 	if err != nil {
 		return err
 	}
