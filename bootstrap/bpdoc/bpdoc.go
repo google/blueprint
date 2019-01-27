@@ -9,9 +9,12 @@ import (
 	"github.com/google/blueprint/proptools"
 )
 
-func ModuleTypes(pkgFiles map[string][]string, moduleTypeFactories map[string]reflect.Value,
-	moduleTypePropertyStructs map[string][]interface{}) ([]*ModuleType, error) {
+func Packages(pkgFiles map[string][]string, moduleTypeFactories map[string]reflect.Value,
+	moduleTypePropertyStructs map[string][]interface{}) ([]*Package, error) {
 	r := NewReader(pkgFiles)
+
+	packages := map[string]*Package{}
+	var packageList []*Package
 
 	var moduleTypeList []*ModuleType
 	for moduleType, propertyStructs := range moduleTypePropertyStructs {
@@ -23,12 +26,29 @@ func ModuleTypes(pkgFiles map[string][]string, moduleTypeFactories map[string]re
 		collapseDuplicatePropertyStructs(mt)
 		collapseNestedPropertyStructs(mt)
 		combineDuplicateProperties(mt)
+
+		pkg := packages[mt.PkgPath]
+		if pkg == nil {
+			var err error
+			pkg, err = r.Package(mt.PkgPath)
+			if err != nil {
+				return nil, err
+			}
+			packages[mt.PkgPath] = pkg
+			packageList = append(packageList, pkg)
+		}
+
+		pkg.ModuleTypes = append(pkg.ModuleTypes, mt)
 		moduleTypeList = append(moduleTypeList, mt)
 	}
 
-	sort.Sort(moduleTypeByName(moduleTypeList))
+	for _, pkg := range packageList {
+		sort.Slice(pkg.ModuleTypes, func(i, j int) bool { return pkg.ModuleTypes[i].Name < pkg.ModuleTypes[j].Name })
+	}
 
-	return moduleTypeList, nil
+	sort.Slice(packageList, func(i, j int) bool { return packageList[i].PkgPath < packageList[j].PkgPath })
+
+	return packageList, nil
 }
 
 func getModuleType(r *Reader, moduleTypeName string, factory reflect.Value,
@@ -243,16 +263,32 @@ func (l moduleTypeByName) Len() int           { return len(l) }
 func (l moduleTypeByName) Less(i, j int) bool { return l[i].Name < l[j].Name }
 func (l moduleTypeByName) Swap(i, j int)      { l[i], l[j] = l[j], l[i] }
 
-// ModuleType contains the info about a module type that is relevant to generating documentation.
+// Package contains the information about a package relevant to generating documentation.
+type Package struct {
+	// Name is the name of the package.
+	Name string
+
+	// PkgPath is the full package path of the package as used in the primary builder.
+	PkgPath string
+
+	// Text is the contents of the package comment documenting the module types in the package.
+	Text string
+
+	// ModuleTypes is a list of ModuleType objects that contain information about each module type that is
+	// defined by the package.
+	ModuleTypes []*ModuleType
+}
+
+// ModuleType contains the information about a module type that is relevant to generating documentation.
 type ModuleType struct {
 	// Name is the string that will appear in Blueprints files when defining a new module of
 	// this type.
 	Name string
 
-	// This is the full package path that contains the module type
+	// PkgPath is the full package path of the package that contains the module type factory.
 	PkgPath string
 
-	// Text is the contents of the comment documenting the module type
+	// Text is the contents of the comment documenting the module type.
 	Text string
 
 	// PropertyStructs is a list of PropertyStruct objects that contain information about each

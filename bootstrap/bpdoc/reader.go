@@ -88,6 +88,28 @@ func (r *Reader) ModuleType(name string, factory reflect.Value) (*ModuleType, er
 	}, nil
 }
 
+func (r *Reader) Package(pkgPath string) (*Package, error) {
+	pkg, err := r.pkg(pkgPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Package{
+		Name:    pkg.Name,
+		PkgPath: pkgPath,
+		Text:    pkg.Doc,
+	}, nil
+}
+
+func (r *Reader) pkgDocs(pkgPath string) (string, error) {
+	pkg, err := r.pkg(pkgPath)
+	if err != nil {
+		return "", err
+	}
+
+	return pkg.Doc, nil
+}
+
 func (r *Reader) moduleTypeDocs(pkgPath, name string) (string, error) {
 	pkg, err := r.pkg(pkgPath)
 	if err != nil {

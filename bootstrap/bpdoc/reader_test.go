@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// bpdoc docs.
 package bpdoc
 
 import (
@@ -122,5 +123,17 @@ func TestPropertyStruct(t *testing.T) {
 	if ps.Properties[0].Name != "a" || ps.Properties[0].Text != "A docs.\n\n" || ps.Properties[0].Default != "B" {
 		t.Errorf("unexpected property docs %q %q %q",
 			ps.Properties[0].Name, ps.Properties[0].Text, ps.Properties[0].Default)
+	}
+}
+
+func TestPackage(t *testing.T) {
+	r := NewReader(pkgFiles)
+	pkg, err := r.Package(pkgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if pkg.Text != "bpdoc docs.\n" {
+		t.Errorf("unexpected docs %q", pkg.Text)
 	}
 }
