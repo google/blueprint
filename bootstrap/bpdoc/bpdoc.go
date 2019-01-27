@@ -19,7 +19,7 @@ import (
 	"github.com/google/blueprint/proptools"
 )
 
-type Context struct {
+type Reader struct {
 	pkgFiles map[string][]string // Map of package name to source files, provided by constructor
 
 	mutex sync.Mutex
@@ -27,8 +27,8 @@ type Context struct {
 	ps    map[string]*PropertyStruct // Map of type name to property struct, protected by mutex
 }
 
-func NewContext(pkgFiles map[string][]string) *Context {
-	return &Context{
+func NewReader(pkgFiles map[string][]string) *Reader {
+	return &Reader{
 		pkgFiles: pkgFiles,
 		pkgs:     make(map[string]*doc.Package),
 		ps:       make(map[string]*PropertyStruct),
@@ -37,11 +37,11 @@ func NewContext(pkgFiles map[string][]string) *Context {
 
 // Return the PropertyStruct associated with a property struct type.  The type should be in the
 // format <package path>.<type name>
-func (c *Context) PropertyStruct(pkgPath, name string, defaults reflect.Value) (*PropertyStruct, error) {
-	ps := c.getPropertyStruct(pkgPath, name)
+func (r *Reader) PropertyStruct(pkgPath, name string, defaults reflect.Value) (*PropertyStruct, error) {
+	ps := r.getPropertyStruct(pkgPath, name)
 
 	if ps == nil {
-		pkg, err := c.pkg(pkgPath)
+		pkg, err := r.pkg(pkgPath)
 		if err != nil {
 			return nil, err
 		}
@@ -52,7 +52,7 @@ func (c *Context) PropertyStruct(pkgPath, name string, defaults reflect.Value) (
 				if err != nil {
 					return nil, err
 				}
-				ps = c.putPropertyStruct(pkgPath, name, ps)
+				ps = r.putPropertyStruct(pkgPath, name, ps)
 			}
 		}
 	}
@@ -67,25 +67,25 @@ func (c *Context) PropertyStruct(pkgPath, name string, defaults reflect.Value) (
 	return ps, nil
 }
 
-func (c *Context) getPropertyStruct(pkgPath, name string) *PropertyStruct {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+func (r *Reader) getPropertyStruct(pkgPath, name string) *PropertyStruct {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
 
 	name = pkgPath + "." + name
 
-	return c.ps[name]
+	return r.ps[name]
 }
 
-func (c *Context) putPropertyStruct(pkgPath, name string, ps *PropertyStruct) *PropertyStruct {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+func (r *Reader) putPropertyStruct(pkgPath, name string, ps *PropertyStruct) *PropertyStruct {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
 
 	name = pkgPath + "." + name
 
-	if c.ps[name] != nil {
-		return c.ps[name]
+	if r.ps[name] != nil {
+		return r.ps[name]
 	} else {
-		c.ps[name] = ps
+		r.ps[name] = ps
 		return ps
 	}
 }
@@ -358,17 +358,17 @@ func filterPropsByTag(props *[]Property, key, value string, exclude bool) {
 }
 
 // Package AST generation and storage
-func (c *Context) pkg(pkgPath string) (*doc.Package, error) {
-	pkg := c.getPackage(pkgPath)
+func (r *Reader) pkg(pkgPath string) (*doc.Package, error) {
+	pkg := r.getPackage(pkgPath)
 	if pkg == nil {
-		if files, ok := c.pkgFiles[pkgPath]; ok {
+		if files, ok := r.pkgFiles[pkgPath]; ok {
 			var err error
 			pkgAST, err := NewPackageAST(files)
 			if err != nil {
 				return nil, err
 			}
 			pkg = doc.New(pkgAST, pkgPath, doc.AllDecls)
-			pkg = c.putPackage(pkgPath, pkg)
+			pkg = r.putPackage(pkgPath, pkg)
 		} else {
 			return nil, fmt.Errorf("unknown package %q", pkgPath)
 		}
@@ -376,21 +376,21 @@ func (c *Context) pkg(pkgPath string) (*doc.Package, error) {
 	return pkg, nil
 }
 
-func (c *Context) getPackage(pkgPath string) *doc.Package {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+func (r *Reader) getPackage(pkgPath string) *doc.Package {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
 
-	return c.pkgs[pkgPath]
+	return r.pkgs[pkgPath]
 }
 
-func (c *Context) putPackage(pkgPath string, pkg *doc.Package) *doc.Package {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+func (r *Reader) putPackage(pkgPath string, pkg *doc.Package) *doc.Package {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
 
-	if c.pkgs[pkgPath] != nil {
-		return c.pkgs[pkgPath]
+	if r.pkgs[pkgPath] != nil {
+		return r.pkgs[pkgPath]
 	} else {
-		c.pkgs[pkgPath] = pkg
+		r.pkgs[pkgPath] = pkg
 		return pkg
 	}
 }
@@ -412,11 +412,11 @@ func NewPackageAST(files []string) (*ast.Package, error) {
 }
 
 func ModuleTypes(pkgFiles map[string][]string, moduleTypePropertyStructs map[string][]interface{}) ([]*ModuleType, error) {
-	c := NewContext(pkgFiles)
+	r := NewReader(pkgFiles)
 
 	var moduleTypeList []*ModuleType
 	for moduleType, propertyStructs := range moduleTypePropertyStructs {
-		mt, err := getModuleType(c, moduleType, propertyStructs)
+		mt, err := getModuleType(r, moduleType, propertyStructs)
 		if err != nil {
 			return nil, err
 		}
@@ -432,11 +432,11 @@ func ModuleTypes(pkgFiles map[string][]string, moduleTypePropertyStructs map[str
 	return moduleTypeList, nil
 }
 
-func getModuleType(c *Context, moduleTypeName string,
+func getModuleType(r *Reader, moduleTypeName string,
 	propertyStructs []interface{}) (*ModuleType, error) {
 	mt := &ModuleType{
 		Name: moduleTypeName,
-		//Text: c.ModuleTypeDocs(moduleType),
+		//Text: r.ModuleTypeDocs(moduleType),
 	}
 
 	for _, s := range propertyStructs {
@@ -447,7 +447,7 @@ func getModuleType(c *Context, moduleTypeName string,
 		if t.PkgPath() == "" {
 			continue
 		}
-		ps, err := c.PropertyStruct(t.PkgPath(), t.Name(), v)
+		ps, err := r.PropertyStruct(t.PkgPath(), t.Name(), v)
 		if err != nil {
 			return nil, err
 		}
@@ -460,7 +460,7 @@ func getModuleType(c *Context, moduleTypeName string,
 			if nestedType.PkgPath() == "" {
 				continue
 			}
-			nested, err := c.PropertyStruct(nestedType.PkgPath(), nestedType.Name(), nestedValue)
+			nested, err := r.PropertyStruct(nestedType.PkgPath(), nestedType.Name(), nestedValue)
 			if err != nil {
 				return nil, err
 			}
