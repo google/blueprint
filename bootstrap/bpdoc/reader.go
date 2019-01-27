@@ -47,6 +47,24 @@ func NewReader(pkgFiles map[string][]string) *Reader {
 	}
 }
 
+func funcToPkgPath(f string) (string, error) {
+	p := strings.Split(f, "/")
+
+	pkgPath := strings.Join(p[:len(p)-1], "/")
+
+	p = strings.Split(p[len(p)-1], ".")
+	if len(p) < 2 {
+		return "", fmt.Errorf("failed to extract package path from %q", f)
+	}
+
+	if pkgPath != "" {
+		pkgPath += "/"
+	}
+	pkgPath += p[0]
+
+	return pkgPath, nil
+}
+
 // Return the PropertyStruct associated with a property struct type.  The type should be in the
 // format <package path>.<type name>
 func (r *Reader) PropertyStruct(pkgPath, name string, defaults reflect.Value) (*PropertyStruct, error) {
