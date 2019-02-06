@@ -137,7 +137,7 @@ func checkCalledFromInit() {
 			panic("not called from an init func")
 		}
 
-		if funcName == "init" || strings.HasPrefix(funcName, "init·") {
+		if funcName == "init" || strings.HasSuffix("init.ializers") || strings.HasPrefix(funcName, "init·") {
 			return
 		}
 	}
