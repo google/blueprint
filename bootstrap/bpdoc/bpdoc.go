@@ -2,92 +2,46 @@ package bpdoc
 
 import (
 	"fmt"
-	"go/ast"
-	"go/doc"
-	"go/parser"
-	"go/token"
 	"html/template"
 	"reflect"
 	"sort"
-	"strconv"
-	"strings"
-	"sync"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/google/blueprint"
 	"github.com/google/blueprint/proptools"
 )
 
-type Context struct {
-	pkgFiles map[string][]string // Map of package name to source files, provided by constructor
+// Package contains the information about a package relevant to generating documentation.
+type Package struct {
+	// Name is the name of the package.
+	Name string
 
-	mutex sync.Mutex
-	pkgs  map[string]*doc.Package    // Map of package name to parsed Go AST, protected by mutex
-	ps    map[string]*PropertyStruct // Map of type name to property struct, protected by mutex
+	// Path is the full package path of the package as used in the primary builder.
+	Path string
+
+	// Text is the contents of the package comment documenting the module types in the package.
+	Text string
+
+	// ModuleTypes is a list of ModuleType objects that contain information about each module type that is
+	// defined by the package.
+	ModuleTypes []*ModuleType
 }
 
-func NewContext(pkgFiles map[string][]string) *Context {
-	return &Context{
-		pkgFiles: pkgFiles,
-		pkgs:     make(map[string]*doc.Package),
-		ps:       make(map[string]*PropertyStruct),
-	}
-}
+// ModuleType contains the information about a module type that is relevant to generating documentation.
+type ModuleType struct {
+	// Name is the string that will appear in Blueprints files when defining a new module of
+	// this type.
+	Name string
 
-// Return the PropertyStruct associated with a property struct type.  The type should be in the
-// format <package path>.<type name>
-func (c *Context) PropertyStruct(pkgPath, name string, defaults reflect.Value) (*PropertyStruct, error) {
-	ps := c.getPropertyStruct(pkgPath, name)
+	// PkgPath is the full package path of the package that contains the module type factory.
+	PkgPath string
 
-	if ps == nil {
-		pkg, err := c.pkg(pkgPath)
-		if err != nil {
-			return nil, err
-		}
+	// Text is the contents of the comment documenting the module type.
+	Text string
 
-		for _, t := range pkg.Types {
-			if t.Name == name {
-				ps, err = newPropertyStruct(t)
-				if err != nil {
-					return nil, err
-				}
-				ps = c.putPropertyStruct(pkgPath, name, ps)
-			}
-		}
-	}
-
-	if ps == nil {
-		return nil, fmt.Errorf("package %q type %q not found", pkgPath, name)
-	}
-
-	ps = ps.Clone()
-	ps.SetDefaults(defaults)
-
-	return ps, nil
-}
-
-func (c *Context) getPropertyStruct(pkgPath, name string) *PropertyStruct {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	name = pkgPath + "." + name
-
-	return c.ps[name]
-}
-
-func (c *Context) putPropertyStruct(pkgPath, name string, ps *PropertyStruct) *PropertyStruct {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	name = pkgPath + "." + name
-
-	if c.ps[name] != nil {
-		return c.ps[name]
-	} else {
-		c.ps[name] = ps
-		return ps
-	}
+	// PropertyStructs is a list of PropertyStruct objects that contain information about each
+	// property struct that is used by the module type, containing all properties that are valid
+	// for the module type.
+	PropertyStructs []*PropertyStruct
 }
 
 type PropertyStruct struct {
@@ -107,338 +61,60 @@ type Property struct {
 	Default    string
 }
 
-func (ps *PropertyStruct) Clone() *PropertyStruct {
-	ret := *ps
-	ret.Properties = append([]Property(nil), ret.Properties...)
-	for i, prop := range ret.Properties {
-		ret.Properties[i] = prop.Clone()
-	}
+func AllPackages(pkgFiles map[string][]string, moduleTypeNameFactories map[string]reflect.Value,
+	moduleTypeNamePropertyStructs map[string][]interface{}) ([]*Package, error) {
+	// Read basic info from the files to construct a Reader instance.
+	r := NewReader(pkgFiles)
 
-	return &ret
-}
-
-func (p *Property) Clone() Property {
-	ret := *p
-	ret.Properties = append([]Property(nil), ret.Properties...)
-	for i, prop := range ret.Properties {
-		ret.Properties[i] = prop.Clone()
-	}
-
-	return ret
-}
-
-func (p *Property) Equal(other Property) bool {
-	return p.Name == other.Name && p.Type == other.Type && p.Tag == other.Tag &&
-		p.Text == other.Text && p.Default == other.Default &&
-		stringArrayEqual(p.OtherNames, other.OtherNames) &&
-		htmlArrayEqual(p.OtherTexts, other.OtherTexts) &&
-		p.SameSubProperties(other)
-}
-
-func (ps *PropertyStruct) SetDefaults(defaults reflect.Value) {
-	setDefaults(ps.Properties, defaults)
-}
-
-func setDefaults(properties []Property, defaults reflect.Value) {
-	for i := range properties {
-		prop := &properties[i]
-		fieldName := proptools.FieldNameForProperty(prop.Name)
-		f := defaults.FieldByName(fieldName)
-		if (f == reflect.Value{}) {
-			panic(fmt.Errorf("property %q does not exist in %q", fieldName, defaults.Type()))
+	pkgMap := map[string]*Package{}
+	var pkgs []*Package
+	// Scan through per-module-type property structs map.
+	for mtName, propertyStructs := range moduleTypeNamePropertyStructs {
+		// Construct ModuleType with the given info.
+		mtInfo, err := assembleModuleTypeInfo(r, mtName, moduleTypeNameFactories[mtName], propertyStructs)
+		if err != nil {
+			return nil, err
 		}
+		// Some pruning work
+		removeEmptyPropertyStructs(mtInfo)
+		collapseDuplicatePropertyStructs(mtInfo)
+		collapseNestedPropertyStructs(mtInfo)
+		combineDuplicateProperties(mtInfo)
 
-		if reflect.DeepEqual(f.Interface(), reflect.Zero(f.Type()).Interface()) {
-			continue
-		}
-
-		if f.Kind() == reflect.Interface {
-			f = f.Elem()
-		}
-
-		if f.Kind() == reflect.Ptr {
-			if f.IsNil() {
-				continue
+		// Add the ModuleInfo to the corresponding Package map/slice entries.
+		pkg := pkgMap[mtInfo.PkgPath]
+		if pkg == nil {
+			var err error
+			pkg, err = r.Package(mtInfo.PkgPath)
+			if err != nil {
+				return nil, err
 			}
-			f = f.Elem()
+			pkgMap[mtInfo.PkgPath] = pkg
+			pkgs = append(pkgs, pkg)
 		}
-
-		if f.Kind() == reflect.Struct {
-			setDefaults(prop.Properties, f)
-		} else {
-			prop.Default = fmt.Sprintf("%v", f.Interface())
-		}
+		pkg.ModuleTypes = append(pkg.ModuleTypes, mtInfo)
 	}
+
+	// Sort ModuleTypes within each package.
+	for _, pkg := range pkgs {
+		sort.Slice(pkg.ModuleTypes, func(i, j int) bool { return pkg.ModuleTypes[i].Name < pkg.ModuleTypes[j].Name })
+	}
+	// Sort packages.
+	sort.Slice(pkgs, func(i, j int) bool { return pkgs[i].Path < pkgs[j].Path })
+
+	return pkgs, nil
 }
 
-func stringArrayEqual(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
+func assembleModuleTypeInfo(r *Reader, name string, factory reflect.Value,
+	propertyStructs []interface{}) (*ModuleType, error) {
 
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-
-	return true
-}
-
-func htmlArrayEqual(a, b []template.HTML) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-
-	return true
-}
-
-func (p *Property) SameSubProperties(other Property) bool {
-	if len(p.Properties) != len(other.Properties) {
-		return false
-	}
-
-	for i := range p.Properties {
-		if !p.Properties[i].Equal(other.Properties[i]) {
-			return false
-		}
-	}
-
-	return true
-}
-
-func (ps *PropertyStruct) GetByName(name string) *Property {
-	return getByName(name, "", &ps.Properties)
-}
-
-func getByName(name string, prefix string, props *[]Property) *Property {
-	for i := range *props {
-		if prefix+(*props)[i].Name == name {
-			return &(*props)[i]
-		} else if strings.HasPrefix(name, prefix+(*props)[i].Name+".") {
-			return getByName(name, prefix+(*props)[i].Name+".", &(*props)[i].Properties)
-		}
-	}
-	return nil
-}
-
-func (p *Property) Nest(nested *PropertyStruct) {
-	//p.Name += "(" + nested.Name + ")"
-	//p.Text += "(" + nested.Text + ")"
-	p.Properties = append(p.Properties, nested.Properties...)
-}
-
-func newPropertyStruct(t *doc.Type) (*PropertyStruct, error) {
-	typeSpec := t.Decl.Specs[0].(*ast.TypeSpec)
-	ps := PropertyStruct{
-		Name: t.Name,
-		Text: t.Doc,
-	}
-
-	structType, ok := typeSpec.Type.(*ast.StructType)
-	if !ok {
-		return nil, fmt.Errorf("type of %q is not a struct", t.Name)
-	}
-
-	var err error
-	ps.Properties, err = structProperties(structType)
+	mt, err := r.ModuleType(name, factory)
 	if err != nil {
 		return nil, err
 	}
 
-	return &ps, nil
-}
-
-func structProperties(structType *ast.StructType) (props []Property, err error) {
-	for _, f := range structType.Fields.List {
-		names := f.Names
-		if names == nil {
-			// Anonymous fields have no name, use the type as the name
-			// TODO: hide the name and make the properties show up in the embedding struct
-			if t, ok := f.Type.(*ast.Ident); ok {
-				names = append(names, t)
-			}
-		}
-		for _, n := range names {
-			var name, typ, tag, text string
-			var innerProps []Property
-			if n != nil {
-				name = proptools.PropertyNameForField(n.Name)
-			}
-			if f.Doc != nil {
-				text = f.Doc.Text()
-			}
-			if f.Tag != nil {
-				tag, err = strconv.Unquote(f.Tag.Value)
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			t := f.Type
-			if star, ok := t.(*ast.StarExpr); ok {
-				t = star.X
-			}
-			switch a := t.(type) {
-			case *ast.ArrayType:
-				typ = "list of strings"
-			case *ast.InterfaceType:
-				typ = "interface"
-			case *ast.Ident:
-				typ = a.Name
-			case *ast.StructType:
-				innerProps, err = structProperties(a)
-				if err != nil {
-					return nil, err
-				}
-			default:
-				typ = fmt.Sprintf("%T", f.Type)
-			}
-
-			var html template.HTML
-
-			lines := strings.Split(text, "\n")
-			preformatted := false
-			for _, line := range lines {
-				r, _ := utf8.DecodeRuneInString(line)
-				indent := unicode.IsSpace(r)
-				if indent && !preformatted {
-					html += "<pre>\n"
-				} else if !indent && preformatted {
-					html += "</pre>\n"
-				}
-				preformatted = indent
-				html += template.HTML(template.HTMLEscapeString(line)) + "\n"
-			}
-			if preformatted {
-				html += "</pre>\n"
-			}
-
-			props = append(props, Property{
-				Name:       name,
-				Type:       typ,
-				Tag:        reflect.StructTag(tag),
-				Text:       html,
-				Properties: innerProps,
-			})
-		}
-	}
-
-	return props, nil
-}
-
-func (ps *PropertyStruct) ExcludeByTag(key, value string) {
-	filterPropsByTag(&ps.Properties, key, value, true)
-}
-
-func (ps *PropertyStruct) IncludeByTag(key, value string) {
-	filterPropsByTag(&ps.Properties, key, value, false)
-}
-
-func filterPropsByTag(props *[]Property, key, value string, exclude bool) {
-	// Create a slice that shares the storage of props but has 0 length.  Appending up to
-	// len(props) times to this slice will overwrite the original slice contents
-	filtered := (*props)[:0]
-	for _, x := range *props {
-		tag := x.Tag.Get(key)
-		for _, entry := range strings.Split(tag, ",") {
-			if (entry == value) == !exclude {
-				filtered = append(filtered, x)
-			}
-		}
-	}
-
-	*props = filtered
-}
-
-// Package AST generation and storage
-func (c *Context) pkg(pkgPath string) (*doc.Package, error) {
-	pkg := c.getPackage(pkgPath)
-	if pkg == nil {
-		if files, ok := c.pkgFiles[pkgPath]; ok {
-			var err error
-			pkgAST, err := NewPackageAST(files)
-			if err != nil {
-				return nil, err
-			}
-			pkg = doc.New(pkgAST, pkgPath, doc.AllDecls)
-			pkg = c.putPackage(pkgPath, pkg)
-		} else {
-			return nil, fmt.Errorf("unknown package %q", pkgPath)
-		}
-	}
-	return pkg, nil
-}
-
-func (c *Context) getPackage(pkgPath string) *doc.Package {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	return c.pkgs[pkgPath]
-}
-
-func (c *Context) putPackage(pkgPath string, pkg *doc.Package) *doc.Package {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	if c.pkgs[pkgPath] != nil {
-		return c.pkgs[pkgPath]
-	} else {
-		c.pkgs[pkgPath] = pkg
-		return pkg
-	}
-}
-
-func NewPackageAST(files []string) (*ast.Package, error) {
-	asts := make(map[string]*ast.File)
-
-	fset := token.NewFileSet()
-	for _, file := range files {
-		ast, err := parser.ParseFile(fset, file, nil, parser.ParseComments)
-		if err != nil {
-			return nil, err
-		}
-		asts[file] = ast
-	}
-
-	pkg, _ := ast.NewPackage(fset, asts, nil, nil)
-	return pkg, nil
-}
-
-func ModuleTypes(pkgFiles map[string][]string, moduleTypePropertyStructs map[string][]interface{}) ([]*ModuleType, error) {
-	c := NewContext(pkgFiles)
-
-	var moduleTypeList []*ModuleType
-	for moduleType, propertyStructs := range moduleTypePropertyStructs {
-		mt, err := getModuleType(c, moduleType, propertyStructs)
-		if err != nil {
-			return nil, err
-		}
-		removeEmptyPropertyStructs(mt)
-		collapseDuplicatePropertyStructs(mt)
-		collapseNestedPropertyStructs(mt)
-		combineDuplicateProperties(mt)
-		moduleTypeList = append(moduleTypeList, mt)
-	}
-
-	sort.Sort(moduleTypeByName(moduleTypeList))
-
-	return moduleTypeList, nil
-}
-
-func getModuleType(c *Context, moduleTypeName string,
-	propertyStructs []interface{}) (*ModuleType, error) {
-	mt := &ModuleType{
-		Name: moduleTypeName,
-		//Text: c.ModuleTypeDocs(moduleType),
-	}
-
+	// Reader.ModuleType only fills basic information such as name and package path. Collect more info
+	// from property struct data.
 	for _, s := range propertyStructs {
 		v := reflect.ValueOf(s).Elem()
 		t := v.Type()
@@ -447,7 +123,7 @@ func getModuleType(c *Context, moduleTypeName string,
 		if t.PkgPath() == "" {
 			continue
 		}
-		ps, err := c.PropertyStruct(t.PkgPath(), t.Name(), v)
+		ps, err := r.PropertyStruct(t.PkgPath(), t.Name(), v)
 		if err != nil {
 			return nil, err
 		}
@@ -460,7 +136,7 @@ func getModuleType(c *Context, moduleTypeName string,
 			if nestedType.PkgPath() == "" {
 				continue
 			}
-			nested, err := c.PropertyStruct(nestedType.PkgPath(), nestedType.Name(), nestedValue)
+			nested, err := r.PropertyStruct(nestedType.PkgPath(), nestedType.Name(), nestedValue)
 			if err != nil {
 				return nil, err
 			}
@@ -528,7 +204,6 @@ func nestedPropertyStructs(s reflect.Value) map[string]reflect.Value {
 					field.Name, fieldValue.Kind()))
 			}
 		}
-
 	}
 
 	walk(s, "")
@@ -633,27 +308,5 @@ propertyLoop:
 		}
 		n = append(n, child)
 	}
-
 	*p = n
-}
-
-type moduleTypeByName []*ModuleType
-
-func (l moduleTypeByName) Len() int           { return len(l) }
-func (l moduleTypeByName) Less(i, j int) bool { return l[i].Name < l[j].Name }
-func (l moduleTypeByName) Swap(i, j int)      { l[i], l[j] = l[j], l[i] }
-
-// ModuleType contains the info about a module type that is relevant to generating documentation.
-type ModuleType struct {
-	// Name is the string that will appear in Blueprints files when defining a new module of
-	// this type.
-	Name string
-
-	// Text is the contents of the comment documenting the module type
-	Text string
-
-	// PropertyStructs is a list of PropertyStruct objects that contain information about each
-	// property struct that is used by the module type, containing all properties that are valid
-	// for the module type.
-	PropertyStructs []*PropertyStruct
 }
