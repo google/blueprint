@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"io/ioutil"
 	"path/filepath"
+	"reflect"
 
 	"github.com/google/blueprint"
 	"github.com/google/blueprint/bootstrap/bpdoc"
@@ -14,7 +15,7 @@ import (
 
 // ModuleTypeDocs returns a list of bpdoc.ModuleType objects that contain information relevant
 // to generating documentation for module types supported by the primary builder.
-func ModuleTypeDocs(ctx *blueprint.Context) ([]*bpdoc.ModuleType, error) {
+func ModuleTypeDocs(ctx *blueprint.Context, factories map[string]reflect.Value) ([]*bpdoc.Package, error) {
 	// Find the module that's marked as the "primary builder", which means it's
 	// creating the binary that we'll use to generate the non-bootstrap
 	// build.ninja file.
@@ -60,11 +61,22 @@ func ModuleTypeDocs(ctx *blueprint.Context) ([]*bpdoc.ModuleType, error) {
 		}
 	})
 
-	return bpdoc.ModuleTypes(pkgFiles, ctx.ModuleTypePropertyStructs())
+	mergedFactories := make(map[string]reflect.Value)
+	for moduleType, factory := range factories {
+		mergedFactories[moduleType] = factory
+	}
+
+	for moduleType, factory := range ctx.ModuleTypeFactories() {
+		if _, exists := mergedFactories[moduleType]; !exists {
+			mergedFactories[moduleType] = reflect.ValueOf(factory)
+		}
+	}
+
+	return bpdoc.AllPackages(pkgFiles, mergedFactories, ctx.ModuleTypePropertyStructs())
 }
 
 func writeDocs(ctx *blueprint.Context, filename string) error {
-	moduleTypeList, err := ModuleTypeDocs(ctx)
+	moduleTypeList, err := ModuleTypeDocs(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -108,25 +120,28 @@ const (
 <h1>Build Docs</h1>
 <div class="panel-group" id="accordion" role="tablist" aria-multiselectable="true">
   {{range .}}
-    {{ $collapseIndex := unique }}
-    <div class="panel panel-default">
-      <div class="panel-heading" role="tab" id="heading{{$collapseIndex}}">
-        <h2 class="panel-title">
-          <a class="collapsed" role="button" data-toggle="collapse" data-parent="#accordion" href="#collapse{{$collapseIndex}}" aria-expanded="false" aria-controls="collapse{{$collapseIndex}}">
-             {{.Name}}
-          </a>
-        </h2>
+    <p>{{.Text}}</p>
+    {{range .ModuleTypes}}
+      {{ $collapseIndex := unique }}
+      <div class="panel panel-default">
+        <div class="panel-heading" role="tab" id="heading{{$collapseIndex}}">
+          <h2 class="panel-title">
+            <a class="collapsed" role="button" data-toggle="collapse" data-parent="#accordion" href="#collapse{{$collapseIndex}}" aria-expanded="false" aria-controls="collapse{{$collapseIndex}}">
+               {{.Name}}
+            </a>
+          </h2>
+        </div>
       </div>
-    </div>
-    <div id="collapse{{$collapseIndex}}" class="panel-collapse collapse" role="tabpanel" aria-labelledby="heading{{$collapseIndex}}">
-      <div class="panel-body">
-        <p>{{.Text}}</p>
-        {{range .PropertyStructs}}
+      <div id="collapse{{$collapseIndex}}" class="panel-collapse collapse" role="tabpanel" aria-labelledby="heading{{$collapseIndex}}">
+        <div class="panel-body">
           <p>{{.Text}}</p>
-          {{template "properties" .Properties}}
-        {{end}}
+          {{range .PropertyStructs}}
+            <p>{{.Text}}</p>
+            {{template "properties" .Properties}}
+          {{end}}
+        </div>
       </div>
-    </div>
+    {{end}}
   {{end}}
 </div>
 </body>

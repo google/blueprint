@@ -119,6 +119,11 @@ bootstrap_go_package {
     pkgPath: "github.com/google/blueprint/bootstrap/bpdoc",
     srcs: [
         "bootstrap/bpdoc/bpdoc.go",
+        "bootstrap/bpdoc/properties.go",
+        "bootstrap/bpdoc/reader.go",
+    ],
+    testSrcs: [
+        "bootstrap/bpdoc/reader_test.go",
     ],
 }
 
