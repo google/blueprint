@@ -2829,6 +2829,14 @@ func (c *Context) ModuleTypePropertyStructs() map[string][]interface{} {
 	return ret
 }
 
+func (c *Context) ModuleTypeFactories() map[string]ModuleFactory {
+	ret := make(map[string]ModuleFactory)
+	for k, v := range c.moduleFactories {
+		ret[k] = v
+	}
+	return ret
+}
+
 func (c *Context) ModuleName(logicModule Module) string {
 	module := c.moduleInfo[logicModule]
 	return module.Name()
