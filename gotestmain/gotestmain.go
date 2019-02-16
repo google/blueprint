@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
+	"go/doc"
 	"go/parser"
 	"go/token"
 	"io/ioutil"
@@ -39,13 +40,14 @@ var (
 type data struct {
 	Package                 string
 	Tests                   []string
+	Examples                []*doc.Example
 	HasMain                 bool
 	MainStartTakesInterface bool
 }
 
-func findTests(srcs []string) (tests []string, hasMain bool) {
+func findTests(srcs []string) (tests []string, examples []*doc.Example, hasMain bool) {
 	for _, src := range srcs {
-		f, err := parser.ParseFile(token.NewFileSet(), src, nil, 0)
+		f, err := parser.ParseFile(token.NewFileSet(), src, nil, parser.ParseComments)
 		if err != nil {
 			panic(err)
 		}
@@ -59,6 +61,8 @@ func findTests(srcs []string) (tests []string, hasMain bool) {
 				tests = append(tests, obj.Name)
 			}
 		}
+
+		examples = append(examples, doc.Examples(f)...)
 	}
 	sort.Strings(tests)
 	return
@@ -81,11 +85,12 @@ func main() {
 
 	buf := &bytes.Buffer{}
 
-	tests, hasMain := findTests(flag.Args())
+	tests, examples, hasMain := findTests(flag.Args())
 
 	d := data{
 		Package:                 *pkg,
 		Tests:                   tests,
+		Examples:                examples,
 		HasMain:                 hasMain,
 		MainStartTakesInterface: mainStartTakesInterface(),
 	}
@@ -118,6 +123,14 @@ import (
 var t = []testing.InternalTest{
 {{range .Tests}}
 	{"{{.}}", pkg.{{.}}},
+{{end}}
+}
+
+var e = []testing.InternalExample{
+{{range .Examples}}
+	{{if or .Output .EmptyOutput}}
+		{"{{.Name}}", pkg.Example{{.Name}}, {{.Output | printf "%q" }}, {{.Unordered}}},
+	{{end}}
 {{end}}
 }
 
@@ -170,9 +183,9 @@ func (matchString) StopTestLog() error {
 
 func main() {
 {{if .MainStartTakesInterface}}
-	m := testing.MainStart(matchString{}, t, nil, nil)
+	m := testing.MainStart(matchString{}, t, nil, e)
 {{else}}
-	m := testing.MainStart(MatchString, t, nil, nil)
+	m := testing.MainStart(MatchString, t, nil, e)
 {{end}}
 {{if .HasMain}}
 	pkg.TestMain(m)
