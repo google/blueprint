@@ -228,7 +228,7 @@ propertyStructLoop:
 	for _, from := range mt.PropertyStructs {
 		for _, to := range collapsed {
 			if from.Name == to.Name {
-				collapseDuplicateProperties(&to.Properties, &from.Properties)
+				CollapseDuplicateProperties(&to.Properties, &from.Properties)
 				continue propertyStructLoop
 			}
 		}
@@ -237,13 +237,13 @@ propertyStructLoop:
 	mt.PropertyStructs = collapsed
 }
 
-func collapseDuplicateProperties(to, from *[]Property) {
+func CollapseDuplicateProperties(to, from *[]Property) {
 propertyLoop:
 	for _, f := range *from {
 		for i := range *to {
 			t := &(*to)[i]
 			if f.Name == t.Name {
-				collapseDuplicateProperties(&t.Properties, &f.Properties)
+				CollapseDuplicateProperties(&t.Properties, &f.Properties)
 				continue propertyLoop
 			}
 		}
