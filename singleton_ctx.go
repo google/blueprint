@@ -27,6 +27,8 @@ type Singleton interface {
 type SingletonContext interface {
 	Config() interface{}
 
+	Name() string
+
 	ModuleName(module Module) string
 	ModuleDir(module Module) string
 	ModuleSubDir(module Module) string
@@ -83,6 +85,7 @@ type SingletonContext interface {
 var _ SingletonContext = (*singletonContext)(nil)
 
 type singletonContext struct {
+	name    string
 	context *Context
 	config  interface{}
 	scope   *localScope
@@ -96,6 +99,10 @@ type singletonContext struct {
 
 func (s *singletonContext) Config() interface{} {
 	return s.config
+}
+
+func (s *singletonContext) Name() string {
+	return s.name
 }
 
 func (s *singletonContext) ModuleName(logicModule Module) string {
