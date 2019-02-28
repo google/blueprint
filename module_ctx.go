@@ -338,14 +338,18 @@ func (m *baseModuleContext) GetDirectDep(name string) (Module, DependencyTag) {
 // GetDirectDepWithTag returns the Module the direct dependency with the specified name, or nil if
 // none exists.  It panics if the dependency does not have the specified tag.
 func (m *baseModuleContext) GetDirectDepWithTag(name string, tag DependencyTag) Module {
+	var deps []depInfo
 	for _, dep := range m.module.directDeps {
 		if dep.module.Name() == name {
-			if dep.tag != tag {
-				panic(fmt.Errorf("found dependency %q with tag %#v, expected tag %#v",
-					dep.module, dep.tag, tag))
+			if dep.tag == tag {
+				return dep.module.logicModule
 			}
-			return dep.module.logicModule
+			deps = append(deps, dep)
 		}
+	}
+
+	if len(deps) != 0 {
+		panic(fmt.Errorf("Unable to find dependency %q with requested tag %#v. Found: %#v", deps[0].module, tag, deps))
 	}
 
 	return nil
