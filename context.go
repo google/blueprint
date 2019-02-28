@@ -2347,6 +2347,7 @@ func (c *Context) generateSingletonBuildActions(config interface{},
 		scope := newLocalScope(nil, singletonNamespacePrefix(info.name))
 
 		sctx := &singletonContext{
+			name:    info.name,
 			context: c,
 			config:  config,
 			scope:   scope,
@@ -2975,6 +2976,25 @@ func (c *Context) VisitAllModuleVariants(module Module,
 	visit func(Module)) {
 
 	c.visitAllModuleVariants(c.moduleInfo[module], visit)
+}
+
+// Singletons returns a list of all registered Singletons.
+func (c *Context) Singletons() []Singleton {
+	var ret []Singleton
+	for _, s := range c.singletonInfo {
+		ret = append(ret, s.singleton)
+	}
+	return ret
+}
+
+// SingletonName returns the name that the given singleton was registered with.
+func (c *Context) SingletonName(singleton Singleton) string {
+	for _, s := range c.singletonInfo {
+		if s.singleton == singleton {
+			return s.name
+		}
+	}
+	return ""
 }
 
 // WriteBuildFile writes the Ninja manifeset text for the generated build
