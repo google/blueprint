@@ -16,28 +16,51 @@ package proptools
 
 import "strings"
 
-// NinjaEscape takes a slice of strings that may contain characters that are meaningful to ninja
+// NinjaEscapeList takes a slice of strings that may contain characters that are meaningful to ninja
 // ($), and escapes each string so they will be passed to bash.  It is not necessary on input,
 // output, or dependency names, those are handled by ModuleContext.Build.  It is generally required
 // on strings from properties in Blueprint files that are used as Args to ModuleContext.Build.  A
 // new slice containing the escaped strings is returned.
-func NinjaEscape(slice []string) []string {
+func NinjaEscapeList(slice []string) []string {
 	slice = append([]string(nil), slice...)
 	for i, s := range slice {
-		slice[i] = ninjaEscaper.Replace(s)
+		slice[i] = NinjaEscape(s)
 	}
 	return slice
+}
+
+// NinjaEscapeList takes a string that may contain characters that are meaningful to ninja
+// ($), and escapes it so it will be passed to bash.  It is not necessary on input,
+// output, or dependency names, those are handled by ModuleContext.Build.  It is generally required
+// on strings from properties in Blueprint files that are used as Args to ModuleContext.Build.  A
+// new slice containing the escaped strings is returned.
+func NinjaEscape(s string) string {
+	return ninjaEscaper.Replace(s)
 }
 
 var ninjaEscaper = strings.NewReplacer(
 	"$", "$$")
 
-// ShellEscape takes a slice of strings that may contain characters that are meaningful to bash and
-// escapes if necessary by wrapping them in single quotes, and replacing internal single quotes with
+// ShellEscapeList takes a slice of strings that may contain characters that are meaningful to bash and
+// escapes them if necessary by wrapping them in single quotes, and replacing internal single quotes with
 // '\'' (one single quote to end the quoting, a shell-escaped single quote to insert a real single
 // quote, and then a single quote to restarting quoting.  A new slice containing the escaped strings
 // is returned.
-func ShellEscape(slice []string) []string {
+func ShellEscapeList(slice []string) []string {
+	slice = append([]string(nil), slice...)
+
+	for i, s := range slice {
+		slice[i] = ShellEscape(s)
+	}
+	return slice
+
+}
+
+// ShellEscapeList takes string that may contain characters that are meaningful to bash and
+// escapes it if necessary by wrapping it in single quotes, and replacing internal single quotes with
+// '\'' (one single quote to end the quoting, a shell-escaped single quote to insert a real single
+// quote, and then a single quote to restarting quoting.
+func ShellEscape(s string) string {
 	shellUnsafeChar := func(r rune) bool {
 		switch {
 		case 'A' <= r && r <= 'Z',
@@ -57,22 +80,20 @@ func ShellEscape(slice []string) []string {
 		}
 	}
 
-	slice = append([]string(nil), slice...)
-
-	for i, s := range slice {
-		if strings.IndexFunc(s, shellUnsafeChar) == -1 {
-			// No escaping necessary
-			continue
-		}
-
-		slice[i] = `'` + singleQuoteReplacer.Replace(s) + `'`
+	if strings.IndexFunc(s, shellUnsafeChar) == -1 {
+		// No escaping necessary
+		return s
 	}
-	return slice
 
+	return `'` + singleQuoteReplacer.Replace(s) + `'`
 }
 
-func NinjaAndShellEscape(slice []string) []string {
-	return ShellEscape(NinjaEscape(slice))
+func NinjaAndShellEscapeList(slice []string) []string {
+	return ShellEscapeList(NinjaEscapeList(slice))
+}
+
+func NinjaAndShellEscape(s string) string {
+	return ShellEscape(NinjaEscape(s))
 }
 
 var singleQuoteReplacer = strings.NewReplacer(`'`, `'\''`)
