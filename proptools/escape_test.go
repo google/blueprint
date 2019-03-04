@@ -93,7 +93,7 @@ var shellEscapeTestCase = []escapeTestCase{
 
 func TestNinjaEscaping(t *testing.T) {
 	for _, testCase := range ninjaEscapeTestCase {
-		got := NinjaEscape([]string{testCase.in})[0]
+		got := NinjaEscape(testCase.in)
 		if got != testCase.out {
 			t.Errorf("%s: expected `%s` got `%s`", testCase.name, testCase.out, got)
 		}
@@ -102,7 +102,7 @@ func TestNinjaEscaping(t *testing.T) {
 
 func TestShellEscaping(t *testing.T) {
 	for _, testCase := range shellEscapeTestCase {
-		got := ShellEscape([]string{testCase.in})[0]
+		got := ShellEscape(testCase.in)
 		if got != testCase.out {
 			t.Errorf("%s: expected `%s` got `%s`", testCase.name, testCase.out, got)
 		}
@@ -114,7 +114,7 @@ func TestExternalShellEscaping(t *testing.T) {
 		return
 	}
 	for _, testCase := range shellEscapeTestCase {
-		cmd := "echo -n " + ShellEscape([]string{testCase.in})[0]
+		cmd := "echo -n " + ShellEscape(testCase.in)
 		got, err := exec.Command("/bin/sh", "-c", cmd).Output()
 		if err != nil {
 			t.Error(err)
