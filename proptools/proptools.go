@@ -15,8 +15,6 @@
 package proptools
 
 import (
-	"reflect"
-	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -37,17 +35,6 @@ func FieldNameForProperty(propertyName string) string {
 		fieldName += propertyName[size:]
 	}
 	return fieldName
-}
-
-func HasTag(field reflect.StructField, name, value string) bool {
-	tag := field.Tag.Get(name)
-	for _, entry := range strings.Split(tag, ",") {
-		if entry == value {
-			return true
-		}
-	}
-
-	return false
 }
 
 // BoolPtr returns a pointer to a new bool containing the given value.
