@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -137,11 +138,16 @@ func checkCalledFromInit() {
 			panic("not called from an init func")
 		}
 
-		if funcName == "init" || strings.HasPrefix(funcName, "init·") {
+		if funcName == "init" || strings.HasPrefix(funcName, "init·") ||
+			funcName == "init.ializers" || strings.HasPrefix(funcName, "init.") {
 			return
 		}
 	}
 }
+
+// A regex to find a package path within a function name. It finds the shortest string that is
+// followed by '.' and doesn't have any '/'s left.
+var pkgPathRe = regexp.MustCompile(`^(.*?)\.([^/]+)$`)
 
 // callerName returns the package path and function name of the calling
 // function.  The skip argument has the same meaning as the skip argument of
@@ -153,25 +159,13 @@ func callerName(skip int) (pkgPath, funcName string, ok bool) {
 		return "", "", false
 	}
 
-	f := runtime.FuncForPC(pc[0])
-	fullName := f.Name()
-
-	lastDotIndex := strings.LastIndex(fullName, ".")
-	if lastDotIndex == -1 {
-		panic("unable to distinguish function name from package")
+	f := runtime.FuncForPC(pc[0]).Name()
+	s := pkgPathRe.FindStringSubmatch(f)
+	if len(s) < 3 {
+		panic(fmt.Errorf("failed to extract package path and function name from %q", f))
 	}
 
-	if fullName[lastDotIndex-1] == ')' {
-		// The caller is a method on some type, so it's name looks like
-		// "pkg/path.(type).method".  We need to go back one dot farther to get
-		// to the package name.
-		lastDotIndex = strings.LastIndex(fullName[:lastDotIndex], ".")
-	}
-
-	pkgPath = fullName[:lastDotIndex]
-	funcName = fullName[lastDotIndex+1:]
-	ok = true
-	return
+	return s[1], s[2], true
 }
 
 // pkgPathToName makes a Ninja-friendly name out of a Go package name by
