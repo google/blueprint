@@ -123,6 +123,7 @@ type DynamicDependerModule interface {
 type BaseModuleContext interface {
 	ModuleName() string
 	ModuleDir() string
+	ModuleType() string
 	Config() interface{}
 
 	ContainsProperty(name string) bool
@@ -154,6 +155,9 @@ type ModuleContext interface {
 	BaseModuleContext
 
 	OtherModuleName(m Module) string
+	OtherModuleDir(m Module) string
+	OtherModuleSubDir(m Module) string
+	OtherModuleType(m Module) string
 	OtherModuleErrorf(m Module, fmt string, args ...interface{})
 	OtherModuleDependencyTag(m Module) DependencyTag
 
@@ -197,6 +201,10 @@ func (d *baseModuleContext) moduleInfo() *moduleInfo {
 
 func (d *baseModuleContext) ModuleName() string {
 	return d.module.Name()
+}
+
+func (d *baseModuleContext) ModuleType() string {
+	return d.module.typeName
 }
 
 func (d *baseModuleContext) ContainsProperty(name string) bool {
@@ -289,6 +297,21 @@ type moduleContext struct {
 func (m *baseModuleContext) OtherModuleName(logicModule Module) string {
 	module := m.context.moduleInfo[logicModule]
 	return module.Name()
+}
+
+func (m *baseModuleContext) OtherModuleDir(logicModule Module) string {
+	module := m.context.moduleInfo[logicModule]
+	return filepath.Dir(module.relBlueprintsFile)
+}
+
+func (m *baseModuleContext) OtherModuleSubDir(logicModule Module) string {
+	module := m.context.moduleInfo[logicModule]
+	return module.variantName
+}
+
+func (m *baseModuleContext) OtherModuleType(logicModule Module) string {
+	module := m.context.moduleInfo[logicModule]
+	return module.typeName
 }
 
 func (m *baseModuleContext) OtherModuleErrorf(logicModule Module, format string,
@@ -559,6 +582,9 @@ type TopDownMutatorContext interface {
 	baseMutatorContext
 
 	OtherModuleName(m Module) string
+	OtherModuleDir(m Module) string
+	OtherModuleSubDir(m Module) string
+	OtherModuleType(m Module) string
 	OtherModuleErrorf(m Module, fmt string, args ...interface{})
 	OtherModuleDependencyTag(m Module) DependencyTag
 
