@@ -604,15 +604,6 @@ type fileParseContext struct {
 	doneVisiting chan struct{}
 }
 
-func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string, errs []error) {
-	baseDir := filepath.Dir(rootFile)
-	pathsToParse, err := c.ListModulePaths(baseDir)
-	if err != nil {
-		return nil, []error{err}
-	}
-	return c.ParseFileList(baseDir, pathsToParse)
-}
-
 // ParseBlueprintsFiles parses a set of Blueprints files starting with the file
 // at rootFile.  When it encounters a Blueprints file with a set of subdirs
 // listed it recursively parses any Blueprints files found in those
@@ -622,6 +613,15 @@ func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string, errs []e
 // which the future output will depend is returned.  This list will include both
 // Blueprints file paths as well as directory paths for cases where wildcard
 // subdirs are found.
+func (c *Context) ParseBlueprintsFiles(rootFile string) (deps []string, errs []error) {
+	baseDir := filepath.Dir(rootFile)
+	pathsToParse, err := c.ListModulePaths(baseDir)
+	if err != nil {
+		return nil, []error{err}
+	}
+	return c.ParseFileList(baseDir, pathsToParse)
+}
+
 func (c *Context) ParseFileList(rootDir string, filePaths []string) (deps []string,
 	errs []error) {
 
