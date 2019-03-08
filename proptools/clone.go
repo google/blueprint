@@ -35,8 +35,7 @@ func CopyProperties(dstValue, srcValue reflect.Value) {
 
 	for i, field := range typeFields(typ) {
 		if field.PkgPath != "" {
-			// The field is not exported so just skip it.
-			continue
+			panic(fmt.Errorf("can't copy a private field %q", field.Name))
 		}
 
 		srcFieldValue := srcValue.Field(i)
