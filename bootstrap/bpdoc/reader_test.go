@@ -59,7 +59,7 @@ func TestModuleTypeDocs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if mt.Text != "foo docs.\n" {
+	if mt.Text != "foo docs.\n\n" {
 		t.Errorf("unexpected docs %q", mt.Text)
 	}
 
