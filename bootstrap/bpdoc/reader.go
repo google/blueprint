@@ -77,7 +77,7 @@ func (r *Reader) ModuleType(name string, factory reflect.Value) (*ModuleType, er
 	return &ModuleType{
 		Name:    name,
 		PkgPath: pkgPath,
-		Text:    text,
+		Text:    formatText(text),
 	}, nil
 }
 

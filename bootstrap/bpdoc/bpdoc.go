@@ -36,7 +36,7 @@ type ModuleType struct {
 	PkgPath string
 
 	// Text is the contents of the comment documenting the module type.
-	Text string
+	Text template.HTML
 
 	// PropertyStructs is a list of PropertyStruct objects that contain information about each
 	// property struct that is used by the module type, containing all properties that are valid
