@@ -81,7 +81,7 @@ func (r *Reader) ModuleType(name string, factory reflect.Value) (*ModuleType, er
 	}, nil
 }
 
-// Return the PropertyStruct associated with a property struct type.  The type should be in the
+// PropertyStruct returns the PropertyStruct associated with a property struct type.  The type should be in the
 // format <package path>.<type name>
 func (r *Reader) PropertyStruct(pkgPath, name string, defaults reflect.Value) (*PropertyStruct, error) {
 	ps := r.getPropertyStruct(pkgPath, name)

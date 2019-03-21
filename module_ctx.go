@@ -445,7 +445,7 @@ func (m *baseModuleContext) VisitDepsDepthFirst(visit func(Module)) {
 	m.visitingDep = depInfo{}
 }
 
-// VisitDepsDepthFirst calls pred for each transitive dependency, and if pred returns true calls visit, traversing the
+// VisitDepsDepthFirstIf calls pred for each transitive dependency, and if pred returns true calls visit, traversing the
 // dependency tree in depth first order.  visit will only be called once for any given module, even if there are
 // multiple paths through the dependency tree to the module or multiple direct dependencies with different tags.
 // OtherModuleDependencyTag will return the tag for the first path found to the module.  The return value of pred does
@@ -643,7 +643,7 @@ func (BaseDependencyTag) dependencyTag(DependencyTag) {
 
 var _ DependencyTag = BaseDependencyTag{}
 
-// Split a module into mulitple variants, one for each name in the variationNames
+// CreateVariations splits a module into mulitple variants, one for each name in the variationNames
 // parameter.  It returns a list of new modules in the same order as the variationNames
 // list.
 //
@@ -658,7 +658,7 @@ func (mctx *mutatorContext) CreateVariations(variationNames ...string) []Module 
 	return mctx.createVariations(variationNames, false)
 }
 
-// Split a module into mulitple variants, one for each name in the variantNames
+// CreateLocalVariations splits a module into mulitple variants, one for each name in the variantNames
 // parameter.  It returns a list of new modules in the same order as the variantNames
 // list.
 //
@@ -705,7 +705,7 @@ func (mctx *mutatorContext) Module() Module {
 	return mctx.module.logicModule
 }
 
-// Add a dependency to the given module.
+// AddDependency adds a dependency to the given module.
 // Does not affect the ordering of the current mutator pass, but will be ordered
 // correctly for all future mutator passes.
 func (mctx *mutatorContext) AddDependency(module Module, tag DependencyTag, deps ...string) {
@@ -718,7 +718,7 @@ func (mctx *mutatorContext) AddDependency(module Module, tag DependencyTag, deps
 	}
 }
 
-// Add a dependency from the destination to the given module.
+// AddReverseDependency adds a dependency from the destination to the given module.
 // Does not affect the ordering of the current mutator pass, but will be ordered
 // correctly for all future mutator passes.  All reverse dependencies for a destination module are
 // collected until the end of the mutator pass, sorted by name, and then appended to the destination

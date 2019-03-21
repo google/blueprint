@@ -166,7 +166,7 @@ func (osFs) Stat(path string) (stats os.FileInfo, err error) {
 	return os.Stat(path)
 }
 
-// Returns a list of all directories under dir
+// ListDirsRecursive returns a list of all directories under dir
 func (osFs) ListDirsRecursive(name string, follow ShouldFollowSymlinks) (dirs []string, err error) {
 	return listDirsRecursive(OsFs, name, follow)
 }

@@ -286,7 +286,7 @@ func (x *Map) getPropertyImpl(name string) (Property *Property, found bool, inde
 	return nil, false, -1
 }
 
-// GetProperty removes the property with the given name, if it exists.
+// RemoveProperty removes the property with the given name, if it exists.
 func (x *Map) RemoveProperty(propertyName string) (removed bool) {
 	_, found, index := x.getPropertyImpl(propertyName)
 	if found {
@@ -445,7 +445,7 @@ func (c Comment) String() string {
 	return string(buf) + "@" + c.Slash.String()
 }
 
-// Return the text of the comment with // or /* and */ stripped
+// Text returns the text of the comment with // or /* and */ stripped
 func (c Comment) Text() string {
 	l := 0
 	for _, comment := range c.Comment {

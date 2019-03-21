@@ -29,7 +29,7 @@ func NinjaEscapeList(slice []string) []string {
 	return slice
 }
 
-// NinjaEscapeList takes a string that may contain characters that are meaningful to ninja
+// NinjaEscape takes a string that may contain characters that are meaningful to ninja
 // ($), and escapes it so it will be passed to bash.  It is not necessary on input,
 // output, or dependency names, those are handled by ModuleContext.Build.  It is generally required
 // on strings from properties in Blueprint files that are used as Args to ModuleContext.Build.  A
@@ -56,7 +56,7 @@ func ShellEscapeList(slice []string) []string {
 
 }
 
-// ShellEscapeList takes string that may contain characters that are meaningful to bash and
+// ShellEscape takes string that may contain characters that are meaningful to bash and
 // escapes it if necessary by wrapping it in single quotes, and replacing internal single quotes with
 // '\'' (one single quote to end the quoting, a shell-escaped single quote to insert a real single
 // quote, and then a single quote to restarting quoting.
