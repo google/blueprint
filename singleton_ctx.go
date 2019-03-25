@@ -223,7 +223,7 @@ func (s *singletonContext) VisitAllModules(visit func(Module)) {
 	defer func() {
 		if r := recover(); r != nil {
 			panic(newPanicErrorf(r, "VisitAllModules(%s) for module %s",
-				funcName(visit), visitingModule))
+				funcName(visit), s.context.moduleInfo[visitingModule]))
 		}
 	}()
 
