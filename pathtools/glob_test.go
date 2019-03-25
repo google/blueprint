@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -214,6 +215,14 @@ var globTestCases = []globTestCase{
 	{
 		pattern: "**/**",
 		err:     GlobLastRecursiveErr,
+	},
+	{
+		pattern: "a**/",
+		err:     GlobInvalidRecursiveErr,
+	},
+	{
+		pattern: "**a/",
+		err:     GlobInvalidRecursiveErr,
 	},
 
 	// exclude tests
@@ -778,6 +787,16 @@ func TestMatch(t *testing.T) {
 		{"a/**/*/", "a/b/", true},
 		{"a/**/*/", "a/b/c", false},
 
+		{"**/*", "a/", false},
+		{"**/*", "a/a", true},
+		{"**/*", "a/b/", false},
+		{"**/*", "a/b/c", true},
+
+		{"**/*/", "a/", true},
+		{"**/*/", "a/a", false},
+		{"**/*/", "a/b/", true},
+		{"**/*/", "a/b/c", false},
+
 		{`a/\*\*/\*`, `a/**/*`, true},
 		{`a/\*\*/\*`, `a/a/*`, false},
 		{`a/\*\*/\*`, `a/**/a`, false},
@@ -826,6 +845,38 @@ func TestMatch(t *testing.T) {
 		{`a/?`, `a/a`, true},
 		{`a/\?`, `a/?`, true},
 		{`a/\?`, `a/a`, false},
+
+		{"/a/*", "/a/", false},
+		{"/a/*", "/a/a", true},
+		{"/a/*", "/a/b/", false},
+		{"/a/*", "/a/b/c", false},
+
+		{"/a/*/", "/a/", false},
+		{"/a/*/", "/a/a", false},
+		{"/a/*/", "/a/b/", true},
+		{"/a/*/", "/a/b/c", false},
+
+		{"/a/**/*", "/a/", false},
+		{"/a/**/*", "/a/a", true},
+		{"/a/**/*", "/a/b/", false},
+		{"/a/**/*", "/a/b/c", true},
+
+		{"/**/*", "/a/", false},
+		{"/**/*", "/a/a", true},
+		{"/**/*", "/a/b/", false},
+		{"/**/*", "/a/b/c", true},
+
+		{"/**/*/", "/a/", true},
+		{"/**/*/", "/a/a", false},
+		{"/**/*/", "/a/b/", true},
+		{"/**/*/", "/a/b/c", false},
+
+		{`a`, `/a`, false},
+		{`/a`, `a`, false},
+		{`*`, `/a`, false},
+		{`/*`, `a`, false},
+		{`**/*`, `/a`, false},
+		{`/**/*`, `a`, false},
 	}
 
 	for _, test := range testCases {
@@ -834,6 +885,38 @@ func TestMatch(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if match != test.match {
+				t.Errorf("want: %v, got %v", test.match, match)
+			}
+		})
+	}
+
+	// Run the same test cases through Glob
+	for _, test := range testCases {
+		// Glob and Match disagree on matching directories
+		if strings.HasSuffix(test.name, "/") || strings.HasSuffix(test.pattern, "/") {
+			continue
+		}
+		t.Run("glob:"+test.pattern+","+test.name, func(t *testing.T) {
+			mockFiles := map[string][]byte{
+				test.name: nil,
+			}
+
+			mock := MockFs(mockFiles)
+
+			matches, _, err := mock.Glob(test.pattern, nil, DontFollowSymlinks)
+			t.Log(test.name, test.pattern, matches)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			match := false
+			for _, x := range matches {
+				if x == test.name {
+					match = true
+				}
+			}
+
 			if match != test.match {
 				t.Errorf("want: %v, got %v", test.match, match)
 			}
