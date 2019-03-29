@@ -121,6 +121,7 @@ type DynamicDependerModule interface {
 }
 
 type BaseModuleContext interface {
+	Module() Module
 	ModuleName() string
 	ModuleDir() string
 	ModuleType() string
@@ -147,19 +148,6 @@ type BaseModuleContext interface {
 	error(err error)
 
 	Namespace() Namespace
-}
-
-type DynamicDependerModuleContext BottomUpMutatorContext
-
-type ModuleContext interface {
-	BaseModuleContext
-
-	OtherModuleName(m Module) string
-	OtherModuleDir(m Module) string
-	OtherModuleSubDir(m Module) string
-	OtherModuleType(m Module) string
-	OtherModuleErrorf(m Module, fmt string, args ...interface{})
-	OtherModuleDependencyTag(m Module) DependencyTag
 
 	GetDirectDepWithTag(name string, tag DependencyTag) Module
 	GetDirectDep(name string) (Module, DependencyTag)
@@ -168,7 +156,21 @@ type ModuleContext interface {
 	VisitDirectDepsIf(pred func(Module) bool, visit func(Module))
 	VisitDepsDepthFirst(visit func(Module))
 	VisitDepsDepthFirstIf(pred func(Module) bool, visit func(Module))
-	WalkDeps(visit func(child, parent Module) bool)
+	WalkDeps(visit func(Module, Module) bool)
+
+	OtherModuleName(m Module) string
+	OtherModuleDir(m Module) string
+	OtherModuleSubDir(m Module) string
+	OtherModuleType(m Module) string
+	OtherModuleErrorf(m Module, fmt string, args ...interface{})
+	OtherModuleDependencyTag(m Module) DependencyTag
+	OtherModuleExists(name string) bool
+}
+
+type DynamicDependerModuleContext BottomUpMutatorContext
+
+type ModuleContext interface {
+	BaseModuleContext
 
 	ModuleSubDir() string
 
@@ -197,6 +199,10 @@ type baseModuleContext struct {
 
 func (d *baseModuleContext) moduleInfo() *moduleInfo {
 	return d.module
+}
+
+func (d *baseModuleContext) Module() Module {
+	return d.module.logicModule
 }
 
 func (d *baseModuleContext) ModuleName() string {
@@ -343,6 +349,11 @@ func (m *baseModuleContext) OtherModuleDependencyTag(logicModule Module) Depende
 	}
 
 	return nil
+}
+
+func (m *baseModuleContext) OtherModuleExists(name string) bool {
+	_, exists := m.context.nameInterface.ModuleFromName(name, m.module.namespace())
+	return exists
 }
 
 // GetDirectDep returns the Module and DependencyTag for the  direct dependency with the specified
@@ -563,45 +574,27 @@ type mutatorContext struct {
 	newModules    []*moduleInfo // brand new modules
 }
 
-type baseMutatorContext interface {
+type BaseMutatorContext interface {
 	BaseModuleContext
 
-	OtherModuleExists(name string) bool
 	Rename(name string)
-	Module() Module
 }
 
 type EarlyMutatorContext interface {
-	baseMutatorContext
+	BaseMutatorContext
 
 	CreateVariations(...string) []Module
 	CreateLocalVariations(...string) []Module
 }
 
 type TopDownMutatorContext interface {
-	baseMutatorContext
-
-	OtherModuleName(m Module) string
-	OtherModuleDir(m Module) string
-	OtherModuleSubDir(m Module) string
-	OtherModuleType(m Module) string
-	OtherModuleErrorf(m Module, fmt string, args ...interface{})
-	OtherModuleDependencyTag(m Module) DependencyTag
+	BaseMutatorContext
 
 	CreateModule(ModuleFactory, ...interface{})
-
-	GetDirectDepWithTag(name string, tag DependencyTag) Module
-	GetDirectDep(name string) (Module, DependencyTag)
-
-	VisitDirectDeps(visit func(Module))
-	VisitDirectDepsIf(pred func(Module) bool, visit func(Module))
-	VisitDepsDepthFirst(visit func(Module))
-	VisitDepsDepthFirstIf(pred func(Module) bool, visit func(Module))
-	WalkDeps(visit func(Module, Module) bool)
 }
 
 type BottomUpMutatorContext interface {
-	baseMutatorContext
+	BaseMutatorContext
 
 	AddDependency(module Module, tag DependencyTag, name ...string)
 	AddReverseDependency(module Module, tag DependencyTag, name string)
@@ -789,11 +782,6 @@ func (mctx *mutatorContext) ReplaceDependencies(name string) {
 	}
 
 	mctx.replace = append(mctx.replace, replace{target, mctx.module})
-}
-
-func (mctx *mutatorContext) OtherModuleExists(name string) bool {
-	_, exists := mctx.context.nameInterface.ModuleFromName(name, mctx.module.namespace())
-	return exists
 }
 
 // Rename all variants of a module.  The new name is not visible to calls to ModuleName,
