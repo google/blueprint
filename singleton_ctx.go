@@ -25,23 +25,51 @@ type Singleton interface {
 }
 
 type SingletonContext interface {
+	// Config returns the config object that was passed to Context.PrepareBuildActions.
 	Config() interface{}
 
+	// Name returns the name of the current singleton passed to Context.RegisterSingletonType
 	Name() string
 
+	// ModuleName returns the name of the given Module.  See BaseModuleContext.ModuleName for more information.
 	ModuleName(module Module) string
+
+	// ModuleDir returns the directory of the given Module.  See BaseModuleContext.ModuleDir for more information.
 	ModuleDir(module Module) string
+
+	// ModuleSubDir returns the unique subdirectory name of the given Module.  See ModuleContext.ModuleSubDir for
+	// more information.
 	ModuleSubDir(module Module) string
+
+	// ModuleType returns the type of the given Module.  See BaseModuleContext.ModuleType for more information.
 	ModuleType(module Module) string
+
+	// BlueprintFile returns the path of the Blueprint file that defined the given module.
 	BlueprintFile(module Module) string
 
+	// ModuleErrorf reports an error at the line number of the module type in the module definition.
 	ModuleErrorf(module Module, format string, args ...interface{})
+
+	// Errorf reports an error at the specified position of the module definition file.
 	Errorf(format string, args ...interface{})
+
+	// Failed returns true if any errors have been reported.  In most cases the singleton can continue with generating
+	// build rules after an error, allowing it to report additional errors in a single run, but in cases where the error
+	// has prevented the singleton from creating necessary data it can return early when Failed returns true.
 	Failed() bool
 
+	// Variable creates a new ninja variable scoped to the singleton.  It can be referenced by calls to Rule and Build
+	// in the same singleton.
 	Variable(pctx PackageContext, name, value string)
+
+	// Rule creates a new ninja rule scoped to the singleton.  It can be referenced by calls to Build in the same
+	// singleton.
 	Rule(pctx PackageContext, name string, params RuleParams, argNames ...string) Rule
+
+	// Build creates a new ninja build statement.
 	Build(pctx PackageContext, params BuildParams)
+
+	// RequireNinjaVersion sets the generated ninja manifest to require at least the specified version of ninja.
 	RequireNinjaVersion(major, minor, micro int)
 
 	// SetNinjaBuildDir sets the value of the top-level "builddir" Ninja variable
@@ -58,17 +86,37 @@ type SingletonContext interface {
 	// are expanded in the scope of the PackageContext.
 	Eval(pctx PackageContext, ninjaStr string) (string, error)
 
+	// VisitAllModules calls visit for each defined variant of each module in an unspecified order.
 	VisitAllModules(visit func(Module))
+
+	// VisitAllModules calls pred for each defined variant of each module in an unspecified order, and if pred returns
+	// true calls visit.
 	VisitAllModulesIf(pred func(Module) bool, visit func(Module))
+
+	// VisitDepsDepthFirst calls visit for each transitive dependency, traversing the dependency tree in depth first
+	// order. visit will only be called once for any given module, even if there are multiple paths through the
+	// dependency tree to the module or multiple direct dependencies with different tags.
 	VisitDepsDepthFirst(module Module, visit func(Module))
+
+	// VisitDepsDepthFirst calls pred for each transitive dependency, and if pred returns true calls visit, traversing
+	// the dependency tree in depth first order.  visit will only be called once for any given module, even if there are
+	// multiple paths through the dependency tree to the module or multiple direct dependencies with different tags.
 	VisitDepsDepthFirstIf(module Module, pred func(Module) bool,
 		visit func(Module))
 
+	// VisitAllModuleVariants calls visit for each variant of the given module.
 	VisitAllModuleVariants(module Module, visit func(Module))
 
+	// PrimaryModule returns the first variant of the given module.  This can be used to perform
+	//	// singleton actions that are only done once for all variants of a module.
 	PrimaryModule(module Module) Module
+
+	// FinalModule returns the last variant of the given module.  This can be used to perform
+	// singleton actions that are only done once for all variants of a module.
 	FinalModule(module Module) Module
 
+	// AddNinjaFileDeps adds dependencies on the specified files to the rule that creates the ninja manifest.  The
+	// primary builder will be rerun whenever the specified files are modified.
 	AddNinjaFileDeps(deps ...string)
 
 	// GlobWithDeps returns a list of files and directories that match the
@@ -79,6 +127,8 @@ type SingletonContext interface {
 	// does not match the pattern is added to a searched directory.
 	GlobWithDeps(pattern string, excludes []string) ([]string, error)
 
+	// Fs returns a pathtools.Filesystem that can be used to interact with files.  Using the Filesystem interface allows
+	// the singleton to be used in build system tests that run against a mock filesystem.
 	Fs() pathtools.FileSystem
 }
 
