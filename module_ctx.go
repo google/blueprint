@@ -923,6 +923,8 @@ func (mctx *mutatorContext) CreateModule(factory ModuleFactory, props ...interfa
 
 	module.relBlueprintsFile = mctx.module.relBlueprintsFile
 	module.pos = mctx.module.pos
+	module.propertyPos = mctx.module.propertyPos
+	module.createdBy = mctx.module
 
 	for _, p := range props {
 		err := proptools.AppendMatchingProperties(module.properties, p, nil)

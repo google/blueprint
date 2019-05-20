@@ -173,6 +173,7 @@ type moduleInfo struct {
 	relBlueprintsFile string
 	pos               scanner.Position
 	propertyPos       map[string]scanner.Position
+	createdBy         *moduleInfo
 
 	variantName       string
 	variant           variationMap
@@ -215,6 +216,10 @@ func (module *moduleInfo) String() string {
 	if module.variantName != "" {
 		s += fmt.Sprintf(" variant %q", module.variantName)
 	}
+	if module.createdBy != nil {
+		s += fmt.Sprintf(" (created by %s)", module.createdBy)
+	}
+
 	return s
 }
 
@@ -2149,6 +2154,10 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 				if dep.module.logicModule == nil {
 					module.directDeps[j].module = dep.module.splitModules[0]
 				}
+			}
+
+			if module.createdBy != nil && module.createdBy.logicModule == nil {
+				module.createdBy = module.createdBy.splitModules[0]
 			}
 
 			// Add in any new direct dependencies that were added by the mutator
