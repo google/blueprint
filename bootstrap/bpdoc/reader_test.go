@@ -34,6 +34,13 @@ type props struct {
 	A string
 }
 
+// for properties_test.go
+type tagTestProps struct {
+	A string `tag1:"a,b" tag2:"c"`
+	B string `tag1:"a,c"`
+	C string `tag1:"b,c"`
+}
+
 var pkgPath string
 var pkgFiles map[string][]string
 
