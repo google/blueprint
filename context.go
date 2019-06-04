@@ -173,6 +173,7 @@ type moduleInfo struct {
 	relBlueprintsFile string
 	pos               scanner.Position
 	propertyPos       map[string]scanner.Position
+	createdBy         *moduleInfo
 
 	variantName       string
 	variant           variationMap
@@ -183,12 +184,13 @@ type moduleInfo struct {
 	properties  []interface{}
 
 	// set during ResolveDependencies
-	directDeps  []depInfo
-	missingDeps []string
+	missingDeps   []string
+	newDirectDeps []depInfo
 
 	// set during updateDependencies
 	reverseDeps []*moduleInfo
 	forwardDeps []*moduleInfo
+	directDeps  []depInfo
 
 	// used by parallelVisitAllBottomUp
 	waitingCount int
@@ -214,6 +216,10 @@ func (module *moduleInfo) String() string {
 	if module.variantName != "" {
 		s += fmt.Sprintf(" variant %q", module.variantName)
 	}
+	if module.createdBy != nil {
+		s += fmt.Sprintf(" (created by %s)", module.createdBy)
+	}
+
 	return s
 }
 
@@ -1427,7 +1433,7 @@ func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName s
 	}
 
 	if m := c.findMatchingVariant(module, possibleDeps); m != nil {
-		module.directDeps = append(module.directDeps, depInfo{m, tag})
+		module.newDirectDeps = append(module.newDirectDeps, depInfo{m, tag})
 		atomic.AddUint32(&c.depsModified, 1)
 		return nil
 	}
@@ -1530,7 +1536,7 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 					Pos: module.pos,
 				}}
 			}
-			module.directDeps = append(module.directDeps, depInfo{m, tag})
+			module.newDirectDeps = append(module.newDirectDeps, depInfo{m, tag})
 			atomic.AddUint32(&c.depsModified, 1)
 			return nil
 		}
@@ -1575,7 +1581,7 @@ func (c *Context) addInterVariantDependency(origModule *moduleInfo, tag Dependen
 			origModule.Name()))
 	}
 
-	fromInfo.directDeps = append(fromInfo.directDeps, depInfo{toInfo, tag})
+	fromInfo.newDirectDeps = append(fromInfo.newDirectDeps, depInfo{toInfo, tag})
 	atomic.AddUint32(&c.depsModified, 1)
 }
 
@@ -2149,9 +2155,18 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 					module.directDeps[j].module = dep.module.splitModules[0]
 				}
 			}
+
+			if module.createdBy != nil && module.createdBy.logicModule == nil {
+				module.createdBy = module.createdBy.splitModules[0]
+			}
+
+			// Add in any new direct dependencies that were added by the mutator
+			module.directDeps = append(module.directDeps, module.newDirectDeps...)
+			module.newDirectDeps = nil
 		}
 	}
 
+	// Add in any new reverse dependencies that were added by the mutator
 	for module, deps := range reverseDeps {
 		sort.Sort(depSorter(deps))
 		module.directDeps = append(module.directDeps, deps...)
