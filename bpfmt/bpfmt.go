@@ -125,6 +125,7 @@ func walkDir(path string) {
 }
 
 func main() {
+	flag.Usage = usage
 	flag.Parse()
 
 	if !*writeToStout && !*overwriteSourceFile && !*doDiff && !*list {
@@ -135,8 +136,7 @@ func main() {
 		// file to parse is stdin
 		if *overwriteSourceFile {
 			fmt.Fprintln(os.Stderr, "error: cannot use -w with standard input")
-			exitCode = 2
-			return
+			os.Exit(2)
 		}
 		if err := processReader("<standard input>", os.Stdin, os.Stdout); err != nil {
 			report(err)
@@ -157,6 +157,8 @@ func main() {
 			}
 		}
 	}
+
+	os.Exit(exitCode)
 }
 
 func diff(b1, b2 []byte) (data []byte, err error) {

@@ -25,8 +25,9 @@ import (
 	"github.com/google/blueprint/deptools"
 )
 
-var GlobMultipleRecursiveErr = errors.New("pattern contains multiple **")
-var GlobLastRecursiveErr = errors.New("pattern ** as last path element")
+var GlobMultipleRecursiveErr = errors.New("pattern contains multiple '**'")
+var GlobLastRecursiveErr = errors.New("pattern has '**' as last path element")
+var GlobInvalidRecursiveErr = errors.New("pattern contains other characters between '**' and path separator")
 
 // Glob returns the list of files and directories that match the given pattern
 // but do not match the given exclude patterns, along with the list of
@@ -118,7 +119,7 @@ func glob(fs FileSystem, pattern string, hasRecursive bool,
 			// as a dependency.
 			var matchDirs []string
 			for len(matchDirs) == 0 {
-				pattern, _ = saneSplit(pattern)
+				pattern = filepath.Dir(pattern)
 				matchDirs, err = fs.glob(pattern)
 				if err != nil {
 					return matches, dirs, err
@@ -136,6 +137,8 @@ func glob(fs FileSystem, pattern string, hasRecursive bool,
 			return matches, dirs, GlobMultipleRecursiveErr
 		}
 		hasRecursive = true
+	} else if strings.Contains(file, "**") {
+		return matches, dirs, GlobInvalidRecursiveErr
 	}
 
 	dirMatches, dirs, err := glob(fs, dir, hasRecursive, follow)
@@ -242,7 +245,7 @@ func filterDotFiles(matches []string) []string {
 }
 
 // Match returns true if name matches pattern using the same rules as filepath.Match, but supporting
-// hierarchical patterns (a/*) and recursive globs (**).
+// recursive globs (**).
 func Match(pattern, name string) (bool, error) {
 	if filepath.Base(pattern) == "**" {
 		return false, GlobLastRecursiveErr
@@ -262,16 +265,35 @@ func Match(pattern, name string) (bool, error) {
 
 	for {
 		var patternFile, nameFile string
-		pattern, patternFile = saneSplit(pattern)
-		name, nameFile = saneSplit(name)
+		pattern, patternFile = filepath.Dir(pattern), filepath.Base(pattern)
 
 		if patternFile == "**" {
-			return matchPrefix(pattern, filepath.Join(name, nameFile))
+			if strings.Contains(pattern, "**") {
+				return false, GlobMultipleRecursiveErr
+			}
+			// Test if the any prefix of name matches the part of the pattern before **
+			for {
+				if name == "." || name == "/" {
+					return name == pattern, nil
+				}
+				if match, err := filepath.Match(pattern, name); err != nil {
+					return false, err
+				} else if match {
+					return true, nil
+				}
+				name = filepath.Dir(name)
+			}
+		} else if strings.Contains(patternFile, "**") {
+			return false, GlobInvalidRecursiveErr
 		}
 
-		if nameFile == "" && patternFile == "" {
+		name, nameFile = filepath.Dir(name), filepath.Base(name)
+
+		if nameFile == "." && patternFile == "." {
 			return true, nil
-		} else if nameFile == "" || patternFile == "" {
+		} else if nameFile == "/" && patternFile == "/" {
+			return true, nil
+		} else if nameFile == "." || patternFile == "." || nameFile == "/" || patternFile == "/" {
 			return false, nil
 		}
 
@@ -280,56 +302,6 @@ func Match(pattern, name string) (bool, error) {
 			return match, err
 		}
 	}
-}
-
-// matchPrefix returns true if the beginning of name matches pattern using the same rules as
-// filepath.Match, but supporting hierarchical patterns (a/*).  Recursive globs (**) are not
-// supported, they should have been handled in Match().
-func matchPrefix(pattern, name string) (bool, error) {
-	if len(pattern) > 0 && pattern[0] == '/' {
-		if len(name) > 0 && name[0] == '/' {
-			pattern = pattern[1:]
-			name = name[1:]
-		} else {
-			return false, nil
-		}
-	}
-
-	for {
-		var patternElem, nameElem string
-		patternElem, pattern = saneSplitFirst(pattern)
-		nameElem, name = saneSplitFirst(name)
-
-		if patternElem == "." {
-			patternElem = ""
-		}
-		if nameElem == "." {
-			nameElem = ""
-		}
-
-		if patternElem == "**" {
-			return false, GlobMultipleRecursiveErr
-		}
-
-		if patternElem == "" {
-			return true, nil
-		} else if nameElem == "" {
-			return false, nil
-		}
-
-		match, err := filepath.Match(patternElem, nameElem)
-		if err != nil || !match {
-			return match, err
-		}
-	}
-}
-
-func saneSplitFirst(path string) (string, string) {
-	i := strings.IndexRune(path, filepath.Separator)
-	if i < 0 {
-		return path, ""
-	}
-	return path[:i], path[i+1:]
 }
 
 func GlobPatternList(patterns []string, prefix string) (globedList []string, depDirs []string, err error) {
