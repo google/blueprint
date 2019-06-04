@@ -61,6 +61,9 @@ func MockFs(files map[string][]byte) FileSystem {
 		fs.dirs[dir] = true
 	}
 
+	fs.dirs["."] = true
+	fs.dirs["/"] = true
+
 	for f := range fs.files {
 		fs.all = append(fs.all, f)
 	}
@@ -330,8 +333,8 @@ func (m *mockFs) glob(pattern string) ([]string, error) {
 			if err != nil {
 				return nil, err
 			}
-			if f == "." && f != pattern {
-				// filepath.Glob won't return "." unless the pattern was "."
+			if (f == "." || f == "/") && f != pattern {
+				// filepath.Glob won't return "." or "/" unless the pattern was "." or "/"
 				match = false
 			}
 			if match {
