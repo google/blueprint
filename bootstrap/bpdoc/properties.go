@@ -250,15 +250,21 @@ func filterPropsByTag(props *[]Property, key, value string, exclude bool) {
 	// len(props) times to this slice will overwrite the original slice contents
 	filtered := (*props)[:0]
 	for _, x := range *props {
-		tag := x.Tag.Get(key)
-		for _, entry := range strings.Split(tag, ",") {
-			if (entry == value) == !exclude {
-				filtered = append(filtered, x)
-			}
+		if hasTag(x.Tag, key, value) == !exclude {
+			filtered = append(filtered, x)
 		}
 	}
 
 	*props = filtered
+}
+
+func hasTag(tag reflect.StructTag, key, value string) bool {
+	for _, entry := range strings.Split(tag.Get(key), ",") {
+		if entry == value {
+			return true
+		}
+	}
+	return false
 }
 
 func formatText(text string) template.HTML {
