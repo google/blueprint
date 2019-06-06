@@ -125,6 +125,8 @@ bootstrap_go_package {
         "bootstrap/bpdoc/reader.go",
     ],
     testSrcs: [
+        "bootstrap/bpdoc/bpdoc_test.go",
+        "bootstrap/bpdoc/properties_test.go",
         "bootstrap/bpdoc/reader_test.go",
     ],
 }

@@ -173,6 +173,9 @@ func nestedPropertyStructs(s reflect.Value) map[string]reflect.Value {
 				// The field is not exported so just skip it.
 				continue
 			}
+			if proptools.HasTag(field, "blueprint", "mutated") {
+				continue
+			}
 
 			fieldValue := structValue.Field(i)
 
