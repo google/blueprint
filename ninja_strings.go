@@ -277,12 +277,20 @@ func (n *ninjaString) Value(pkgNames map[*packageContext]string) string {
 func (n *ninjaString) ValueWithEscaper(pkgNames map[*packageContext]string,
 	escaper *strings.Replacer) string {
 
-	str := escaper.Replace(n.strings[0])
-	for i, v := range n.variables {
-		str += "${" + v.fullName(pkgNames) + "}"
-		str += escaper.Replace(n.strings[i+1])
+	if len(n.strings) == 1 {
+		return escaper.Replace(n.strings[0])
 	}
-	return str
+
+	str := strings.Builder{}
+	str.WriteString(escaper.Replace(n.strings[0]))
+	for i, v := range n.variables {
+		str.WriteString("${")
+		str.WriteString(v.fullName(pkgNames))
+		str.WriteString("}")
+		str.WriteString(escaper.Replace(n.strings[i+1]))
+	}
+
+	return str.String()
 }
 
 func (n *ninjaString) Eval(variables map[Variable]*ninjaString) (string, error) {
