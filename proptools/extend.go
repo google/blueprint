@@ -34,7 +34,7 @@ import (
 // embedded structs, pointers to structs, and interfaces containing
 // pointers to structs.  Appending the zero value of a property will always be a no-op.
 func AppendProperties(dst interface{}, src interface{}, filter ExtendPropertyFilterFunc) error {
-	return extendProperties(dst, src, filter, orderAppend)
+	return extendProperties(dst, src, filter, OrderAppend)
 }
 
 // PrependProperties prepends the values of properties in the property struct src to the property
@@ -52,7 +52,7 @@ func AppendProperties(dst interface{}, src interface{}, filter ExtendPropertyFil
 // embedded structs, pointers to structs, and interfaces containing
 // pointers to structs.  Prepending the zero value of a property will always be a no-op.
 func PrependProperties(dst interface{}, src interface{}, filter ExtendPropertyFilterFunc) error {
-	return extendProperties(dst, src, filter, orderPrepend)
+	return extendProperties(dst, src, filter, OrderPrepend)
 }
 
 // AppendMatchingProperties appends the values of properties in the property struct src to the
@@ -73,7 +73,7 @@ func PrependProperties(dst interface{}, src interface{}, filter ExtendPropertyFi
 // pointers to structs.  Appending the zero value of a property will always be a no-op.
 func AppendMatchingProperties(dst []interface{}, src interface{},
 	filter ExtendPropertyFilterFunc) error {
-	return extendMatchingProperties(dst, src, filter, orderAppend)
+	return extendMatchingProperties(dst, src, filter, OrderAppend)
 }
 
 // PrependMatchingProperties prepends the values of properties in the property struct src to the
@@ -94,7 +94,7 @@ func AppendMatchingProperties(dst []interface{}, src interface{},
 // pointers to structs.  Prepending the zero value of a property will always be a no-op.
 func PrependMatchingProperties(dst []interface{}, src interface{},
 	filter ExtendPropertyFilterFunc) error {
-	return extendMatchingProperties(dst, src, filter, orderPrepend)
+	return extendMatchingProperties(dst, src, filter, OrderPrepend)
 }
 
 // ExtendProperties appends or prepends the values of properties in the property struct src to the
@@ -160,13 +160,13 @@ type ExtendPropertyOrderFunc func(property string,
 	dstField, srcField reflect.StructField,
 	dstValue, srcValue interface{}) (Order, error)
 
-func orderAppend(property string,
+func OrderAppend(property string,
 	dstField, srcField reflect.StructField,
 	dstValue, srcValue interface{}) (Order, error) {
 	return Append, nil
 }
 
-func orderPrepend(property string,
+func OrderPrepend(property string,
 	dstField, srcField reflect.StructField,
 	dstValue, srcValue interface{}) (Order, error) {
 	return Prepend, nil
