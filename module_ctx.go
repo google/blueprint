@@ -675,6 +675,9 @@ type BaseMutatorContext interface {
 	// Rename all variants of a module.  The new name is not visible to calls to ModuleName,
 	// AddDependency or OtherModuleName until after this mutator pass is complete.
 	Rename(name string)
+
+	// MutatorName returns the name that this mutator was registered with.
+	MutatorName() string
 }
 
 type EarlyMutatorContext interface {
@@ -807,6 +810,10 @@ func (BaseDependencyTag) dependencyTag(DependencyTag) {
 }
 
 var _ DependencyTag = BaseDependencyTag{}
+
+func (mctx *mutatorContext) MutatorName() string {
+	return mctx.name
+}
 
 func (mctx *mutatorContext) CreateVariations(variationNames ...string) []Module {
 	return mctx.createVariations(variationNames, false)
