@@ -16,6 +16,8 @@ package blueprint
 
 import (
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -160,4 +162,46 @@ func TestParseNinjaStringWithImportedVar(t *testing.T) {
 		t.Errorf("  expected: %#v", expect)
 		t.Errorf("       got: %#v", output)
 	}
+}
+
+func BenchmarkNinjaString_Value(b *testing.B) {
+	b.Run("constant", func(b *testing.B) {
+		for _, l := range []int{1, 10, 100, 1000} {
+			ns := simpleNinjaString(strings.Repeat("a", l))
+			b.Run(strconv.Itoa(l), func(b *testing.B) {
+				for n := 0; n < b.N; n++ {
+					ns.Value(nil)
+				}
+			})
+		}
+	})
+	b.Run("variable", func(b *testing.B) {
+		for _, l := range []int{1, 10, 100, 1000} {
+			scope := newLocalScope(nil, "")
+			scope.AddLocalVariable("a", strings.Repeat("b", l/3))
+			ns, _ := parseNinjaString(scope, strings.Repeat("a", l/3)+"${a}"+strings.Repeat("a", l/3))
+			b.Run(strconv.Itoa(l), func(b *testing.B) {
+				for n := 0; n < b.N; n++ {
+					ns.Value(nil)
+				}
+			})
+		}
+	})
+	b.Run("variables", func(b *testing.B) {
+		for _, l := range []int{1, 2, 3, 4, 5, 10, 100, 1000} {
+			scope := newLocalScope(nil, "")
+			str := strings.Repeat("a", 10)
+			for i := 0; i < l; i++ {
+				scope.AddLocalVariable("a"+strconv.Itoa(i), strings.Repeat("b", 10))
+				str += "${a" + strconv.Itoa(i) + "}"
+			}
+			ns, _ := parseNinjaString(scope, str)
+			b.Run(strconv.Itoa(l), func(b *testing.B) {
+				for n := 0; n < b.N; n++ {
+					ns.Value(nil)
+				}
+			})
+		}
+	})
+
 }
