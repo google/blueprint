@@ -116,6 +116,16 @@ if [ ! -f "$BUILDDIR/.minibootstrap/build-globs.ninja" ]; then
     touch "$BUILDDIR/.minibootstrap/build-globs.ninja"
 fi
 
+BOOTSTRAP_GLOBFILE="${BUILDDIR}/.bootstrap/build-globs.ninja"
+if [ -f "${BOOTSTRAP_GLOBFILE}" ]; then
+    PREV_DIR=$(sed -n -e "s/^g.bootstrap.buildDir = \(.*\)/\1/p" "${BOOTSTRAP_GLOBFILE}")
+    if [ "${PREV_DIR}" != "${BUILDDIR}" ] ; then
+        # BOOTSTRAP_GLOBFILE is invalid if BUILDDIR has changed
+        # Invalidate it so that the bootstrap builder can be built
+        cat /dev/null > "${BOOTSTRAP_GLOBFILE}"
+    fi
+fi
+
 echo "BLUEPRINT_BOOTSTRAP_VERSION=2" > $BUILDDIR/.blueprint.bootstrap
 echo "SRCDIR=\"${SRCDIR}\"" >> $BUILDDIR/.blueprint.bootstrap
 echo "BLUEPRINTDIR=\"${BLUEPRINTDIR}\"" >> $BUILDDIR/.blueprint.bootstrap
