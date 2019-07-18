@@ -130,7 +130,6 @@ var (
 			Deps:        blueprint.DepsGCC,
 			Depfile:     "$out.d",
 			Restat:      true,
-			Pool:        blueprint.Console,
 		},
 		"builder", "extra", "generator", "globFile")
 
