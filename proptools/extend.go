@@ -68,7 +68,7 @@ func PrependProperties(dst interface{}, src interface{}, filter ExtendPropertyFi
 // *ExtendPropertyError, and can have the property name and error extracted from it.
 //
 // The append operation is defined as appending strings, and slices of strings normally, OR-ing bool
-// values, replacing non-nil pointers to booleans or strings, and recursing into
+// values, replacing pointers to booleans or strings whether they are nil or not, and recursing into
 // embedded structs, pointers to structs, and interfaces containing
 // pointers to structs.  Appending the zero value of a property will always be a no-op.
 func AppendMatchingProperties(dst []interface{}, src interface{},
@@ -89,7 +89,7 @@ func AppendMatchingProperties(dst []interface{}, src interface{},
 // *ExtendPropertyError, and can have the property name and error extracted from it.
 //
 // The prepend operation is defined as prepending strings, and slices of strings normally, OR-ing
-// bool values, replacing non-nil pointers to booleans or strings, and recursing into
+// bool values, replacing nil pointers to booleans or strings, and recursing into
 // embedded structs, pointers to structs, and interfaces containing
 // pointers to structs.  Prepending the zero value of a property will always be a no-op.
 func PrependMatchingProperties(dst []interface{}, src interface{},
