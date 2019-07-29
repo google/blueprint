@@ -1147,7 +1147,7 @@ func (c *Context) cloneLogicModule(origModule *moduleInfo) (Module, []interface{
 }
 
 func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
-	variationNames []string) ([]*moduleInfo, []error) {
+	defaultVariationName *string, variationNames []string) ([]*moduleInfo, []error) {
 
 	if len(variationNames) == 0 {
 		panic(fmt.Errorf("mutator %q passed zero-length variation list for module %q",
@@ -1192,7 +1192,7 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 
 		newModules = append(newModules, newModule)
 
-		newErrs := c.convertDepsToVariation(newModule, mutatorName, variationName)
+		newErrs := c.convertDepsToVariation(newModule, mutatorName, variationName, defaultVariationName)
 		if len(newErrs) > 0 {
 			errs = append(errs, newErrs...)
 		}
@@ -1209,7 +1209,7 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 }
 
 func (c *Context) convertDepsToVariation(module *moduleInfo,
-	mutatorName, variationName string) (errs []error) {
+	mutatorName, variationName string, defaultVariationName *string) (errs []error) {
 
 	for i, dep := range module.directDeps {
 		if dep.module.logicModule == nil {
@@ -1218,6 +1218,15 @@ func (c *Context) convertDepsToVariation(module *moduleInfo,
 				if m.variant[mutatorName] == variationName {
 					newDep = m
 					break
+				}
+			}
+			if newDep == nil && defaultVariationName != nil {
+				// give it a second chance; match with defaultVariationName
+				for _, m := range dep.module.splitModules {
+					if m.variant[mutatorName] == *defaultVariationName {
+						newDep = m
+						break
+					}
 				}
 			}
 			if newDep == nil {
