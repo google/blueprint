@@ -661,12 +661,13 @@ func (m *moduleContext) GetMissingDependencies() []string {
 
 type mutatorContext struct {
 	baseModuleContext
-	name          string
-	reverseDeps   []reverseDep
-	rename        []rename
-	replace       []replace
-	newVariations []*moduleInfo // new variants of existing modules
-	newModules    []*moduleInfo // brand new modules
+	name             string
+	reverseDeps      []reverseDep
+	rename           []rename
+	replace          []replace
+	newVariations    []*moduleInfo // new variants of existing modules
+	newModules       []*moduleInfo // brand new modules
+	defaultVariation *string
 }
 
 type BaseMutatorContext interface {
@@ -752,8 +753,12 @@ type BottomUpMutatorContext interface {
 	CreateLocalVariations(...string) []Module
 
 	// SetDependencyVariation sets all dangling dependencies on the current module to point to the variation
-	// with given name.
+	// with given name. This function ignores the default variation set by SetDefaultDependencyVariation.
 	SetDependencyVariation(string)
+
+	// SetDefaultDependencyVariation sets the default variation when a dangling reference is detected
+	// during the subsequent calls on Create*Variations* functions. To reset, set it to nil.
+	SetDefaultDependencyVariation(*string)
 
 	// AddVariationDependencies adds deps as dependencies of the current module, but uses the variations
 	// argument to select which variant of the dependency to use.  A variant of the dependency must
@@ -825,7 +830,7 @@ func (mctx *mutatorContext) CreateLocalVariations(variationNames ...string) []Mo
 
 func (mctx *mutatorContext) createVariations(variationNames []string, local bool) []Module {
 	ret := []Module{}
-	modules, errs := mctx.context.createVariations(mctx.module, mctx.name, variationNames)
+	modules, errs := mctx.context.createVariations(mctx.module, mctx.name, mctx.defaultVariation, variationNames)
 	if len(errs) > 0 {
 		mctx.errs = append(mctx.errs, errs...)
 	}
@@ -850,7 +855,11 @@ func (mctx *mutatorContext) createVariations(variationNames []string, local bool
 }
 
 func (mctx *mutatorContext) SetDependencyVariation(variationName string) {
-	mctx.context.convertDepsToVariation(mctx.module, mctx.name, variationName)
+	mctx.context.convertDepsToVariation(mctx.module, mctx.name, variationName, nil)
+}
+
+func (mctx *mutatorContext) SetDefaultDependencyVariation(variationName *string) {
+	mctx.defaultVariation = variationName
 }
 
 func (mctx *mutatorContext) Module() Module {
