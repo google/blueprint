@@ -158,8 +158,9 @@ func callerName(skip int) (pkgPath, funcName string, ok bool) {
 	if n != 1 {
 		return "", "", false
 	}
-
-	f := runtime.FuncForPC(pc[0]).Name()
+	frames := runtime.CallersFrames(pc[:])
+	frame, _ := frames.Next()
+	f := frame.Function
 	s := pkgPathRe.FindStringSubmatch(f)
 	if len(s) < 3 {
 		panic(fmt.Errorf("failed to extract package path and function name from %q", f))
