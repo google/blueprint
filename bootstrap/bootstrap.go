@@ -437,7 +437,7 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 			name, srcs, genSrcs, testSrcs)
 	}
 
-	buildGoPackage(ctx, objDir, name, archiveFile, srcs, genSrcs)
+	buildGoPackage(ctx, objDir, "main", archiveFile, srcs, genSrcs)
 
 	var linkDeps []string
 	var libDirFlags []string
