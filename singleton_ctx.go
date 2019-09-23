@@ -93,6 +93,23 @@ type SingletonContext interface {
 	// true calls visit.
 	VisitAllModulesIf(pred func(Module) bool, visit func(Module))
 
+	// VisitDirectDeps calls visit for each direct dependency of the Module.  If there are
+	// multiple direct dependencies on the same module visit will be called multiple times on
+	// that module and OtherModuleDependencyTag will return a different tag for each.
+	//
+	// The Module passed to the visit function should not be retained outside of the visit
+	// function, it may be invalidated by future mutators.
+	VisitDirectDeps(module Module, visit func(Module))
+
+	// VisitDirectDepsIf calls pred for each direct dependency of the Module, and if pred
+	// returns true calls visit.  If there are multiple direct dependencies on the same module
+	// pred and visit will be called multiple times on that module and OtherModuleDependencyTag
+	// will return a different tag for each.
+	//
+	// The Module passed to the visit function should not be retained outside of the visit
+	// function, it may be invalidated by future mutators.
+	VisitDirectDepsIf(module Module, pred func(Module) bool, visit func(Module))
+
 	// VisitDepsDepthFirst calls visit for each transitive dependency, traversing the dependency tree in depth first
 	// order. visit will only be called once for any given module, even if there are multiple paths through the
 	// dependency tree to the module or multiple direct dependencies with different tags.
@@ -287,6 +304,14 @@ func (s *singletonContext) VisitAllModulesIf(pred func(Module) bool,
 	visit func(Module)) {
 
 	s.context.VisitAllModulesIf(pred, visit)
+}
+
+func (s *singletonContext) VisitDirectDeps(module Module, visit func(Module)) {
+	s.context.VisitDirectDeps(module, visit)
+}
+
+func (s *singletonContext) VisitDirectDepsIf(module Module, pred func(Module) bool, visit func(Module)) {
+	s.context.VisitDirectDepsIf(module, pred, visit)
 }
 
 func (s *singletonContext) VisitDepsDepthFirst(module Module,
