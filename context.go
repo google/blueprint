@@ -1410,12 +1410,21 @@ func blueprintDepsMutator(ctx BottomUpMutatorContext) {
 
 // findMatchingVariant searches the moduleGroup for a module with the same variant as module,
 // and returns the matching module, or nil if one is not found.
-func (c *Context) findMatchingVariant(module *moduleInfo, possible []*moduleInfo) *moduleInfo {
+func (c *Context) findMatchingVariant(module *moduleInfo, possible []*moduleInfo, reverse bool) *moduleInfo {
 	if len(possible) == 1 {
 		return possible[0]
 	} else {
+		var variantToMatch variationMap
+		if !reverse {
+			// For forward dependency, ignore local variants by matching against
+			// dependencyVariant which doesn't have the local variants
+			variantToMatch = module.dependencyVariant
+		} else {
+			// For reverse dependency, use all the variants
+			variantToMatch = module.variant
+		}
 		for _, m := range possible {
-			if m.variant.equal(module.dependencyVariant) {
+			if m.variant.equal(variantToMatch) {
 				return m
 			}
 		}
@@ -1441,7 +1450,7 @@ func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName s
 		return c.discoveredMissingDependencies(module, depName)
 	}
 
-	if m := c.findMatchingVariant(module, possibleDeps); m != nil {
+	if m := c.findMatchingVariant(module, possibleDeps, false); m != nil {
 		module.newDirectDeps = append(module.newDirectDeps, depInfo{m, tag})
 		atomic.AddUint32(&c.depsModified, 1)
 		return nil
@@ -1479,7 +1488,7 @@ func (c *Context) findReverseDependency(module *moduleInfo, destName string) (*m
 		}}
 	}
 
-	if m := c.findMatchingVariant(module, possibleDeps); m != nil {
+	if m := c.findMatchingVariant(module, possibleDeps, true); m != nil {
 		return m, nil
 	}
 
