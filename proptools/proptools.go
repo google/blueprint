@@ -82,3 +82,18 @@ func StringDefault(s *string, def string) string {
 func String(s *string) string {
 	return StringDefault(s, "")
 }
+
+// IntDefault takes a pointer to an int64 and returns the value pointed to by the pointer cast to int
+// if it is non-nil, or def if the pointer is nil.
+func IntDefault(i *int64, def int) int {
+	if i != nil {
+		return int(*i)
+	}
+	return def
+}
+
+// Int takes a pointer to an int64 and returns the value pointed to by the pointer cast to int
+// if it is non-nil, or 0 if the pointer is nil.
+func Int(i *int64) int {
+	return IntDefault(i, 0)
+}
