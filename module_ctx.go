@@ -712,7 +712,7 @@ type TopDownMutatorContext interface {
 
 	// CreateModule creates a new module by calling the factory method for the specified moduleType, and applies
 	// the specified property structs to it as if the properties were set in a blueprint file.
-	CreateModule(ModuleFactory, ...interface{})
+	CreateModule(ModuleFactory, ...interface{}) Module
 }
 
 type BottomUpMutatorContext interface {
@@ -934,7 +934,7 @@ func (mctx *mutatorContext) Rename(name string) {
 	mctx.rename = append(mctx.rename, rename{mctx.module.group, name})
 }
 
-func (mctx *mutatorContext) CreateModule(factory ModuleFactory, props ...interface{}) {
+func (mctx *mutatorContext) CreateModule(factory ModuleFactory, props ...interface{}) Module {
 	module := mctx.context.newModule(factory)
 
 	module.relBlueprintsFile = mctx.module.relBlueprintsFile
@@ -950,6 +950,8 @@ func (mctx *mutatorContext) CreateModule(factory ModuleFactory, props ...interfa
 	}
 
 	mctx.newModules = append(mctx.newModules, module)
+
+	return module.logicModule
 }
 
 // SimpleName is an embeddable object to implement the ModuleContext.Name method using a property
