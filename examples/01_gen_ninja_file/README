@@ -1,0 +1,27 @@
+This example is a self-contained program that shows how to generate Ninja
+build file for a system of two Blueprint.modules: module_foo and its
+dependency, module_bar. To run the example:
+
+$ go run                gen_ninja_file.go
+$ go run -pkgdir ../../ gen_ninja_file.go # to use the local Blueprint package
+
+It should print dependencies between modules:
+
+dependencies:
+        module_foo -> module_bar
+
+The example demonstrates that Blueprint-level dependencies between modules
+are not "magically" translated into Ninja-level dependencies between build
+targets. Though module_foo depends on module_bar, building targets of
+module_foo does not imply building all targets of module_bar as prerequisites:
+only those targets which are inputs to build rules in module_foo are built.
+
+Namely, module_foo has a build rule that creates file foo. This build rule
+has another file bar2 as input. Module module_bar has two build rules that
+create files bar1 and bar2. When building foo, only bar2 is built as a
+dependency of foo, but not bar1.
+
+$ cd build
+$ ninja               # builds foo and bar2, but not bar1
+$ ninja clean         # cleans up ninja build artifacts
+$ cd ..

@@ -1,0 +1,8 @@
+foo_module {
+    name: "module_foo",
+    deps: ["module_bar"],
+}
+
+bar_module {
+    name: "module_bar",
+}
