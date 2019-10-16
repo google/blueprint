@@ -1,0 +1,25 @@
+bootstrap_go_binary {
+    name: "simplebp_build",
+    deps: [
+        "blueprint",
+        "blueprint-bootstrap",
+        "simplebp",
+    ],
+    srcs: [
+        "main.go",
+    ],
+    primaryBuilder: true,
+}
+
+bootstrap_go_package {
+    name: "simplebp",
+    pkgPath: "github.com/TKilbourn/simplebp",
+    deps: [
+        "blueprint",
+    ],
+    srcs: [
+        "cc.go",
+        "config.go",
+        "runscript.go",
+    ],
+}
