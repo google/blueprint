@@ -1,0 +1,18 @@
+// A shared library named libextra.so, available as a dependency named "extra".
+// It in turn depends on "printer", and it exports the module-relative dir
+// "include" to any modules depending on it. The SharedLibModule will expand
+// this dir relative to the top source dir before using it as an include path.
+cc_shared_lib {
+    name: "extra",
+    srcs: ["src/extra.c"],
+    deps: ["printer"],
+    includePaths: ["include"],
+}
+
+// A shared library named libprinter.so. As above, it exports "include" to any
+// module depending on it.
+cc_shared_lib {
+    name: "printer",
+    srcs: ["src/printer.c"],
+    includePaths: ["include"],
+}

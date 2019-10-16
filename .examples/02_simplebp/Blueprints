@@ -1,0 +1,9 @@
+// The bootstrap directories, containing the Blueprint project and the simplebp
+// builder.
+subdirs = [
+    "build/blueprint",
+    "build/simplebp",
+]
+
+// A Hello World C project to demonstrate using the simplebp builder.
+subdirs += ["hello"]

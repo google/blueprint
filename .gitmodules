@@ -1,0 +1,3 @@
+[submodule ".examples/02_simplebp/build/blueprint"]
+	path = .examples/02_simplebp/build/blueprint
+	url = https://github.com/google/blueprint.git
