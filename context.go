@@ -242,6 +242,9 @@ type Variation struct {
 type variationMap map[string]string
 
 func (vm variationMap) clone() variationMap {
+	if vm == nil {
+		return nil
+	}
 	newVm := make(variationMap)
 	for k, v := range vm {
 		newVm[k] = v
@@ -1178,6 +1181,9 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 		}
 
 		newVariant := origModule.variant.clone()
+		if newVariant == nil {
+			newVariant = make(variationMap)
+		}
 		newVariant[mutatorName] = variationName
 
 		m := *origModule
@@ -1521,10 +1527,11 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 	var newVariant variationMap
 	if !far {
 		newVariant = module.dependencyVariant.clone()
-	} else {
-		newVariant = make(variationMap)
 	}
 	for _, v := range variations {
+		if newVariant == nil {
+			newVariant = make(variationMap)
+		}
 		newVariant[v.Mutator] = v.Variation
 	}
 

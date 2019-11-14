@@ -838,6 +838,9 @@ func (mctx *mutatorContext) createVariations(variationNames []string, local bool
 	for i, module := range modules {
 		ret = append(ret, module.logicModule)
 		if !local {
+			if module.dependencyVariant == nil {
+				module.dependencyVariant = make(variationMap)
+			}
 			module.dependencyVariant[mctx.name] = variationNames[i]
 		}
 	}
