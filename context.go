@@ -157,11 +157,19 @@ type localBuildActions struct {
 	buildDefs []*buildDef
 }
 
+type moduleAlias struct {
+	variantName       string
+	variant           variationMap
+	dependencyVariant variationMap
+	target            *moduleInfo
+}
+
 type moduleGroup struct {
 	name      string
 	ninjaName string
 
 	modules []*moduleInfo
+	aliases []*moduleAlias
 
 	namespace Namespace
 }
@@ -197,6 +205,7 @@ type moduleInfo struct {
 
 	// set during each runMutator
 	splitModules []*moduleInfo
+	aliasTarget  *moduleInfo
 
 	// set during PrepareBuildActions
 	actionDefs localBuildActions
@@ -1272,6 +1281,10 @@ func (c *Context) prettyPrintGroupVariants(group *moduleGroup) string {
 	for _, mod := range group.modules {
 		variants = append(variants, c.prettyPrintVariant(mod.variant))
 	}
+	for _, mod := range group.aliases {
+		variants = append(variants, c.prettyPrintVariant(mod.variant)+
+			"(alias to "+c.prettyPrintVariant(mod.target.variant)+")")
+	}
 	sort.Strings(variants)
 	return strings.Join(variants, "\n  ")
 }
@@ -1443,6 +1456,11 @@ func (c *Context) findMatchingVariant(module *moduleInfo, possible *moduleGroup,
 				return m
 			}
 		}
+		for _, m := range possible.aliases {
+			if m.variant.equal(variantToMatch) {
+				return m.target
+			}
+		}
 	}
 
 	return nil
@@ -1548,6 +1566,15 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 		if check(m.variant) {
 			foundDep = m
 			break
+		}
+	}
+
+	if foundDep == nil {
+		for _, m := range possibleDeps.aliases {
+			if check(m.variant) {
+				foundDep = m.target
+				break
+			}
 		}
 	}
 
@@ -2172,6 +2199,16 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 				group.modules, i = spliceModules(group.modules, i, module.splitModules)
 			}
 
+			// Create any new aliases.
+			if module.aliasTarget != nil {
+				group.aliases = append(group.aliases, &moduleAlias{
+					variantName:       module.variantName,
+					variant:           module.variant,
+					dependencyVariant: module.dependencyVariant,
+					target:            module.aliasTarget,
+				})
+			}
+
 			// Fix up any remaining dependencies on modules that were split into variants
 			// by replacing them with the first variant
 			for j, dep := range module.directDeps {
@@ -2187,6 +2224,21 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 			// Add in any new direct dependencies that were added by the mutator
 			module.directDeps = append(module.directDeps, module.newDirectDeps...)
 			module.newDirectDeps = nil
+		}
+
+		// Forward or delete any dangling aliases.
+		for i := 0; i < len(group.aliases); i++ {
+			alias := group.aliases[i]
+
+			if alias.target.logicModule == nil {
+				if alias.target.aliasTarget != nil {
+					alias.target = alias.target.aliasTarget
+				} else {
+					// The alias was left dangling, remove it.
+					group.aliases = append(group.aliases[:i], group.aliases[i+1:]...)
+					i--
+				}
+			}
 		}
 	}
 
@@ -2525,6 +2577,12 @@ func (c *Context) moduleMatchingVariant(module *moduleInfo, name string) *module
 	for _, m := range group.modules {
 		if module.variantName == m.variantName {
 			return m
+		}
+	}
+
+	for _, m := range group.aliases {
+		if module.variantName == m.variantName {
+			return m.target
 		}
 	}
 

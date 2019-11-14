@@ -785,6 +785,13 @@ type BottomUpMutatorContext interface {
 	// specified name with the current variant of this module.  Replacements don't take effect until
 	// after the mutator pass is finished.
 	ReplaceDependencies(string)
+
+	// AliasVariation takes a variationName that was passed to CreateVariations for this module, and creates an
+	// alias from the current variant to the new variant.  The alias will be valid until the next time a mutator
+	// calls CreateVariations or CreateLocalVariations on this module without also calling AliasVariation.  The
+	// alias can be used to add dependencies on the newly created variant using the variant map from before
+	// CreateVariations was run.
+	AliasVariation(variationName string)
 }
 
 // A Mutator function is called for each Module, and can use
@@ -855,6 +862,25 @@ func (mctx *mutatorContext) createVariations(variationNames []string, local bool
 	}
 
 	return ret
+}
+
+func (mctx *mutatorContext) AliasVariation(variationName string) {
+	if mctx.module.aliasTarget != nil {
+		panic(fmt.Errorf("AliasVariation already called"))
+	}
+
+	for _, variant := range mctx.newVariations {
+		if variant.variant[mctx.name] == variationName {
+			mctx.module.aliasTarget = variant
+			return
+		}
+	}
+
+	var foundVariations []string
+	for _, variant := range mctx.newVariations {
+		foundVariations = append(foundVariations, variant.variant[mctx.name])
+	}
+	panic(fmt.Errorf("no %q variation in module variations %q", variationName, foundVariations))
 }
 
 func (mctx *mutatorContext) SetDependencyVariation(variationName string) {
