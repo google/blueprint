@@ -157,11 +157,19 @@ type localBuildActions struct {
 	buildDefs []*buildDef
 }
 
+type moduleAlias struct {
+	variantName       string
+	variant           variationMap
+	dependencyVariant variationMap
+	target            *moduleInfo
+}
+
 type moduleGroup struct {
 	name      string
 	ninjaName string
 
 	modules []*moduleInfo
+	aliases []*moduleAlias
 
 	namespace Namespace
 }
@@ -197,6 +205,7 @@ type moduleInfo struct {
 
 	// set during each runMutator
 	splitModules []*moduleInfo
+	aliasTarget  *moduleInfo
 
 	// set during PrepareBuildActions
 	actionDefs localBuildActions
@@ -242,6 +251,9 @@ type Variation struct {
 type variationMap map[string]string
 
 func (vm variationMap) clone() variationMap {
+	if vm == nil {
+		return nil
+	}
 	newVm := make(variationMap)
 	for k, v := range vm {
 		newVm[k] = v
@@ -1178,6 +1190,9 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 		}
 
 		newVariant := origModule.variant.clone()
+		if newVariant == nil {
+			newVariant = make(variationMap)
+		}
 		newVariant[mutatorName] = variationName
 
 		m := *origModule
@@ -1259,6 +1274,19 @@ func (c *Context) prettyPrintVariant(variant variationMap) string {
 	}
 
 	return strings.Join(names, ", ")
+}
+
+func (c *Context) prettyPrintGroupVariants(group *moduleGroup) string {
+	var variants []string
+	for _, mod := range group.modules {
+		variants = append(variants, c.prettyPrintVariant(mod.variant))
+	}
+	for _, mod := range group.aliases {
+		variants = append(variants, c.prettyPrintVariant(mod.variant)+
+			"(alias to "+c.prettyPrintVariant(mod.target.variant)+")")
+	}
+	sort.Strings(variants)
+	return strings.Join(variants, "\n  ")
 }
 
 func (c *Context) newModule(factory ModuleFactory) *moduleInfo {
@@ -1410,9 +1438,9 @@ func blueprintDepsMutator(ctx BottomUpMutatorContext) {
 
 // findMatchingVariant searches the moduleGroup for a module with the same variant as module,
 // and returns the matching module, or nil if one is not found.
-func (c *Context) findMatchingVariant(module *moduleInfo, possible []*moduleInfo, reverse bool) *moduleInfo {
-	if len(possible) == 1 {
-		return possible[0]
+func (c *Context) findMatchingVariant(module *moduleInfo, possible *moduleGroup, reverse bool) *moduleInfo {
+	if len(possible.modules) == 1 {
+		return possible.modules[0]
 	} else {
 		var variantToMatch variationMap
 		if !reverse {
@@ -1423,9 +1451,14 @@ func (c *Context) findMatchingVariant(module *moduleInfo, possible []*moduleInfo
 			// For reverse dependency, use all the variants
 			variantToMatch = module.variant
 		}
-		for _, m := range possible {
+		for _, m := range possible.modules {
 			if m.variant.equal(variantToMatch) {
 				return m
+			}
+		}
+		for _, m := range possible.aliases {
+			if m.variant.equal(variantToMatch) {
+				return m.target
 			}
 		}
 	}
@@ -1445,7 +1478,7 @@ func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName s
 		}}
 	}
 
-	possibleDeps := c.modulesFromName(depName, module.namespace())
+	possibleDeps := c.moduleGroupFromName(depName, module.namespace())
 	if possibleDeps == nil {
 		return c.discoveredMissingDependencies(module, depName)
 	}
@@ -1456,17 +1489,11 @@ func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName s
 		return nil
 	}
 
-	variants := make([]string, len(possibleDeps))
-	for i, mod := range possibleDeps {
-		variants[i] = c.prettyPrintVariant(mod.variant)
-	}
-	sort.Strings(variants)
-
 	return []error{&BlueprintError{
 		Err: fmt.Errorf("dependency %q of %q missing variant:\n  %s\navailable variants:\n  %s",
 			depName, module.Name(),
 			c.prettyPrintVariant(module.dependencyVariant),
-			strings.Join(variants, "\n  ")),
+			c.prettyPrintGroupVariants(possibleDeps)),
 		Pos: module.pos,
 	}}
 }
@@ -1479,7 +1506,7 @@ func (c *Context) findReverseDependency(module *moduleInfo, destName string) (*m
 		}}
 	}
 
-	possibleDeps := c.modulesFromName(destName, module.namespace())
+	possibleDeps := c.moduleGroupFromName(destName, module.namespace())
 	if possibleDeps == nil {
 		return nil, []error{&BlueprintError{
 			Err: fmt.Errorf("%q has a reverse dependency on undefined module %q",
@@ -1492,17 +1519,11 @@ func (c *Context) findReverseDependency(module *moduleInfo, destName string) (*m
 		return m, nil
 	}
 
-	variants := make([]string, len(possibleDeps))
-	for i, mod := range possibleDeps {
-		variants[i] = c.prettyPrintVariant(mod.variant)
-	}
-	sort.Strings(variants)
-
 	return nil, []error{&BlueprintError{
 		Err: fmt.Errorf("reverse dependency %q of %q missing variant:\n  %s\navailable variants:\n  %s",
 			destName, module.Name(),
 			c.prettyPrintVariant(module.dependencyVariant),
-			strings.Join(variants, "\n  ")),
+			c.prettyPrintGroupVariants(possibleDeps)),
 		Pos: module.pos,
 	}}
 }
@@ -1513,7 +1534,7 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 		panic("BaseDependencyTag is not allowed to be used directly!")
 	}
 
-	possibleDeps := c.modulesFromName(depName, module.namespace())
+	possibleDeps := c.moduleGroupFromName(depName, module.namespace())
 	if possibleDeps == nil {
 		return c.discoveredMissingDependencies(module, depName)
 	}
@@ -1524,55 +1545,67 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 	var newVariant variationMap
 	if !far {
 		newVariant = module.dependencyVariant.clone()
-	} else {
-		newVariant = make(variationMap)
 	}
 	for _, v := range variations {
+		if newVariant == nil {
+			newVariant = make(variationMap)
+		}
 		newVariant[v.Mutator] = v.Variation
 	}
 
-	for _, m := range possibleDeps {
-		var found bool
+	check := func(variant variationMap) bool {
 		if far {
-			found = m.variant.subset(newVariant)
+			return variant.subset(newVariant)
 		} else {
-			found = m.variant.equal(newVariant)
-		}
-		if found {
-			if module == m {
-				return []error{&BlueprintError{
-					Err: fmt.Errorf("%q depends on itself", depName),
-					Pos: module.pos,
-				}}
-			}
-			// AddVariationDependency allows adding a dependency on itself, but only if
-			// that module is earlier in the module list than this one, since we always
-			// run GenerateBuildActions in order for the variants of a module
-			if m.group == module.group && beforeInModuleList(module, m, module.group.modules) {
-				return []error{&BlueprintError{
-					Err: fmt.Errorf("%q depends on later version of itself", depName),
-					Pos: module.pos,
-				}}
-			}
-			module.newDirectDeps = append(module.newDirectDeps, depInfo{m, tag})
-			atomic.AddUint32(&c.depsModified, 1)
-			return nil
+			return variant.equal(newVariant)
 		}
 	}
 
-	variants := make([]string, len(possibleDeps))
-	for i, mod := range possibleDeps {
-		variants[i] = c.prettyPrintVariant(mod.variant)
+	var foundDep *moduleInfo
+	for _, m := range possibleDeps.modules {
+		if check(m.variant) {
+			foundDep = m
+			break
+		}
 	}
-	sort.Strings(variants)
 
-	return []error{&BlueprintError{
-		Err: fmt.Errorf("dependency %q of %q missing variant:\n  %s\navailable variants:\n  %s",
-			depName, module.Name(),
-			c.prettyPrintVariant(newVariant),
-			strings.Join(variants, "\n  ")),
-		Pos: module.pos,
-	}}
+	if foundDep == nil {
+		for _, m := range possibleDeps.aliases {
+			if check(m.variant) {
+				foundDep = m.target
+				break
+			}
+		}
+	}
+
+	if foundDep == nil {
+		return []error{&BlueprintError{
+			Err: fmt.Errorf("dependency %q of %q missing variant:\n  %s\navailable variants:\n  %s",
+				depName, module.Name(),
+				c.prettyPrintVariant(newVariant),
+				c.prettyPrintGroupVariants(possibleDeps)),
+			Pos: module.pos,
+		}}
+	}
+
+	if module == foundDep {
+		return []error{&BlueprintError{
+			Err: fmt.Errorf("%q depends on itself", depName),
+			Pos: module.pos,
+		}}
+	}
+	// AddVariationDependency allows adding a dependency on itself, but only if
+	// that module is earlier in the module list than this one, since we always
+	// run GenerateBuildActions in order for the variants of a module
+	if foundDep.group == module.group && beforeInModuleList(module, foundDep, module.group.modules) {
+		return []error{&BlueprintError{
+			Err: fmt.Errorf("%q depends on later version of itself", depName),
+			Pos: module.pos,
+		}}
+	}
+	module.newDirectDeps = append(module.newDirectDeps, depInfo{foundDep, tag})
+	atomic.AddUint32(&c.depsModified, 1)
+	return nil
 }
 
 func (c *Context) addInterVariantDependency(origModule *moduleInfo, tag DependencyTag,
@@ -2166,6 +2199,16 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 				group.modules, i = spliceModules(group.modules, i, module.splitModules)
 			}
 
+			// Create any new aliases.
+			if module.aliasTarget != nil {
+				group.aliases = append(group.aliases, &moduleAlias{
+					variantName:       module.variantName,
+					variant:           module.variant,
+					dependencyVariant: module.dependencyVariant,
+					target:            module.aliasTarget,
+				})
+			}
+
 			// Fix up any remaining dependencies on modules that were split into variants
 			// by replacing them with the first variant
 			for j, dep := range module.directDeps {
@@ -2181,6 +2224,21 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 			// Add in any new direct dependencies that were added by the mutator
 			module.directDeps = append(module.directDeps, module.newDirectDeps...)
 			module.newDirectDeps = nil
+		}
+
+		// Forward or delete any dangling aliases.
+		for i := 0; i < len(group.aliases); i++ {
+			alias := group.aliases[i]
+
+			if alias.target.logicModule == nil {
+				if alias.target.aliasTarget != nil {
+					alias.target = alias.target.aliasTarget
+				} else {
+					// The alias was left dangling, remove it.
+					group.aliases = append(group.aliases[:i], group.aliases[i+1:]...)
+					i--
+				}
+			}
 		}
 	}
 
@@ -2510,15 +2568,21 @@ type rename struct {
 }
 
 func (c *Context) moduleMatchingVariant(module *moduleInfo, name string) *moduleInfo {
-	targets := c.modulesFromName(name, module.namespace())
+	group := c.moduleGroupFromName(name, module.namespace())
 
-	if targets == nil {
+	if group == nil {
 		return nil
 	}
 
-	for _, m := range targets {
+	for _, m := range group.modules {
 		if module.variantName == m.variantName {
 			return m
+		}
+	}
+
+	for _, m := range group.aliases {
+		if module.variantName == m.variantName {
+			return m.target
 		}
 	}
 
@@ -2573,10 +2637,10 @@ func (c *Context) missingDependencyError(module *moduleInfo, depName string) (er
 	}
 }
 
-func (c *Context) modulesFromName(name string, namespace Namespace) []*moduleInfo {
+func (c *Context) moduleGroupFromName(name string, namespace Namespace) *moduleGroup {
 	group, exists := c.nameInterface.ModuleFromName(name, namespace)
 	if exists {
-		return group.modules
+		return group.moduleGroup
 	}
 	return nil
 }

@@ -188,7 +188,7 @@ func TestWalkDeps(t *testing.T) {
 
 	var outputDown string
 	var outputUp string
-	topModule := ctx.modulesFromName("A", nil)[0]
+	topModule := ctx.moduleGroupFromName("A", nil).modules[0]
 	ctx.walkDeps(topModule, false,
 		func(dep depInfo, parent *moduleInfo) bool {
 			outputDown += ctx.ModuleName(dep.module.logicModule)
@@ -280,7 +280,7 @@ func TestWalkDepsDuplicates(t *testing.T) {
 
 	var outputDown string
 	var outputUp string
-	topModule := ctx.modulesFromName("A", nil)[0]
+	topModule := ctx.moduleGroupFromName("A", nil).modules[0]
 	ctx.walkDeps(topModule, true,
 		func(dep depInfo, parent *moduleInfo) bool {
 			outputDown += ctx.ModuleName(dep.module.logicModule)
@@ -334,10 +334,10 @@ func TestCreateModule(t *testing.T) {
 		t.FailNow()
 	}
 
-	a := ctx.modulesFromName("A", nil)[0].logicModule.(*fooModule)
-	b := ctx.modulesFromName("B", nil)[0].logicModule.(*barModule)
-	c := ctx.modulesFromName("C", nil)[0].logicModule.(*barModule)
-	d := ctx.modulesFromName("D", nil)[0].logicModule.(*fooModule)
+	a := ctx.moduleGroupFromName("A", nil).modules[0].logicModule.(*fooModule)
+	b := ctx.moduleGroupFromName("B", nil).modules[0].logicModule.(*barModule)
+	c := ctx.moduleGroupFromName("C", nil).modules[0].logicModule.(*barModule)
+	d := ctx.moduleGroupFromName("D", nil).modules[0].logicModule.(*fooModule)
 
 	checkDeps := func(m Module, expected string) {
 		var deps []string
