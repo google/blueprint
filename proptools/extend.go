@@ -150,6 +150,7 @@ type Order int
 const (
 	Append Order = iota
 	Prepend
+	Replace
 )
 
 type ExtendPropertyFilterFunc func(property string,
@@ -170,6 +171,12 @@ func OrderPrepend(property string,
 	dstField, srcField reflect.StructField,
 	dstValue, srcValue interface{}) (Order, error) {
 	return Prepend, nil
+}
+
+func OrderReplace(property string,
+	dstField, srcField reflect.StructField,
+	dstValue, srcValue interface{}) (Order, error) {
+	return Replace, nil
 }
 
 type ExtendPropertyError struct {
@@ -428,8 +435,11 @@ func ExtendBasicType(dstFieldValue, srcFieldValue reflect.Value, order Order) {
 		if prepend {
 			newSlice = reflect.AppendSlice(newSlice, srcFieldValue)
 			newSlice = reflect.AppendSlice(newSlice, dstFieldValue)
-		} else {
+		} else if order == Append {
 			newSlice = reflect.AppendSlice(newSlice, dstFieldValue)
+			newSlice = reflect.AppendSlice(newSlice, srcFieldValue)
+		} else {
+			// replace
 			newSlice = reflect.AppendSlice(newSlice, srcFieldValue)
 		}
 		dstFieldValue.Set(newSlice)
