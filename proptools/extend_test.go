@@ -23,12 +23,12 @@ import (
 )
 
 type appendPropertyTestCase struct {
-	in1     interface{}
-	in2     interface{}
-	out     interface{}
-	prepend bool
-	filter  ExtendPropertyFilterFunc
-	err     error
+	in1    interface{}
+	in2    interface{}
+	out    interface{}
+	order  Order // default is Append
+	filter ExtendPropertyFilterFunc
+	err    error
 }
 
 func appendPropertiesTestCases() []appendPropertyTestCase {
@@ -76,7 +76,7 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				B3: true,
 				B4: false,
 			},
-			prepend: true,
+			order: Prepend,
 		},
 		{
 			// Append strings
@@ -101,7 +101,7 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 			out: &struct{ S string }{
 				S: "string2string1",
 			},
-			prepend: true,
+			order: Prepend,
 		},
 		{
 			// Append pointer to bool
@@ -174,7 +174,7 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				B8: BoolPtr(false),
 				B9: BoolPtr(false),
 			},
-			prepend: true,
+			order: Prepend,
 		},
 		{
 			// Append pointer to integer
@@ -226,7 +226,7 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				I2: Int64Ptr(33),
 				I3: nil,
 			},
-			prepend: true,
+			order: Prepend,
 		},
 		{
 			// Append pointer to strings
@@ -261,7 +261,7 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				S3: StringPtr("string4"),
 				S4: nil,
 			},
-			prepend: true,
+			order: Prepend,
 		},
 		{
 			// Append slice
@@ -286,7 +286,20 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 			out: &struct{ S []string }{
 				S: []string{"string2", "string1"},
 			},
-			prepend: true,
+			order: Prepend,
+		},
+		{
+			// Replace slice
+			in1: &struct{ S []string }{
+				S: []string{"string1"},
+			},
+			in2: &struct{ S []string }{
+				S: []string{"string2"},
+			},
+			out: &struct{ S []string }{
+				S: []string{"string2"},
+			},
+			order: Replace,
 		},
 		{
 			// Append empty slice
@@ -317,7 +330,23 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				S1: []string{"string1"},
 				S2: []string{"string2"},
 			},
-			prepend: true,
+			order: Prepend,
+		},
+		{
+			// Replace empty slice
+			in1: &struct{ S1, S2 []string }{
+				S1: []string{"string1"},
+				S2: []string{},
+			},
+			in2: &struct{ S1, S2 []string }{
+				S1: []string{},
+				S2: []string{"string2"},
+			},
+			out: &struct{ S1, S2 []string }{
+				S1: []string{},
+				S2: []string{"string2"},
+			},
+			order: Replace,
 		},
 		{
 			// Append nil slice
@@ -346,7 +375,41 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				S2: []string{"string2"},
 				S3: nil,
 			},
-			prepend: true,
+			order: Prepend,
+		},
+		{
+			// Replace nil slice
+			in1: &struct{ S1, S2, S3 []string }{
+				S1: []string{"string1"},
+			},
+			in2: &struct{ S1, S2, S3 []string }{
+				S2: []string{"string2"},
+			},
+			out: &struct{ S1, S2, S3 []string }{
+				S1: []string{"string1"},
+				S2: []string{"string2"},
+				S3: nil,
+			},
+			order: Replace,
+		},
+		{
+			// Replace embedded slice
+			in1: &struct{ S *struct{ S1 []string } }{
+				S: &struct{ S1 []string }{
+					S1: []string{"string1"},
+				},
+			},
+			in2: &struct{ S *struct{ S1 []string } }{
+				S: &struct{ S1 []string }{
+					S1: []string{"string2"},
+				},
+			},
+			out: &struct{ S *struct{ S1 []string } }{
+				S: &struct{ S1 []string }{
+					S1: []string{"string2"},
+				},
+			},
+			order: Replace,
 		},
 		{
 			// Append pointer
@@ -383,7 +446,7 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 					S: "string2string1",
 				},
 			},
-			prepend: true,
+			order: Prepend,
 		},
 		{
 			// Append interface
@@ -420,7 +483,7 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 					S: "string2string1",
 				},
 			},
-			prepend: true,
+			order: Prepend,
 		},
 		{
 			// Unexported field
@@ -938,12 +1001,16 @@ func TestAppendProperties(t *testing.T) {
 		var err error
 		var testType string
 
-		if testCase.prepend {
-			testType = "prepend"
-			err = PrependProperties(got, testCase.in2, testCase.filter)
-		} else {
+		switch testCase.order {
+		case Append:
 			testType = "append"
 			err = AppendProperties(got, testCase.in2, testCase.filter)
+		case Prepend:
+			testType = "prepend"
+			err = PrependProperties(got, testCase.in2, testCase.filter)
+		case Replace:
+			testType = "replace"
+			err = ExtendProperties(got, testCase.in2, testCase.filter, OrderReplace)
 		}
 
 		check(t, testType, testString, got, err, testCase.out, testCase.err)
@@ -961,17 +1028,24 @@ func TestExtendProperties(t *testing.T) {
 		order := func(property string,
 			dstField, srcField reflect.StructField,
 			dstValue, srcValue interface{}) (Order, error) {
-			if testCase.prepend {
-				return Prepend, nil
-			} else {
+			switch testCase.order {
+			case Append:
 				return Append, nil
+			case Prepend:
+				return Prepend, nil
+			case Replace:
+				return Replace, nil
 			}
+			return Append, errors.New("unknown order")
 		}
 
-		if testCase.prepend {
+		switch testCase.order {
+		case Append:
 			testType = "prepend"
-		} else {
+		case Prepend:
 			testType = "append"
+		case Replace:
+			testType = "replace"
 		}
 
 		err = ExtendProperties(got, testCase.in2, testCase.filter, order)
@@ -981,12 +1055,12 @@ func TestExtendProperties(t *testing.T) {
 }
 
 type appendMatchingPropertiesTestCase struct {
-	in1     []interface{}
-	in2     interface{}
-	out     []interface{}
-	prepend bool
-	filter  ExtendPropertyFilterFunc
-	err     error
+	in1    []interface{}
+	in2    interface{}
+	out    []interface{}
+	order  Order // default is Append
+	filter ExtendPropertyFilterFunc
+	err    error
 }
 
 func appendMatchingPropertiesTestCases() []appendMatchingPropertiesTestCase {
@@ -1014,7 +1088,7 @@ func appendMatchingPropertiesTestCases() []appendMatchingPropertiesTestCase {
 			out: []interface{}{&struct{ S string }{
 				S: "string2string1",
 			}},
-			prepend: true,
+			order: Prepend,
 		},
 		{
 			// Append all
@@ -1264,12 +1338,16 @@ func TestAppendMatchingProperties(t *testing.T) {
 		var err error
 		var testType string
 
-		if testCase.prepend {
-			testType = "prepend matching"
-			err = PrependMatchingProperties(got, testCase.in2, testCase.filter)
-		} else {
-			testType = "append matching"
+		switch testCase.order {
+		case Append:
+			testType = "append"
 			err = AppendMatchingProperties(got, testCase.in2, testCase.filter)
+		case Prepend:
+			testType = "prepend"
+			err = PrependMatchingProperties(got, testCase.in2, testCase.filter)
+		case Replace:
+			testType = "replace"
+			err = ExtendMatchingProperties(got, testCase.in2, testCase.filter, OrderReplace)
 		}
 
 		check(t, testType, testString, got, err, testCase.out, testCase.err)
@@ -1287,17 +1365,24 @@ func TestExtendMatchingProperties(t *testing.T) {
 		order := func(property string,
 			dstField, srcField reflect.StructField,
 			dstValue, srcValue interface{}) (Order, error) {
-			if testCase.prepend {
-				return Prepend, nil
-			} else {
+			switch testCase.order {
+			case Append:
 				return Append, nil
+			case Prepend:
+				return Prepend, nil
+			case Replace:
+				return Replace, nil
 			}
+			return Append, errors.New("unknown order")
 		}
 
-		if testCase.prepend {
+		switch testCase.order {
+		case Append:
 			testType = "prepend matching"
-		} else {
+		case Prepend:
 			testType = "append matching"
+		case Replace:
+			testType = "replace matching"
 		}
 
 		err = ExtendMatchingProperties(got, testCase.in2, testCase.filter, order)
