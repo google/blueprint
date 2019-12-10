@@ -1272,8 +1272,20 @@ func (c *Context) prettyPrintVariant(variant variationMap) string {
 			names = append(names, m+":"+v)
 		}
 	}
-
-	return strings.Join(names, ", ")
+	var missing string
+	if len(names) < len(variant) {
+		variantClone := variant.clone()
+		for _, m := range c.variantMutatorNames {
+			delete(variantClone, m)
+		}
+		unknownVariants := make([]string, 0, len(variant)-len(names))
+		for m, v := range variantClone {
+			unknownVariants = append(unknownVariants, m+":"+v)
+		}
+		sort.Strings(unknownVariants)
+		missing = " (" + strings.Join(unknownVariants, ", ") + ")"
+	}
+	return strings.Join(names, ", ") + missing
 }
 
 func (c *Context) prettyPrintGroupVariants(group *moduleGroup) string {

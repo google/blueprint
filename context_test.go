@@ -508,3 +508,16 @@ func TestParseFailsForModuleWithoutName(t *testing.T) {
 		t.Errorf("Incorrect errors; expected:\n%s\ngot:\n%s", expectedErrs, errs)
 	}
 }
+
+func TestPrettyPrintMissingMutators(t *testing.T) {
+	ctx := NewContext()
+	ctx.RegisterBottomUpMutator("known_mutator", func(ctx BottomUpMutatorContext) {})
+	actual := ctx.prettyPrintVariant(variationMap{
+		"known_mutator":   "known_variation",
+		"unknown_mutator": "unknown_variation",
+	})
+	expected := "known_mutator:known_variation (unknown_mutator:unknown_variation)"
+	if actual != expected {
+		t.Errorf("Incorrect variation; expected:\n%s\ngot:\n%s", expected, actual)
+	}
+}
