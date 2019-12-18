@@ -889,6 +889,10 @@ func (c *Context) MockFileSystem(files map[string][]byte) {
 	c.fs = pathtools.MockFs(files)
 }
 
+func (c *Context) SetFs(fs pathtools.FileSystem) {
+	c.fs = fs
+}
+
 // openAndParse opens and parses a single Blueprints file, and returns the results
 func (c *Context) openAndParse(filename string, scope *parser.Scope, rootDir string,
 	parent *fileParseContext) (file *parser.File,
