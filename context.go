@@ -670,12 +670,14 @@ func (c *Context) ParseFileList(rootDir string, filePaths []string,
 
 		addedCh := make(chan struct{})
 
+		var scopedModuleFactories map[string]ModuleFactory
+
 		var addModule func(module *moduleInfo) []error
 		addModule = func(module *moduleInfo) (errs []error) {
 			moduleCh <- newModuleInfo{module, addedCh}
 			<-addedCh
 			var newModules []*moduleInfo
-			newModules, errs = runAndRemoveLoadHooks(c, config, module)
+			newModules, errs = runAndRemoveLoadHooks(c, config, module, &scopedModuleFactories)
 			if len(errs) > 0 {
 				return errs
 			}
@@ -691,7 +693,7 @@ func (c *Context) ParseFileList(rootDir string, filePaths []string,
 		for _, def := range file.Defs {
 			switch def := def.(type) {
 			case *parser.Module:
-				module, errs := c.processModuleDef(def, file.Name)
+				module, errs := c.processModuleDef(def, file.Name, scopedModuleFactories)
 				if len(errs) == 0 && module != nil {
 					errs = addModule(module)
 				}
@@ -1338,9 +1340,12 @@ func (c *Context) newModule(factory ModuleFactory) *moduleInfo {
 }
 
 func (c *Context) processModuleDef(moduleDef *parser.Module,
-	relBlueprintsFile string) (*moduleInfo, []error) {
+	relBlueprintsFile string, scopedModuleFactories map[string]ModuleFactory) (*moduleInfo, []error) {
 
 	factory, ok := c.moduleFactories[moduleDef.Type]
+	if !ok && scopedModuleFactories != nil {
+		factory, ok = scopedModuleFactories[moduleDef.Type]
+	}
 	if !ok {
 		if c.ignoreUnknownModuleTypes {
 			return nil, nil

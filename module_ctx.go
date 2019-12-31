@@ -179,6 +179,9 @@ type EarlyModuleContext interface {
 	// Namespace returns the Namespace object provided by the NameInterface set by Context.SetNameInterface, or the
 	// default SimpleNameInterface if Context.SetNameInterface was not called.
 	Namespace() Namespace
+
+	// ModuleFactories returns a map of all of the global ModuleFactories by name.
+	ModuleFactories() map[string]ModuleFactory
 }
 
 type BaseModuleContext interface {
@@ -602,6 +605,14 @@ func (m *baseModuleContext) AddNinjaFileDeps(deps ...string) {
 	m.ninjaFileDeps = append(m.ninjaFileDeps, deps...)
 }
 
+func (m *baseModuleContext) ModuleFactories() map[string]ModuleFactory {
+	ret := make(map[string]ModuleFactory)
+	for k, v := range m.context.moduleFactories {
+		ret[k] = v
+	}
+	return ret
+}
+
 func (m *moduleContext) ModuleSubDir() string {
 	return m.module.variantName
 }
@@ -1009,6 +1020,10 @@ type LoadHookContext interface {
 	// CreateModule creates a new module by calling the factory method for the specified moduleType, and applies
 	// the specified property structs to it as if the properties were set in a blueprint file.
 	CreateModule(ModuleFactory, ...interface{}) Module
+
+	// RegisterScopedModuleType creates a new module type that is scoped to the current Blueprints
+	// file.
+	RegisterScopedModuleType(name string, factory ModuleFactory)
 }
 
 func (l *loadHookContext) CreateModule(factory ModuleFactory, props ...interface{}) Module {
@@ -1031,9 +1046,26 @@ func (l *loadHookContext) CreateModule(factory ModuleFactory, props ...interface
 	return module.logicModule
 }
 
+func (l *loadHookContext) RegisterScopedModuleType(name string, factory ModuleFactory) {
+	if _, exists := l.context.moduleFactories[name]; exists {
+		panic(fmt.Errorf("A global module type named %q already exists", name))
+	}
+
+	if _, exists := (*l.scopedModuleFactories)[name]; exists {
+		panic(fmt.Errorf("A module type named %q already exists in this scope", name))
+	}
+
+	if *l.scopedModuleFactories == nil {
+		(*l.scopedModuleFactories) = make(map[string]ModuleFactory)
+	}
+
+	(*l.scopedModuleFactories)[name] = factory
+}
+
 type loadHookContext struct {
 	baseModuleContext
-	newModules []*moduleInfo
+	newModules            []*moduleInfo
+	scopedModuleFactories *map[string]ModuleFactory
 }
 
 type LoadHook func(ctx LoadHookContext)
@@ -1057,8 +1089,8 @@ func AddLoadHook(module Module, hook LoadHook) {
 	*hooks = append(*hooks, hook)
 }
 
-func runAndRemoveLoadHooks(ctx *Context, config interface{},
-	module *moduleInfo) (newModules []*moduleInfo, errs []error) {
+func runAndRemoveLoadHooks(ctx *Context, config interface{}, module *moduleInfo,
+	scopedModuleFactories *map[string]ModuleFactory) (newModules []*moduleInfo, errs []error) {
 
 	if v, exists := pendingHooks.Load(module.logicModule); exists {
 		hooks := v.(*[]LoadHook)
@@ -1068,6 +1100,7 @@ func runAndRemoveLoadHooks(ctx *Context, config interface{},
 				config:  config,
 				module:  module,
 			},
+			scopedModuleFactories: scopedModuleFactories,
 		}
 
 		for _, hook := range *hooks {
