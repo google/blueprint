@@ -76,7 +76,7 @@ func TestAliases(t *testing.T) {
 
 		ctx.MockFileSystem(mockFS)
 
-		_, errs := ctx.ParseFileList(".", []string{"Blueprints"})
+		_, errs := ctx.ParseFileList(".", []string{"Blueprints"}, nil)
 		if len(errs) > 0 {
 			t.Errorf("unexpected parse errors:")
 			for _, err := range errs {
