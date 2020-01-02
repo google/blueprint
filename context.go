@@ -1364,8 +1364,17 @@ func (c *Context) processModuleDef(moduleDef *parser.Module,
 
 	module.relBlueprintsFile = relBlueprintsFile
 
-	propertyMap, errs := unpackProperties(moduleDef.Properties, module.properties...)
+	propertyMap, errs := proptools.UnpackProperties(moduleDef.Properties, module.properties...)
 	if len(errs) > 0 {
+		for i, err := range errs {
+			if unpackErr, ok := err.(*proptools.UnpackError); ok {
+				err = &BlueprintError{
+					Err: unpackErr.Err,
+					Pos: unpackErr.Pos,
+				}
+				errs[i] = err
+			}
+		}
 		return nil, errs
 	}
 
