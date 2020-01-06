@@ -140,7 +140,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 
 	ctx.RegisterSingletonType("glob", globSingletonFactory(ctx))
 
-	deps, errs := ctx.ParseFileList(filepath.Dir(bootstrapConfig.topLevelBlueprintsFile), filesToParse)
+	deps, errs := ctx.ParseFileList(filepath.Dir(bootstrapConfig.topLevelBlueprintsFile), filesToParse, config)
 	if len(errs) > 0 {
 		fatalErrors(errs)
 	}
