@@ -168,7 +168,7 @@ func TestWalkDeps(t *testing.T) {
 
 	ctx.RegisterModuleType("foo_module", newFooModule)
 	ctx.RegisterModuleType("bar_module", newBarModule)
-	_, errs := ctx.ParseBlueprintsFiles("Blueprints")
+	_, errs := ctx.ParseBlueprintsFiles("Blueprints", nil)
 	if len(errs) > 0 {
 		t.Errorf("unexpected parse errors:")
 		for _, err := range errs {
@@ -260,7 +260,7 @@ func TestWalkDepsDuplicates(t *testing.T) {
 
 	ctx.RegisterModuleType("foo_module", newFooModule)
 	ctx.RegisterModuleType("bar_module", newBarModule)
-	_, errs := ctx.ParseBlueprintsFiles("Blueprints")
+	_, errs := ctx.ParseBlueprintsFiles("Blueprints", nil)
 	if len(errs) > 0 {
 		t.Errorf("unexpected parse errors:")
 		for _, err := range errs {
@@ -316,7 +316,7 @@ func TestCreateModule(t *testing.T) {
 
 	ctx.RegisterModuleType("foo_module", newFooModule)
 	ctx.RegisterModuleType("bar_module", newBarModule)
-	_, errs := ctx.ParseBlueprintsFiles("Blueprints")
+	_, errs := ctx.ParseBlueprintsFiles("Blueprints", nil)
 	if len(errs) > 0 {
 		t.Errorf("unexpected parse errors:")
 		for _, err := range errs {
@@ -499,7 +499,7 @@ func TestParseFailsForModuleWithoutName(t *testing.T) {
 	ctx.RegisterModuleType("foo_module", newFooModule)
 	ctx.RegisterModuleType("bar_module", newBarModule)
 
-	_, errs := ctx.ParseBlueprintsFiles("Blueprints")
+	_, errs := ctx.ParseBlueprintsFiles("Blueprints", nil)
 
 	expectedErrs := []error{
 		errors.New(`Blueprints:6:4: property 'name' is missing from a module`),
