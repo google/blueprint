@@ -36,7 +36,7 @@ const (
 	DontFollowSymlinks = ShouldFollowSymlinks(false)
 )
 
-var OsFs FileSystem = osFs{}
+var OsFs FileSystem = &osFs{}
 
 func MockFs(files map[string][]byte) FileSystem {
 	fs := &mockFs{
@@ -123,11 +123,45 @@ type FileSystem interface {
 }
 
 // osFs implements FileSystem using the local disk.
-type osFs struct{}
+type osFs struct {
+	srcDir string
+}
 
-func (osFs) Open(name string) (ReaderAtSeekerCloser, error) { return os.Open(name) }
-func (osFs) Exists(name string) (bool, bool, error) {
-	stat, err := os.Stat(name)
+func NewOsFs(path string) FileSystem {
+	return &osFs{srcDir: path}
+}
+
+func (fs *osFs) removeSrcDirPrefix(path string) string {
+	if fs.srcDir == "" {
+		return path
+	}
+	rel, err := filepath.Rel(fs.srcDir, path)
+	if err != nil {
+		panic(fmt.Errorf("unexpected failure in removeSrcDirPrefix filepath.Rel(%s, %s): %s",
+			fs.srcDir, path, err))
+	}
+	if strings.HasPrefix(rel, "../") {
+		panic(fmt.Errorf("unexpected relative path outside directory in removeSrcDirPrefix filepath.Rel(%s, %s): %s",
+			fs.srcDir, path, rel))
+	}
+	return rel
+}
+
+func (fs *osFs) removeSrcDirPrefixes(paths []string) []string {
+	if fs.srcDir != "" {
+		for i, path := range paths {
+			paths[i] = fs.removeSrcDirPrefix(path)
+		}
+	}
+	return paths
+}
+
+func (fs *osFs) Open(name string) (ReaderAtSeekerCloser, error) {
+	return os.Open(filepath.Join(fs.srcDir, name))
+}
+
+func (fs *osFs) Exists(name string) (bool, bool, error) {
+	stat, err := os.Stat(filepath.Join(fs.srcDir, name))
 	if err == nil {
 		return true, stat.IsDir(), nil
 	} else if os.IsNotExist(err) {
@@ -137,45 +171,47 @@ func (osFs) Exists(name string) (bool, bool, error) {
 	}
 }
 
-func (osFs) IsDir(name string) (bool, error) {
-	info, err := os.Stat(name)
+func (fs *osFs) IsDir(name string) (bool, error) {
+	info, err := os.Stat(filepath.Join(fs.srcDir, name))
 	if err != nil {
 		return false, err
 	}
 	return info.IsDir(), nil
 }
 
-func (osFs) IsSymlink(name string) (bool, error) {
-	if info, err := os.Lstat(name); err != nil {
+func (fs *osFs) IsSymlink(name string) (bool, error) {
+	if info, err := os.Lstat(filepath.Join(fs.srcDir, name)); err != nil {
 		return false, err
 	} else {
 		return info.Mode()&os.ModeSymlink != 0, nil
 	}
 }
 
-func (fs osFs) Glob(pattern string, excludes []string, follow ShouldFollowSymlinks) (matches, dirs []string, err error) {
+func (fs *osFs) Glob(pattern string, excludes []string, follow ShouldFollowSymlinks) (matches, dirs []string, err error) {
 	return startGlob(fs, pattern, excludes, follow)
 }
 
-func (osFs) glob(pattern string) ([]string, error) {
-	return filepath.Glob(pattern)
+func (fs *osFs) glob(pattern string) ([]string, error) {
+	paths, err := filepath.Glob(filepath.Join(fs.srcDir, pattern))
+	fs.removeSrcDirPrefixes(paths)
+	return paths, err
 }
 
-func (osFs) Lstat(path string) (stats os.FileInfo, err error) {
-	return os.Lstat(path)
+func (fs *osFs) Lstat(path string) (stats os.FileInfo, err error) {
+	return os.Lstat(filepath.Join(fs.srcDir, path))
 }
 
-func (osFs) Stat(path string) (stats os.FileInfo, err error) {
-	return os.Stat(path)
+func (fs *osFs) Stat(path string) (stats os.FileInfo, err error) {
+	return os.Stat(filepath.Join(fs.srcDir, path))
 }
 
 // Returns a list of all directories under dir
-func (osFs) ListDirsRecursive(name string, follow ShouldFollowSymlinks) (dirs []string, err error) {
-	return listDirsRecursive(OsFs, name, follow)
+func (fs *osFs) ListDirsRecursive(name string, follow ShouldFollowSymlinks) (dirs []string, err error) {
+	return listDirsRecursive(fs, name, follow)
 }
 
-func (osFs) ReadDirNames(name string) ([]string, error) {
-	dir, err := os.Open(name)
+func (fs *osFs) ReadDirNames(name string) ([]string, error) {
+	dir, err := os.Open(filepath.Join(fs.srcDir, name))
 	if err != nil {
 		return nil, err
 	}
@@ -190,8 +226,8 @@ func (osFs) ReadDirNames(name string) ([]string, error) {
 	return contents, nil
 }
 
-func (osFs) Readlink(name string) (string, error) {
-	return os.Readlink(name)
+func (fs *osFs) Readlink(name string) (string, error) {
+	return os.Readlink(filepath.Join(fs.srcDir, name))
 }
 
 type mockFs struct {

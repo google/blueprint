@@ -22,6 +22,8 @@ import (
 	"testing"
 )
 
+const testdataDir = "testdata/dangling"
+
 func symlinkMockFs() *mockFs {
 	files := []string{
 		"a/a/a",
@@ -149,25 +151,37 @@ func TestFs_IsDir(t *testing.T) {
 	}
 
 	mock := symlinkMockFs()
-	fsList := []FileSystem{mock, OsFs}
-	names := []string{"mock", "os"}
 
-	os.Chdir("testdata/dangling")
-	defer os.Chdir("../..")
-
-	for i, fs := range fsList {
-		t.Run(names[i], func(t *testing.T) {
-			for _, test := range testCases {
-				t.Run(test.name, func(t *testing.T) {
-					got, err := fs.IsDir(test.name)
-					checkErr(t, test.err, err)
-					if got != test.isDir {
-						t.Errorf("want: %v, got %v", test.isDir, got)
-					}
-				})
-			}
-		})
+	run := func(t *testing.T, fs FileSystem) {
+		for _, test := range testCases {
+			t.Run(test.name, func(t *testing.T) {
+				got, err := fs.IsDir(test.name)
+				checkErr(t, test.err, err)
+				if got != test.isDir {
+					t.Errorf("want: %v, got %v", test.isDir, got)
+				}
+			})
+		}
 	}
+
+	t.Run("mock", func(t *testing.T) {
+		run(t, mock)
+	})
+
+	t.Run("os", func(t *testing.T) {
+		os.Chdir("testdata/dangling")
+		defer os.Chdir("../..")
+		run(t, OsFs)
+	})
+
+	t.Run("os relative srcDir", func(t *testing.T) {
+		run(t, NewOsFs(testdataDir))
+	})
+
+	t.Run("os absolute srcDir", func(t *testing.T) {
+		wd, _ := os.Getwd()
+		run(t, NewOsFs(filepath.Join(wd, testdataDir)))
+	})
 }
 
 func TestFs_ListDirsRecursiveFollowSymlinks(t *testing.T) {
@@ -200,26 +214,37 @@ func TestFs_ListDirsRecursiveFollowSymlinks(t *testing.T) {
 	}
 
 	mock := symlinkMockFs()
-	fsList := []FileSystem{mock, OsFs}
-	names := []string{"mock", "os"}
 
-	os.Chdir("testdata/dangling")
-	defer os.Chdir("../..")
-
-	for i, fs := range fsList {
-		t.Run(names[i], func(t *testing.T) {
-
-			for _, test := range testCases {
-				t.Run(test.name, func(t *testing.T) {
-					got, err := fs.ListDirsRecursive(test.name, FollowSymlinks)
-					checkErr(t, test.err, err)
-					if !reflect.DeepEqual(got, test.dirs) {
-						t.Errorf("want: %v, got %v", test.dirs, got)
-					}
-				})
-			}
-		})
+	run := func(t *testing.T, fs FileSystem) {
+		for _, test := range testCases {
+			t.Run(test.name, func(t *testing.T) {
+				got, err := fs.ListDirsRecursive(test.name, FollowSymlinks)
+				checkErr(t, test.err, err)
+				if !reflect.DeepEqual(got, test.dirs) {
+					t.Errorf("want: %v, got %v", test.dirs, got)
+				}
+			})
+		}
 	}
+
+	t.Run("mock", func(t *testing.T) {
+		run(t, mock)
+	})
+
+	t.Run("os", func(t *testing.T) {
+		os.Chdir("testdata/dangling")
+		defer os.Chdir("../..")
+		run(t, OsFs)
+	})
+
+	t.Run("os relative srcDir", func(t *testing.T) {
+		run(t, NewOsFs(testdataDir))
+	})
+
+	t.Run("os absolute srcDir", func(t *testing.T) {
+		wd, _ := os.Getwd()
+		run(t, NewOsFs(filepath.Join(wd, testdataDir)))
+	})
 }
 
 func TestFs_ListDirsRecursiveDontFollowSymlinks(t *testing.T) {
@@ -252,26 +277,37 @@ func TestFs_ListDirsRecursiveDontFollowSymlinks(t *testing.T) {
 	}
 
 	mock := symlinkMockFs()
-	fsList := []FileSystem{mock, OsFs}
-	names := []string{"mock", "os"}
 
-	os.Chdir("testdata/dangling")
-	defer os.Chdir("../..")
-
-	for i, fs := range fsList {
-		t.Run(names[i], func(t *testing.T) {
-
-			for _, test := range testCases {
-				t.Run(test.name, func(t *testing.T) {
-					got, err := fs.ListDirsRecursive(test.name, DontFollowSymlinks)
-					checkErr(t, test.err, err)
-					if !reflect.DeepEqual(got, test.dirs) {
-						t.Errorf("want: %v, got %v", test.dirs, got)
-					}
-				})
-			}
-		})
+	run := func(t *testing.T, fs FileSystem) {
+		for _, test := range testCases {
+			t.Run(test.name, func(t *testing.T) {
+				got, err := fs.ListDirsRecursive(test.name, DontFollowSymlinks)
+				checkErr(t, test.err, err)
+				if !reflect.DeepEqual(got, test.dirs) {
+					t.Errorf("want: %v, got %v", test.dirs, got)
+				}
+			})
+		}
 	}
+
+	t.Run("mock", func(t *testing.T) {
+		run(t, mock)
+	})
+
+	t.Run("os", func(t *testing.T) {
+		os.Chdir("testdata/dangling")
+		defer os.Chdir("../..")
+		run(t, OsFs)
+	})
+
+	t.Run("os relative srcDir", func(t *testing.T) {
+		run(t, NewOsFs(testdataDir))
+	})
+
+	t.Run("os absolute srcDir", func(t *testing.T) {
+		wd, _ := os.Getwd()
+		run(t, NewOsFs(filepath.Join(wd, testdataDir)))
+	})
 }
 
 func TestFs_Readlink(t *testing.T) {
@@ -321,26 +357,37 @@ func TestFs_Readlink(t *testing.T) {
 	}
 
 	mock := symlinkMockFs()
-	fsList := []FileSystem{mock, OsFs}
-	names := []string{"mock", "os"}
 
-	os.Chdir("testdata/dangling")
-	defer os.Chdir("../..")
-
-	for i, fs := range fsList {
-		t.Run(names[i], func(t *testing.T) {
-
-			for _, test := range testCases {
-				t.Run(test.from, func(t *testing.T) {
-					got, err := fs.Readlink(test.from)
-					checkErr(t, test.err, err)
-					if got != test.to {
-						t.Errorf("fs.Readlink(%q) want: %q, got %q", test.from, test.to, got)
-					}
-				})
-			}
-		})
+	run := func(t *testing.T, fs FileSystem) {
+		for _, test := range testCases {
+			t.Run(test.from, func(t *testing.T) {
+				got, err := fs.Readlink(test.from)
+				checkErr(t, test.err, err)
+				if got != test.to {
+					t.Errorf("fs.Readlink(%q) want: %q, got %q", test.from, test.to, got)
+				}
+			})
+		}
 	}
+
+	t.Run("mock", func(t *testing.T) {
+		run(t, mock)
+	})
+
+	t.Run("os", func(t *testing.T) {
+		os.Chdir("testdata/dangling")
+		defer os.Chdir("../..")
+		run(t, OsFs)
+	})
+
+	t.Run("os relative srcDir", func(t *testing.T) {
+		run(t, NewOsFs(testdataDir))
+	})
+
+	t.Run("os absolute srcDir", func(t *testing.T) {
+		wd, _ := os.Getwd()
+		run(t, NewOsFs(filepath.Join(wd, testdataDir)))
+	})
 }
 
 func TestFs_Lstat(t *testing.T) {
@@ -392,33 +439,44 @@ func TestFs_Lstat(t *testing.T) {
 	}
 
 	mock := symlinkMockFs()
-	fsList := []FileSystem{mock, OsFs}
-	names := []string{"mock", "os"}
 
-	os.Chdir("testdata/dangling")
-	defer os.Chdir("../..")
-
-	for i, fs := range fsList {
-		t.Run(names[i], func(t *testing.T) {
-
-			for _, test := range testCases {
-				t.Run(test.name, func(t *testing.T) {
-					got, err := fs.Lstat(test.name)
-					checkErr(t, test.err, err)
-					if err != nil {
-						return
-					}
-					if got.Mode()&os.ModeType != test.mode {
-						t.Errorf("fs.Lstat(%q).Mode()&os.ModeType want: %x, got %x",
-							test.name, test.mode, got.Mode()&os.ModeType)
-					}
-					if test.mode == 0 && got.Size() != test.size {
-						t.Errorf("fs.Lstat(%q).Size() want: %d, got %d", test.name, test.size, got.Size())
-					}
-				})
-			}
-		})
+	run := func(t *testing.T, fs FileSystem) {
+		for _, test := range testCases {
+			t.Run(test.name, func(t *testing.T) {
+				got, err := fs.Lstat(test.name)
+				checkErr(t, test.err, err)
+				if err != nil {
+					return
+				}
+				if got.Mode()&os.ModeType != test.mode {
+					t.Errorf("fs.Lstat(%q).Mode()&os.ModeType want: %x, got %x",
+						test.name, test.mode, got.Mode()&os.ModeType)
+				}
+				if test.mode == 0 && got.Size() != test.size {
+					t.Errorf("fs.Lstat(%q).Size() want: %d, got %d", test.name, test.size, got.Size())
+				}
+			})
+		}
 	}
+
+	t.Run("mock", func(t *testing.T) {
+		run(t, mock)
+	})
+
+	t.Run("os", func(t *testing.T) {
+		os.Chdir("testdata/dangling")
+		defer os.Chdir("../..")
+		run(t, OsFs)
+	})
+
+	t.Run("os relative srcDir", func(t *testing.T) {
+		run(t, NewOsFs(testdataDir))
+	})
+
+	t.Run("os absolute srcDir", func(t *testing.T) {
+		wd, _ := os.Getwd()
+		run(t, NewOsFs(filepath.Join(wd, testdataDir)))
+	})
 }
 
 func TestFs_Stat(t *testing.T) {
@@ -470,33 +528,44 @@ func TestFs_Stat(t *testing.T) {
 	}
 
 	mock := symlinkMockFs()
-	fsList := []FileSystem{mock, OsFs}
-	names := []string{"mock", "os"}
 
-	os.Chdir("testdata/dangling")
-	defer os.Chdir("../..")
-
-	for i, fs := range fsList {
-		t.Run(names[i], func(t *testing.T) {
-
-			for _, test := range testCases {
-				t.Run(test.name, func(t *testing.T) {
-					got, err := fs.Stat(test.name)
-					checkErr(t, test.err, err)
-					if err != nil {
-						return
-					}
-					if got.Mode()&os.ModeType != test.mode {
-						t.Errorf("fs.Stat(%q).Mode()&os.ModeType want: %x, got %x",
-							test.name, test.mode, got.Mode()&os.ModeType)
-					}
-					if test.mode == 0 && got.Size() != test.size {
-						t.Errorf("fs.Stat(%q).Size() want: %d, got %d", test.name, test.size, got.Size())
-					}
-				})
-			}
-		})
+	run := func(t *testing.T, fs FileSystem) {
+		for _, test := range testCases {
+			t.Run(test.name, func(t *testing.T) {
+				got, err := fs.Stat(test.name)
+				checkErr(t, test.err, err)
+				if err != nil {
+					return
+				}
+				if got.Mode()&os.ModeType != test.mode {
+					t.Errorf("fs.Stat(%q).Mode()&os.ModeType want: %x, got %x",
+						test.name, test.mode, got.Mode()&os.ModeType)
+				}
+				if test.mode == 0 && got.Size() != test.size {
+					t.Errorf("fs.Stat(%q).Size() want: %d, got %d", test.name, test.size, got.Size())
+				}
+			})
+		}
 	}
+
+	t.Run("mock", func(t *testing.T) {
+		run(t, mock)
+	})
+
+	t.Run("os", func(t *testing.T) {
+		os.Chdir("testdata/dangling")
+		defer os.Chdir("../..")
+		run(t, OsFs)
+	})
+
+	t.Run("os relative srcDir", func(t *testing.T) {
+		run(t, NewOsFs(testdataDir))
+	})
+
+	t.Run("os absolute srcDir", func(t *testing.T) {
+		wd, _ := os.Getwd()
+		run(t, NewOsFs(filepath.Join(wd, testdataDir)))
+	})
 }
 
 func TestMockFs_glob(t *testing.T) {
@@ -538,27 +607,39 @@ func TestMockFs_glob(t *testing.T) {
 	}
 
 	mock := symlinkMockFs()
-	fsList := []FileSystem{mock, OsFs}
-	names := []string{"mock", "os"}
 
-	os.Chdir("testdata/dangling")
-	defer os.Chdir("../..")
-
-	for i, fs := range fsList {
-		t.Run(names[i], func(t *testing.T) {
-			for _, test := range testCases {
-				t.Run(test.pattern, func(t *testing.T) {
-					got, err := fs.glob(test.pattern)
-					if err != nil {
-						t.Fatal(err)
-					}
-					if !reflect.DeepEqual(got, test.files) {
-						t.Errorf("want: %v, got %v", test.files, got)
-					}
-				})
-			}
-		})
+	run := func(t *testing.T, fs FileSystem) {
+		for _, test := range testCases {
+			t.Run(test.pattern, func(t *testing.T) {
+				got, err := fs.glob(test.pattern)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(got, test.files) {
+					t.Errorf("want: %v, got %v", test.files, got)
+				}
+			})
+		}
 	}
+
+	t.Run("mock", func(t *testing.T) {
+		run(t, mock)
+	})
+
+	t.Run("os", func(t *testing.T) {
+		os.Chdir("testdata/dangling")
+		defer os.Chdir("../..")
+		run(t, OsFs)
+	})
+
+	t.Run("os relative srcDir", func(t *testing.T) {
+		run(t, NewOsFs(testdataDir))
+	})
+
+	t.Run("os absolute srcDir", func(t *testing.T) {
+		wd, _ := os.Getwd()
+		run(t, NewOsFs(filepath.Join(wd, testdataDir)))
+	})
 }
 
 func syscallError(err error) error {
