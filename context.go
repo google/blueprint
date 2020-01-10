@@ -114,6 +114,7 @@ type Context struct {
 	globs    map[string]GlobPath
 	globLock sync.Mutex
 
+	srcDir         string
 	fs             pathtools.FileSystem
 	moduleListFile string
 }
@@ -446,6 +447,15 @@ func (c *Context) RegisterPreSingletonType(name string, factory SingletonFactory
 
 func (c *Context) SetNameInterface(i NameInterface) {
 	c.nameInterface = i
+}
+
+func (c *Context) SetSrcDir(path string) {
+	c.srcDir = path
+	c.fs = pathtools.NewOsFs(path)
+}
+
+func (c *Context) SrcDir() string {
+	return c.srcDir
 }
 
 func singletonPkgPath(singleton Singleton) string {
