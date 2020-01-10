@@ -30,7 +30,7 @@ func bootstrapVariable(name string, value func() string) blueprint.Variable {
 }
 
 var (
-	// These variables are the only configuration needed by the boostrap
+	// These variables are the only configuration needed by the bootstrap
 	// modules.
 	srcDir = bootstrapVariable("srcDir", func() string {
 		return SrcDir

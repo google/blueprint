@@ -691,7 +691,7 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 
 	if s.config.stage == StagePrimary {
 		mainNinjaFile := filepath.Join("$buildDir", "build.ninja")
-		primaryBuilderNinjaGlobFile := filepath.Join(BuildDir, bootstrapSubDir, "build-globs.ninja")
+		primaryBuilderNinjaGlobFile := absolutePath(filepath.Join(BuildDir, bootstrapSubDir, "build-globs.ninja"))
 
 		if _, err := os.Stat(primaryBuilderNinjaGlobFile); os.IsNotExist(err) {
 			err = ioutil.WriteFile(primaryBuilderNinjaGlobFile, nil, 0666)
