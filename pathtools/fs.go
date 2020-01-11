@@ -131,6 +131,13 @@ func NewOsFs(path string) FileSystem {
 	return &osFs{srcDir: path}
 }
 
+func (fs *osFs) toAbs(path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(fs.srcDir, path)
+}
+
 func (fs *osFs) removeSrcDirPrefix(path string) string {
 	if fs.srcDir == "" {
 		return path
@@ -157,11 +164,11 @@ func (fs *osFs) removeSrcDirPrefixes(paths []string) []string {
 }
 
 func (fs *osFs) Open(name string) (ReaderAtSeekerCloser, error) {
-	return os.Open(filepath.Join(fs.srcDir, name))
+	return os.Open(fs.toAbs(name))
 }
 
 func (fs *osFs) Exists(name string) (bool, bool, error) {
-	stat, err := os.Stat(filepath.Join(fs.srcDir, name))
+	stat, err := os.Stat(fs.toAbs(name))
 	if err == nil {
 		return true, stat.IsDir(), nil
 	} else if os.IsNotExist(err) {
@@ -172,7 +179,7 @@ func (fs *osFs) Exists(name string) (bool, bool, error) {
 }
 
 func (fs *osFs) IsDir(name string) (bool, error) {
-	info, err := os.Stat(filepath.Join(fs.srcDir, name))
+	info, err := os.Stat(fs.toAbs(name))
 	if err != nil {
 		return false, err
 	}
@@ -180,7 +187,7 @@ func (fs *osFs) IsDir(name string) (bool, error) {
 }
 
 func (fs *osFs) IsSymlink(name string) (bool, error) {
-	if info, err := os.Lstat(filepath.Join(fs.srcDir, name)); err != nil {
+	if info, err := os.Lstat(fs.toAbs(name)); err != nil {
 		return false, err
 	} else {
 		return info.Mode()&os.ModeSymlink != 0, nil
@@ -192,17 +199,17 @@ func (fs *osFs) Glob(pattern string, excludes []string, follow ShouldFollowSymli
 }
 
 func (fs *osFs) glob(pattern string) ([]string, error) {
-	paths, err := filepath.Glob(filepath.Join(fs.srcDir, pattern))
+	paths, err := filepath.Glob(fs.toAbs(pattern))
 	fs.removeSrcDirPrefixes(paths)
 	return paths, err
 }
 
 func (fs *osFs) Lstat(path string) (stats os.FileInfo, err error) {
-	return os.Lstat(filepath.Join(fs.srcDir, path))
+	return os.Lstat(fs.toAbs(path))
 }
 
 func (fs *osFs) Stat(path string) (stats os.FileInfo, err error) {
-	return os.Stat(filepath.Join(fs.srcDir, path))
+	return os.Stat(fs.toAbs(path))
 }
 
 // Returns a list of all directories under dir
@@ -211,7 +218,7 @@ func (fs *osFs) ListDirsRecursive(name string, follow ShouldFollowSymlinks) (dir
 }
 
 func (fs *osFs) ReadDirNames(name string) ([]string, error) {
-	dir, err := os.Open(filepath.Join(fs.srcDir, name))
+	dir, err := os.Open(fs.toAbs(name))
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +234,7 @@ func (fs *osFs) ReadDirNames(name string) ([]string, error) {
 }
 
 func (fs *osFs) Readlink(name string) (string, error) {
-	return os.Readlink(filepath.Join(fs.srcDir, name))
+	return os.Readlink(fs.toAbs(name))
 }
 
 type mockFs struct {

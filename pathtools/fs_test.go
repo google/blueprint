@@ -103,6 +103,42 @@ func TestMockFs_followSymlinks(t *testing.T) {
 	}
 }
 
+func runTestFs(t *testing.T, f func(t *testing.T, fs FileSystem, dir string)) {
+	mock := symlinkMockFs()
+	wd, _ := os.Getwd()
+	absTestDataDir := filepath.Join(wd, testdataDir)
+
+	run := func(t *testing.T, fs FileSystem) {
+		t.Run("relpath", func(t *testing.T) {
+			f(t, fs, "")
+		})
+		t.Run("abspath", func(t *testing.T) {
+			f(t, fs, absTestDataDir)
+		})
+	}
+
+	t.Run("mock", func(t *testing.T) {
+		f(t, mock, "")
+	})
+
+	t.Run("os", func(t *testing.T) {
+		os.Chdir(absTestDataDir)
+		defer os.Chdir(wd)
+		run(t, OsFs)
+	})
+
+	t.Run("os relative srcDir", func(t *testing.T) {
+		run(t, NewOsFs(testdataDir))
+	})
+
+	t.Run("os absolute srcDir", func(t *testing.T) {
+		os.Chdir("/")
+		defer os.Chdir(wd)
+		run(t, NewOsFs(filepath.Join(wd, testdataDir)))
+	})
+
+}
+
 func TestFs_IsDir(t *testing.T) {
 	testCases := []struct {
 		name  string
@@ -150,37 +186,16 @@ func TestFs_IsDir(t *testing.T) {
 		{"c/f/missing", false, syscall.ENOTDIR},
 	}
 
-	mock := symlinkMockFs()
-
-	run := func(t *testing.T, fs FileSystem) {
+	runTestFs(t, func(t *testing.T, fs FileSystem, dir string) {
 		for _, test := range testCases {
 			t.Run(test.name, func(t *testing.T) {
-				got, err := fs.IsDir(test.name)
+				got, err := fs.IsDir(filepath.Join(dir, test.name))
 				checkErr(t, test.err, err)
 				if got != test.isDir {
 					t.Errorf("want: %v, got %v", test.isDir, got)
 				}
 			})
 		}
-	}
-
-	t.Run("mock", func(t *testing.T) {
-		run(t, mock)
-	})
-
-	t.Run("os", func(t *testing.T) {
-		os.Chdir("testdata/dangling")
-		defer os.Chdir("../..")
-		run(t, OsFs)
-	})
-
-	t.Run("os relative srcDir", func(t *testing.T) {
-		run(t, NewOsFs(testdataDir))
-	})
-
-	t.Run("os absolute srcDir", func(t *testing.T) {
-		wd, _ := os.Getwd()
-		run(t, NewOsFs(filepath.Join(wd, testdataDir)))
 	})
 }
 
@@ -213,37 +228,20 @@ func TestFs_ListDirsRecursiveFollowSymlinks(t *testing.T) {
 		{"missing", nil, os.ErrNotExist},
 	}
 
-	mock := symlinkMockFs()
-
-	run := func(t *testing.T, fs FileSystem) {
+	runTestFs(t, func(t *testing.T, fs FileSystem, dir string) {
 		for _, test := range testCases {
 			t.Run(test.name, func(t *testing.T) {
-				got, err := fs.ListDirsRecursive(test.name, FollowSymlinks)
+				got, err := fs.ListDirsRecursive(filepath.Join(dir, test.name), FollowSymlinks)
 				checkErr(t, test.err, err)
-				if !reflect.DeepEqual(got, test.dirs) {
-					t.Errorf("want: %v, got %v", test.dirs, got)
+				want := append([]string(nil), test.dirs...)
+				for i := range want {
+					want[i] = filepath.Join(dir, want[i])
+				}
+				if !reflect.DeepEqual(got, want) {
+					t.Errorf("want: %v, got %v", want, got)
 				}
 			})
 		}
-	}
-
-	t.Run("mock", func(t *testing.T) {
-		run(t, mock)
-	})
-
-	t.Run("os", func(t *testing.T) {
-		os.Chdir("testdata/dangling")
-		defer os.Chdir("../..")
-		run(t, OsFs)
-	})
-
-	t.Run("os relative srcDir", func(t *testing.T) {
-		run(t, NewOsFs(testdataDir))
-	})
-
-	t.Run("os absolute srcDir", func(t *testing.T) {
-		wd, _ := os.Getwd()
-		run(t, NewOsFs(filepath.Join(wd, testdataDir)))
 	})
 }
 
@@ -276,37 +274,20 @@ func TestFs_ListDirsRecursiveDontFollowSymlinks(t *testing.T) {
 		{"missing", nil, os.ErrNotExist},
 	}
 
-	mock := symlinkMockFs()
-
-	run := func(t *testing.T, fs FileSystem) {
+	runTestFs(t, func(t *testing.T, fs FileSystem, dir string) {
 		for _, test := range testCases {
 			t.Run(test.name, func(t *testing.T) {
-				got, err := fs.ListDirsRecursive(test.name, DontFollowSymlinks)
+				got, err := fs.ListDirsRecursive(filepath.Join(dir, test.name), DontFollowSymlinks)
 				checkErr(t, test.err, err)
-				if !reflect.DeepEqual(got, test.dirs) {
-					t.Errorf("want: %v, got %v", test.dirs, got)
+				want := append([]string(nil), test.dirs...)
+				for i := range want {
+					want[i] = filepath.Join(dir, want[i])
+				}
+				if !reflect.DeepEqual(got, want) {
+					t.Errorf("want: %v, got %v", want, got)
 				}
 			})
 		}
-	}
-
-	t.Run("mock", func(t *testing.T) {
-		run(t, mock)
-	})
-
-	t.Run("os", func(t *testing.T) {
-		os.Chdir("testdata/dangling")
-		defer os.Chdir("../..")
-		run(t, OsFs)
-	})
-
-	t.Run("os relative srcDir", func(t *testing.T) {
-		run(t, NewOsFs(testdataDir))
-	})
-
-	t.Run("os absolute srcDir", func(t *testing.T) {
-		wd, _ := os.Getwd()
-		run(t, NewOsFs(filepath.Join(wd, testdataDir)))
 	})
 }
 
@@ -356,9 +337,7 @@ func TestFs_Readlink(t *testing.T) {
 		{"dangling/missing/missing", "", os.ErrNotExist},
 	}
 
-	mock := symlinkMockFs()
-
-	run := func(t *testing.T, fs FileSystem) {
+	runTestFs(t, func(t *testing.T, fs FileSystem, dir string) {
 		for _, test := range testCases {
 			t.Run(test.from, func(t *testing.T) {
 				got, err := fs.Readlink(test.from)
@@ -368,25 +347,6 @@ func TestFs_Readlink(t *testing.T) {
 				}
 			})
 		}
-	}
-
-	t.Run("mock", func(t *testing.T) {
-		run(t, mock)
-	})
-
-	t.Run("os", func(t *testing.T) {
-		os.Chdir("testdata/dangling")
-		defer os.Chdir("../..")
-		run(t, OsFs)
-	})
-
-	t.Run("os relative srcDir", func(t *testing.T) {
-		run(t, NewOsFs(testdataDir))
-	})
-
-	t.Run("os absolute srcDir", func(t *testing.T) {
-		wd, _ := os.Getwd()
-		run(t, NewOsFs(filepath.Join(wd, testdataDir)))
 	})
 }
 
@@ -438,12 +398,10 @@ func TestFs_Lstat(t *testing.T) {
 		{"dangling/missing/missing", 0, 0, os.ErrNotExist},
 	}
 
-	mock := symlinkMockFs()
-
-	run := func(t *testing.T, fs FileSystem) {
+	runTestFs(t, func(t *testing.T, fs FileSystem, dir string) {
 		for _, test := range testCases {
 			t.Run(test.name, func(t *testing.T) {
-				got, err := fs.Lstat(test.name)
+				got, err := fs.Lstat(filepath.Join(dir, test.name))
 				checkErr(t, test.err, err)
 				if err != nil {
 					return
@@ -457,25 +415,6 @@ func TestFs_Lstat(t *testing.T) {
 				}
 			})
 		}
-	}
-
-	t.Run("mock", func(t *testing.T) {
-		run(t, mock)
-	})
-
-	t.Run("os", func(t *testing.T) {
-		os.Chdir("testdata/dangling")
-		defer os.Chdir("../..")
-		run(t, OsFs)
-	})
-
-	t.Run("os relative srcDir", func(t *testing.T) {
-		run(t, NewOsFs(testdataDir))
-	})
-
-	t.Run("os absolute srcDir", func(t *testing.T) {
-		wd, _ := os.Getwd()
-		run(t, NewOsFs(filepath.Join(wd, testdataDir)))
 	})
 }
 
@@ -527,12 +466,10 @@ func TestFs_Stat(t *testing.T) {
 		{"dangling/missing/missing", 0, 0, os.ErrNotExist},
 	}
 
-	mock := symlinkMockFs()
-
-	run := func(t *testing.T, fs FileSystem) {
+	runTestFs(t, func(t *testing.T, fs FileSystem, dir string) {
 		for _, test := range testCases {
 			t.Run(test.name, func(t *testing.T) {
-				got, err := fs.Stat(test.name)
+				got, err := fs.Stat(filepath.Join(dir, test.name))
 				checkErr(t, test.err, err)
 				if err != nil {
 					return
@@ -546,25 +483,6 @@ func TestFs_Stat(t *testing.T) {
 				}
 			})
 		}
-	}
-
-	t.Run("mock", func(t *testing.T) {
-		run(t, mock)
-	})
-
-	t.Run("os", func(t *testing.T) {
-		os.Chdir("testdata/dangling")
-		defer os.Chdir("../..")
-		run(t, OsFs)
-	})
-
-	t.Run("os relative srcDir", func(t *testing.T) {
-		run(t, NewOsFs(testdataDir))
-	})
-
-	t.Run("os absolute srcDir", func(t *testing.T) {
-		wd, _ := os.Getwd()
-		run(t, NewOsFs(filepath.Join(wd, testdataDir)))
 	})
 }
 
@@ -606,9 +524,7 @@ func TestMockFs_glob(t *testing.T) {
 		{"missing", nil},
 	}
 
-	mock := symlinkMockFs()
-
-	run := func(t *testing.T, fs FileSystem) {
+	runTestFs(t, func(t *testing.T, fs FileSystem, dir string) {
 		for _, test := range testCases {
 			t.Run(test.pattern, func(t *testing.T) {
 				got, err := fs.glob(test.pattern)
@@ -620,25 +536,6 @@ func TestMockFs_glob(t *testing.T) {
 				}
 			})
 		}
-	}
-
-	t.Run("mock", func(t *testing.T) {
-		run(t, mock)
-	})
-
-	t.Run("os", func(t *testing.T) {
-		os.Chdir("testdata/dangling")
-		defer os.Chdir("../..")
-		run(t, OsFs)
-	})
-
-	t.Run("os relative srcDir", func(t *testing.T) {
-		run(t, NewOsFs(testdataDir))
-	})
-
-	t.Run("os absolute srcDir", func(t *testing.T) {
-		wd, _ := os.Getwd()
-		run(t, NewOsFs(filepath.Join(wd, testdataDir)))
 	})
 }
 
