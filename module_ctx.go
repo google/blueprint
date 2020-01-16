@@ -137,6 +137,10 @@ type EarlyModuleContext interface {
 	// RegisterModuleType.
 	ModuleType() string
 
+	// BlueprintFile returns the name of the blueprint file that contains the definition of this
+	// module.
+	BlueprintsFile() string
+
 	// Config returns the config object that was passed to Context.PrepareBuildActions.
 	Config() interface{}
 
@@ -349,6 +353,10 @@ func (d *baseModuleContext) ContainsProperty(name string) bool {
 
 func (d *baseModuleContext) ModuleDir() string {
 	return filepath.Dir(d.module.relBlueprintsFile)
+}
+
+func (d *baseModuleContext) BlueprintsFile() string {
+	return d.module.relBlueprintsFile
 }
 
 func (d *baseModuleContext) Config() interface{} {

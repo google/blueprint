@@ -194,25 +194,6 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		out = ioutil.Discard
 	}
 
-	err = ctx.WriteBuildFile(out)
-	if err != nil {
-		fatalf("error writing Ninja file contents: %s", err)
-	}
-
-	if buf != nil {
-		err = buf.Flush()
-		if err != nil {
-			fatalf("error flushing Ninja file contents: %s", err)
-		}
-	}
-
-	if f != nil {
-		err = f.Close()
-		if err != nil {
-			fatalf("error closing Ninja file: %s", err)
-		}
-	}
-
 	if globFile != "" {
 		buffer, errs := generateGlobNinjaFile(ctx.Globs)
 		if len(errs) > 0 {
@@ -229,6 +210,25 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		err := deptools.WriteDepFile(absolutePath(depFile), outFile, deps)
 		if err != nil {
 			fatalf("error writing depfile: %s", err)
+		}
+	}
+
+	err = ctx.WriteBuildFile(out)
+	if err != nil {
+		fatalf("error writing Ninja file contents: %s", err)
+	}
+
+	if buf != nil {
+		err = buf.Flush()
+		if err != nil {
+			fatalf("error flushing Ninja file contents: %s", err)
+		}
+	}
+
+	if f != nil {
+		err = f.Close()
+		if err != nil {
+			fatalf("error closing Ninja file: %s", err)
 		}
 	}
 
