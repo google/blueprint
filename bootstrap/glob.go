@@ -131,8 +131,14 @@ func (s *globSingleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			depFile := fileListFile + ".d"
 
 			fileList := strings.Join(g.Files, "\n") + "\n"
-			pathtools.WriteFileIfChanged(fileListFile, []byte(fileList), 0666)
-			deptools.WriteDepFile(depFile, fileListFile, g.Deps)
+			err := pathtools.WriteFileIfChanged(absolutePath(fileListFile), []byte(fileList), 0666)
+			if err != nil {
+				panic(fmt.Errorf("error writing %s: %s", fileListFile, err))
+			}
+			err = deptools.WriteDepFile(absolutePath(depFile), fileListFile, g.Deps)
+			if err != nil {
+				panic(fmt.Errorf("error writing %s: %s", depFile, err))
+			}
 
 			GlobFile(ctx, g.Pattern, g.Excludes, fileListFile, depFile)
 		} else {
