@@ -15,12 +15,60 @@
 package proptools
 
 import (
+	"fmt"
 	"reflect"
+	"strconv"
 )
 
 type FilterFieldPredicate func(field reflect.StructField, string string) (bool, reflect.StructField)
 
-func filterPropertyStructFields(fields []reflect.StructField, prefix string, predicate FilterFieldPredicate) (filteredFields []reflect.StructField, filtered bool) {
+type cantFitPanic struct {
+	field reflect.StructField
+	size  int
+}
+
+func (x cantFitPanic) Error() string {
+	return fmt.Sprintf("Can't fit field %s %s %s size %d into %d",
+		x.field.Name, x.field.Type.String(), strconv.Quote(string(x.field.Tag)),
+		fieldToTypeNameSize(x.field, true)+2, x.size)
+}
+
+// All runtime created structs will have a name that starts with "struct {" and ends with "}"
+const emptyStructTypeNameSize = len("struct {}")
+
+func filterPropertyStructFields(fields []reflect.StructField, prefix string, maxTypeNameSize int,
+	predicate FilterFieldPredicate) (filteredFieldsShards [][]reflect.StructField, filtered bool) {
+
+	structNameSize := emptyStructTypeNameSize
+
+	var filteredFields []reflect.StructField
+
+	appendAndShardIfNameFull := func(field reflect.StructField) {
+		fieldTypeNameSize := fieldToTypeNameSize(field, true)
+		// Every field will have a space before it and either a semicolon or space after it.
+		fieldTypeNameSize += 2
+
+		if maxTypeNameSize > 0 && structNameSize+fieldTypeNameSize > maxTypeNameSize {
+			if len(filteredFields) == 0 {
+				if field.Type.Kind() == reflect.Struct ||
+					field.Type.Kind() == reflect.Ptr && field.Type.Elem().Kind() == reflect.Struct {
+					// An error fitting the nested struct should have been caught when recursing
+					// into the nested struct.
+					panic(fmt.Errorf("Shouldn't happen: can't fit nested struct %q (%d) into %d",
+						field.Type.String(), len(field.Type.String()), maxTypeNameSize-structNameSize))
+				}
+				panic(cantFitPanic{field, maxTypeNameSize - structNameSize})
+
+			}
+			filteredFieldsShards = append(filteredFieldsShards, filteredFields)
+			filteredFields = nil
+			structNameSize = emptyStructTypeNameSize
+		}
+
+		filteredFields = append(filteredFields, field)
+		structNameSize += fieldTypeNameSize
+	}
+
 	for _, field := range fields {
 		var keep bool
 		if keep, field = predicate(field, prefix); !keep {
@@ -33,32 +81,61 @@ func filterPropertyStructFields(fields []reflect.StructField, prefix string, pre
 			subPrefix = prefix + "." + subPrefix
 		}
 
-		// Recurse into structs
-		switch field.Type.Kind() {
-		case reflect.Struct:
-			var subFiltered bool
-			field.Type, subFiltered = filterPropertyStruct(field.Type, subPrefix, predicate)
-			filtered = filtered || subFiltered
-			if field.Type == nil {
-				continue
-			}
-		case reflect.Ptr:
-			if field.Type.Elem().Kind() == reflect.Struct {
-				nestedType, subFiltered := filterPropertyStruct(field.Type.Elem(), subPrefix, predicate)
-				filtered = filtered || subFiltered
-				if nestedType == nil {
-					continue
-				}
-				field.Type = reflect.PtrTo(nestedType)
-			}
-		case reflect.Interface:
-			panic("Interfaces are not supported in filtered property structs")
+		ptrToStruct := false
+		if field.Type.Kind() == reflect.Ptr && field.Type.Elem().Kind() == reflect.Struct {
+			ptrToStruct = true
 		}
 
-		filteredFields = append(filteredFields, field)
+		// Recurse into structs
+		if ptrToStruct || field.Type.Kind() == reflect.Struct {
+			subMaxTypeNameSize := maxTypeNameSize
+			if maxTypeNameSize > 0 {
+				// In the worst case where only this nested struct will fit in the outer struct, the
+				// outer struct will contribute struct{}, the name and tag of the field that contains
+				// the nested struct, and one space before and after the field.
+				subMaxTypeNameSize -= emptyStructTypeNameSize + fieldToTypeNameSize(field, false) + 2
+			}
+			typ := field.Type
+			if ptrToStruct {
+				subMaxTypeNameSize -= len("*")
+				typ = typ.Elem()
+			}
+			nestedTypes, subFiltered := filterPropertyStruct(typ, subPrefix, subMaxTypeNameSize, predicate)
+			filtered = filtered || subFiltered
+			if nestedTypes == nil {
+				continue
+			}
+
+			for _, nestedType := range nestedTypes {
+				if ptrToStruct {
+					nestedType = reflect.PtrTo(nestedType)
+				}
+				field.Type = nestedType
+				appendAndShardIfNameFull(field)
+			}
+		} else {
+			appendAndShardIfNameFull(field)
+		}
 	}
 
-	return filteredFields, filtered
+	if len(filteredFields) > 0 {
+		filteredFieldsShards = append(filteredFieldsShards, filteredFields)
+	}
+
+	return filteredFieldsShards, filtered
+}
+
+func fieldToTypeNameSize(field reflect.StructField, withType bool) int {
+	nameSize := len(field.Name)
+	nameSize += len(" ")
+	if withType {
+		nameSize += len(field.Type.String())
+	}
+	if field.Tag != "" {
+		nameSize += len(" ")
+		nameSize += len(strconv.Quote(string(field.Tag)))
+	}
+	return nameSize
 }
 
 // FilterPropertyStruct takes a reflect.Type that is either a struct or a pointer to a struct, and returns a
@@ -66,10 +143,20 @@ func filterPropertyStructFields(fields []reflect.StructField, prefix string, pre
 // that is true if the new struct type has fewer fields than the original type.  If there are no fields in the
 // original type for which predicate returns true it returns nil and true.
 func FilterPropertyStruct(prop reflect.Type, predicate FilterFieldPredicate) (filteredProp reflect.Type, filtered bool) {
-	return filterPropertyStruct(prop, "", predicate)
+	filteredFieldsShards, filtered := filterPropertyStruct(prop, "", -1, predicate)
+	switch len(filteredFieldsShards) {
+	case 0:
+		return nil, filtered
+	case 1:
+		return filteredFieldsShards[0], filtered
+	default:
+		panic("filterPropertyStruct should only return 1 struct if maxNameSize < 0")
+	}
 }
 
-func filterPropertyStruct(prop reflect.Type, prefix string, predicate FilterFieldPredicate) (filteredProp reflect.Type, filtered bool) {
+func filterPropertyStruct(prop reflect.Type, prefix string, maxNameSize int,
+	predicate FilterFieldPredicate) (filteredProp []reflect.Type, filtered bool) {
+
 	var fields []reflect.StructField
 
 	ptr := prop.Kind() == reflect.Ptr
@@ -81,22 +168,26 @@ func filterPropertyStruct(prop reflect.Type, prefix string, predicate FilterFiel
 		fields = append(fields, prop.Field(i))
 	}
 
-	filteredFields, filtered := filterPropertyStructFields(fields, prefix, predicate)
+	filteredFieldsShards, filtered := filterPropertyStructFields(fields, prefix, maxNameSize, predicate)
 
-	if len(filteredFields) == 0 {
+	if len(filteredFieldsShards) == 0 {
 		return nil, true
 	}
 
 	if !filtered {
 		if ptr {
-			return reflect.PtrTo(prop), false
+			return []reflect.Type{reflect.PtrTo(prop)}, false
 		}
-		return prop, false
+		return []reflect.Type{prop}, false
 	}
 
-	ret := reflect.StructOf(filteredFields)
-	if ptr {
-		ret = reflect.PtrTo(ret)
+	var ret []reflect.Type
+	for _, filteredFields := range filteredFieldsShards {
+		p := reflect.StructOf(filteredFields)
+		if ptr {
+			p = reflect.PtrTo(p)
+		}
+		ret = append(ret, p)
 	}
 
 	return ret, true
@@ -109,51 +200,6 @@ func filterPropertyStruct(prop reflect.Type, prefix string, predicate FilterFiel
 // level fields in it to attempt to avoid hitting the 65535 byte type name length limit in reflect.StructOf
 // (reflect.nameFrom: name too long), although the limit can still be reached with a single struct field with many
 // fields in it.
-func FilterPropertyStructSharded(prop reflect.Type, predicate FilterFieldPredicate) (filteredProp []reflect.Type, filtered bool) {
-	var fields []reflect.StructField
-
-	ptr := prop.Kind() == reflect.Ptr
-	if ptr {
-		prop = prop.Elem()
-	}
-
-	for i := 0; i < prop.NumField(); i++ {
-		fields = append(fields, prop.Field(i))
-	}
-
-	fields, filtered = filterPropertyStructFields(fields, "", predicate)
-	if !filtered {
-		if ptr {
-			return []reflect.Type{reflect.PtrTo(prop)}, false
-		}
-		return []reflect.Type{prop}, false
-	}
-
-	if len(fields) == 0 {
-		return nil, true
-	}
-
-	shards := shardFields(fields, 10)
-
-	for _, shard := range shards {
-		s := reflect.StructOf(shard)
-		if ptr {
-			s = reflect.PtrTo(s)
-		}
-		filteredProp = append(filteredProp, s)
-	}
-
-	return filteredProp, true
-}
-
-func shardFields(fields []reflect.StructField, shardSize int) [][]reflect.StructField {
-	ret := make([][]reflect.StructField, 0, (len(fields)+shardSize-1)/shardSize)
-	for len(fields) > shardSize {
-		ret = append(ret, fields[0:shardSize])
-		fields = fields[shardSize:]
-	}
-	if len(fields) > 0 {
-		ret = append(ret, fields)
-	}
-	return ret
+func FilterPropertyStructSharded(prop reflect.Type, maxTypeNameSize int, predicate FilterFieldPredicate) (filteredProp []reflect.Type, filtered bool) {
+	return filterPropertyStruct(prop, "", maxTypeNameSize, predicate)
 }
