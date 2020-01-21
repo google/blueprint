@@ -16,7 +16,6 @@ package proptools
 
 import (
 	"bytes"
-	"fmt"
 	"reflect"
 	"testing"
 	"text/scanner"
@@ -215,39 +214,6 @@ var validUnpackTestCases = []struct {
 				},
 				Bar: false,
 				Baz: []string{"def", "ghi"},
-			},
-		},
-	},
-
-	{
-		input: `
-			m {
-				nested: {
-					foo: "abc",
-				},
-				bar: false,
-				baz: ["def", "ghi"],
-			}
-		`,
-		output: []interface{}{
-			struct {
-				Nested struct {
-					Foo string
-				} `blueprint:"filter(allowNested:\"true\")"`
-				Bar bool
-				Baz []string
-			}{
-				Nested: struct{ Foo string }{
-					Foo: "",
-				},
-				Bar: false,
-				Baz: []string{"def", "ghi"},
-			},
-		},
-		errs: []error{
-			&UnpackError{
-				Err: fmt.Errorf("filtered field nested.foo cannot be set in a Blueprint file"),
-				Pos: mkpos(30, 4, 9),
 			},
 		},
 	},
