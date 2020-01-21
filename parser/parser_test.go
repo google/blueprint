@@ -1122,3 +1122,24 @@ func TestParserEndPos(t *testing.T) {
 		}
 	}
 }
+
+func TestParserNotEvaluated(t *testing.T) {
+	// When parsing without evaluation, create variables correctly
+	scope := NewScope(nil)
+	input := "FOO=abc\n"
+	_, errs := Parse("", bytes.NewBufferString(input), scope)
+	if errs != nil {
+		t.Errorf("unexpected errors:")
+		for _, err := range errs {
+			t.Errorf("  %s", err)
+		}
+		t.FailNow()
+	}
+	assignment, found := scope.Get("FOO")
+	if !found {
+		t.Fatalf("Expected to find FOO after parsing %s", input)
+	}
+	if s := assignment.String(); strings.Contains(s, "PANIC") {
+		t.Errorf("Attempt to print FOO returned %s", s)
+	}
+}

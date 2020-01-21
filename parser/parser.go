@@ -484,6 +484,8 @@ func (p *parser) parseVariable() Expression {
 				}
 				value = assignment.Value
 			}
+		} else {
+			value = &NotEvaluated{}
 		}
 		value = &Variable{
 			Name:    text,
