@@ -63,6 +63,9 @@ func UnpackProperties(propertyDefs []*parser.Property,
 		}
 	}
 
+	if len(errs) > 0 {
+		return nil, errs
+	}
 	// Report any properties that didn't have corresponding struct fields as
 	// errors.
 	result := make(map[string]*parser.Property)
