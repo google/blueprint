@@ -67,13 +67,9 @@ func CopyProperties(dstValue, srcValue reflect.Value) {
 
 			srcFieldValue = srcFieldValue.Elem()
 
-			if srcFieldValue.Kind() != reflect.Ptr {
-				panic(fmt.Errorf("can't clone field %q: interface refers to a non-pointer",
-					field.Name))
-			}
-			if srcFieldValue.Type().Elem().Kind() != reflect.Struct {
-				panic(fmt.Errorf("can't clone field %q: interface points to a non-struct",
-					field.Name))
+			if !isStructPtr(srcFieldValue.Type()) {
+				panic(fmt.Errorf("can't clone field %q: expected interface to contain *struct, found %s",
+					field.Name, srcFieldValue.Type()))
 			}
 
 			if dstFieldValue.IsNil() || dstFieldValue.Elem().Type() != srcFieldValue.Type() {
@@ -146,13 +142,9 @@ func ZeroProperties(structValue reflect.Value) {
 			// We leave the pointer intact and zero out the struct that's
 			// pointed to.
 			fieldValue = fieldValue.Elem()
-			if fieldValue.Kind() != reflect.Ptr {
-				panic(fmt.Errorf("can't zero field %q: interface refers to a non-pointer",
-					field.Name))
-			}
-			if fieldValue.Type().Elem().Kind() != reflect.Struct {
-				panic(fmt.Errorf("can't zero field %q: interface points to a non-struct",
-					field.Name))
+			if !isStructPtr(fieldValue.Type()) {
+				panic(fmt.Errorf("can't zero field %q: expected interface to contain *struct, found %s",
+					field.Name, fieldValue.Type()))
 			}
 			fallthrough
 		case reflect.Ptr:
@@ -206,13 +198,9 @@ func cloneEmptyProperties(dstValue, srcValue reflect.Value) {
 			}
 
 			srcFieldValue = srcFieldValue.Elem()
-			if srcFieldValue.Kind() != reflect.Ptr {
-				panic(fmt.Errorf("can't clone empty field %q: interface refers to a non-pointer",
-					field.Name))
-			}
-			if srcFieldValue.Type().Elem().Kind() != reflect.Struct {
-				panic(fmt.Errorf("can't clone empty field %q: interface points to a non-struct",
-					field.Name))
+			if !isStructPtr(srcFieldValue.Type()) {
+				panic(fmt.Errorf("can't clone empty field %q: expected interface to contain *struct, found %s",
+					field.Name, srcFieldValue.Type()))
 			}
 
 			newValue := reflect.New(srcFieldValue.Type()).Elem()
