@@ -274,7 +274,7 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 		}
 
 		// Step into source pointers to structs
-		if srcFieldValue.Kind() == reflect.Ptr && srcFieldValue.Type().Elem().Kind() == reflect.Struct {
+		if isStructPtr(srcFieldValue.Type()) {
 			if srcFieldValue.IsNil() {
 				continue
 			}
@@ -323,7 +323,7 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 			}
 
 			// Step into destination pointers to structs
-			if dstFieldValue.Kind() == reflect.Ptr && dstFieldValue.Type().Elem().Kind() == reflect.Struct {
+			if isStructPtr(dstFieldValue.Type()) {
 				if dstFieldValue.IsNil() {
 					dstFieldValue = reflect.New(dstFieldValue.Type().Elem())
 					origDstFieldValue.Set(dstFieldValue)
@@ -501,11 +501,8 @@ func getOrCreateStruct(in interface{}) (reflect.Value, error) {
 
 func getStruct(in interface{}) (reflect.Value, error) {
 	value := reflect.ValueOf(in)
-	if value.Kind() != reflect.Ptr {
-		return reflect.Value{}, fmt.Errorf("expected pointer to struct, got %T", in)
-	}
-	if value.Type().Elem().Kind() != reflect.Struct {
-		return reflect.Value{}, fmt.Errorf("expected pointer to struct, got %T", in)
+	if !isStructPtr(value.Type()) {
+		return reflect.Value{}, fmt.Errorf("expected pointer to struct, got %s", value.Type())
 	}
 	if value.IsNil() {
 		return reflect.Value{}, getStructEmptyError{}

@@ -50,8 +50,7 @@ func filterPropertyStructFields(fields []reflect.StructField, prefix string, max
 
 		if maxTypeNameSize > 0 && structNameSize+fieldTypeNameSize > maxTypeNameSize {
 			if len(filteredFields) == 0 {
-				if field.Type.Kind() == reflect.Struct ||
-					field.Type.Kind() == reflect.Ptr && field.Type.Elem().Kind() == reflect.Struct {
+				if isStruct(field.Type) || isStructPtr(field.Type) {
 					// An error fitting the nested struct should have been caught when recursing
 					// into the nested struct.
 					panic(fmt.Errorf("Shouldn't happen: can't fit nested struct %q (%d) into %d",
@@ -82,12 +81,12 @@ func filterPropertyStructFields(fields []reflect.StructField, prefix string, max
 		}
 
 		ptrToStruct := false
-		if field.Type.Kind() == reflect.Ptr && field.Type.Elem().Kind() == reflect.Struct {
+		if isStructPtr(field.Type) {
 			ptrToStruct = true
 		}
 
 		// Recurse into structs
-		if ptrToStruct || field.Type.Kind() == reflect.Struct {
+		if ptrToStruct || isStruct(field.Type) {
 			subMaxTypeNameSize := maxTypeNameSize
 			if maxTypeNameSize > 0 {
 				// In the worst case where only this nested struct will fit in the outer struct, the
