@@ -20,13 +20,32 @@ import (
 	"sync"
 )
 
+// CloneProperties takes a reflect.Value of a pointer to a struct and returns a reflect.Value
+// of a pointer to a new struct that copies of the values for its fields.  It recursively clones
+// struct pointers and interfaces that contain struct pointers.
 func CloneProperties(structValue reflect.Value) reflect.Value {
-	result := reflect.New(structValue.Type())
-	CopyProperties(result.Elem(), structValue)
+	if !isStructPtr(structValue.Type()) {
+		panic(fmt.Errorf("CloneProperties expected *struct, got %s", structValue.Type()))
+	}
+	result := reflect.New(structValue.Type().Elem())
+	copyProperties(result.Elem(), structValue.Elem())
 	return result
 }
 
+// CopyProperties takes destination and source reflect.Values of a pointer to structs and returns
+// copies each field from the source into the destination.  It recursively copies struct pointers
+// and interfaces that contain struct pointers.
 func CopyProperties(dstValue, srcValue reflect.Value) {
+	if !isStructPtr(dstValue.Type()) {
+		panic(fmt.Errorf("CopyProperties expected dstValue *struct, got %s", dstValue.Type()))
+	}
+	if !isStructPtr(srcValue.Type()) {
+		panic(fmt.Errorf("CopyProperties expected srcValue *struct, got %s", srcValue.Type()))
+	}
+	copyProperties(dstValue.Elem(), srcValue.Elem())
+}
+
+func copyProperties(dstValue, srcValue reflect.Value) {
 	typ := dstValue.Type()
 	if srcValue.Type() != typ {
 		panic(fmt.Errorf("can't copy mismatching types (%s <- %s)",
@@ -47,7 +66,7 @@ func CopyProperties(dstValue, srcValue reflect.Value) {
 		case reflect.Bool, reflect.String, reflect.Int, reflect.Uint:
 			dstFieldValue.Set(srcFieldValue)
 		case reflect.Struct:
-			CopyProperties(dstFieldValue, srcFieldValue)
+			copyProperties(dstFieldValue, srcFieldValue)
 		case reflect.Slice:
 			if !srcFieldValue.IsNil() {
 				if srcFieldValue != dstFieldValue {
@@ -89,13 +108,11 @@ func CopyProperties(dstValue, srcValue reflect.Value) {
 				break
 			}
 
-			srcFieldValue := srcFieldValue.Elem()
-
-			switch srcFieldValue.Kind() {
+			switch srcFieldValue.Elem().Kind() {
 			case reflect.Struct:
 				if !dstFieldValue.IsNil() {
 					// Re-use the existing allocation.
-					CopyProperties(dstFieldValue.Elem(), srcFieldValue)
+					copyProperties(dstFieldValue.Elem(), srcFieldValue.Elem())
 					break
 				} else {
 					newValue := CloneProperties(srcFieldValue)
@@ -106,21 +123,30 @@ func CopyProperties(dstValue, srcValue reflect.Value) {
 					}
 				}
 			case reflect.Bool, reflect.Int64, reflect.String:
-				newValue := reflect.New(srcFieldValue.Type())
-				newValue.Elem().Set(srcFieldValue)
+				newValue := reflect.New(srcFieldValue.Elem().Type())
+				newValue.Elem().Set(srcFieldValue.Elem())
 				origDstFieldValue.Set(newValue)
 			default:
-				panic(fmt.Errorf("can't clone field %q: points to a %s",
-					field.Name, srcFieldValue.Kind()))
+				panic(fmt.Errorf("can't clone pointer field %q type %s",
+					field.Name, srcFieldValue.Type()))
 			}
 		default:
-			panic(fmt.Errorf("unexpected kind for property struct field %q: %s",
-				field.Name, srcFieldValue.Kind()))
+			panic(fmt.Errorf("unexpected type for property struct field %q: %s",
+				field.Name, srcFieldValue.Type()))
 		}
 	}
 }
 
+// ZeroProperties takes a reflect.Value of a pointer to a struct and replaces all of its fields
+// with zero values, recursing into struct, pointer to struct and interface fields.
 func ZeroProperties(structValue reflect.Value) {
+	if !isStructPtr(structValue.Type()) {
+		panic(fmt.Errorf("ZeroProperties expected *struct, got %s", structValue.Type()))
+	}
+	zeroProperties(structValue.Elem())
+}
+
+func zeroProperties(structValue reflect.Value) {
 	typ := structValue.Type()
 
 	for i, field := range typeFields(typ) {
@@ -153,7 +179,7 @@ func ZeroProperties(structValue reflect.Value) {
 				if fieldValue.IsNil() {
 					break
 				}
-				ZeroProperties(fieldValue.Elem())
+				zeroProperties(fieldValue.Elem())
 			case reflect.Bool, reflect.Int64, reflect.String:
 				fieldValue.Set(reflect.Zero(fieldValue.Type()))
 			default:
@@ -161,7 +187,7 @@ func ZeroProperties(structValue reflect.Value) {
 					field.Name, fieldValue.Elem().Kind()))
 			}
 		case reflect.Struct:
-			ZeroProperties(fieldValue)
+			zeroProperties(fieldValue)
 		default:
 			panic(fmt.Errorf("unexpected kind for property struct field %q: %s",
 				field.Name, fieldValue.Kind()))
@@ -169,9 +195,15 @@ func ZeroProperties(structValue reflect.Value) {
 	}
 }
 
+// CloneEmptyProperties takes a reflect.Value of a pointer to a struct and returns a reflect.Value
+// of a pointer to a new struct that has the zero values for its fields.  It recursively clones
+// struct pointers and interfaces that contain struct pointers.
 func CloneEmptyProperties(structValue reflect.Value) reflect.Value {
-	result := reflect.New(structValue.Type())
-	cloneEmptyProperties(result.Elem(), structValue)
+	if !isStructPtr(structValue.Type()) {
+		panic(fmt.Errorf("CloneEmptyProperties expected *struct, got %s", structValue.Type()))
+	}
+	result := reflect.New(structValue.Type().Elem())
+	cloneEmptyProperties(result.Elem(), structValue.Elem())
 	return result
 }
 
@@ -214,7 +246,7 @@ func cloneEmptyProperties(dstValue, srcValue reflect.Value) {
 				if srcFieldValue.IsNil() {
 					break
 				}
-				newValue := CloneEmptyProperties(srcFieldValue.Elem())
+				newValue := CloneEmptyProperties(srcFieldValue)
 				if dstFieldInterfaceValue.IsValid() {
 					dstFieldInterfaceValue.Set(newValue)
 				} else {
