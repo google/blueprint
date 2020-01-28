@@ -1202,8 +1202,8 @@ func (c *Context) cloneLogicModule(origModule *moduleInfo) (Module, []interface{
 	}
 
 	for i := range newProperties {
-		dst := reflect.ValueOf(newProperties[i]).Elem()
-		src := reflect.ValueOf(origModule.properties[i]).Elem()
+		dst := reflect.ValueOf(newProperties[i])
+		src := reflect.ValueOf(origModule.properties[i])
 
 		proptools.CopyProperties(dst, src)
 	}

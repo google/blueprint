@@ -49,14 +49,11 @@ func UnpackProperties(propertyDefs []*parser.Property,
 
 	for _, properties := range propertiesStructs {
 		propertiesValue := reflect.ValueOf(properties)
-		if propertiesValue.Kind() != reflect.Ptr {
-			panic("properties must be a pointer to a struct")
+		if !isStructPtr(propertiesValue.Type()) {
+			panic(fmt.Errorf("properties must be *struct, got %s",
+				propertiesValue.Type()))
 		}
-
 		propertiesValue = propertiesValue.Elem()
-		if propertiesValue.Kind() != reflect.Struct {
-			panic("properties must be a pointer to a struct")
-		}
 
 		newErrs := unpackStructValue("", propertiesValue, propertyMap)
 		errs = append(errs, newErrs...)
@@ -212,7 +209,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			panic(fmt.Errorf("unsupported kind for field %s: %s", propertyName, kind))
 		}
 
-		if field.Anonymous && fieldValue.Kind() == reflect.Struct {
+		if field.Anonymous && isStruct(fieldValue.Type()) {
 			newErrs := unpackStructValue(namePrefix, fieldValue, propertyMap)
 			errs = append(errs, newErrs...)
 			continue
@@ -239,7 +236,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 
 		var newErrs []error
 
-		if fieldValue.Kind() == reflect.Struct {
+		if isStruct(fieldValue.Type()) {
 			newErrs = unpackStruct(propertyName+".", fieldValue,
 				packedProperty.property, propertyMap)
 
