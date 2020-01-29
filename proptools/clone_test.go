@@ -277,7 +277,7 @@ func TestCloneProperties(t *testing.T) {
 	for _, testCase := range clonePropertiesTestCases {
 		testString := fmt.Sprintf("%s", testCase.in)
 
-		got := CloneProperties(reflect.ValueOf(testCase.in).Elem()).Interface()
+		got := CloneProperties(reflect.ValueOf(testCase.in)).Interface()
 
 		if !reflect.DeepEqual(testCase.out, got) {
 			t.Errorf("test case %s", testString)
@@ -499,7 +499,7 @@ func TestCloneEmptyProperties(t *testing.T) {
 	for _, testCase := range cloneEmptyPropertiesTestCases {
 		testString := fmt.Sprintf("%#v", testCase.in)
 
-		got := CloneEmptyProperties(reflect.ValueOf(testCase.in).Elem()).Interface()
+		got := CloneEmptyProperties(reflect.ValueOf(testCase.in)).Interface()
 
 		if !reflect.DeepEqual(testCase.out, got) {
 			t.Errorf("test case %s", testString)
@@ -514,8 +514,8 @@ func TestZeroProperties(t *testing.T) {
 	for _, testCase := range cloneEmptyPropertiesTestCases {
 		testString := fmt.Sprintf("%#v", testCase.in)
 
-		got := CloneProperties(reflect.ValueOf(testCase.in).Elem()).Interface()
-		ZeroProperties(reflect.ValueOf(got).Elem())
+		got := CloneProperties(reflect.ValueOf(testCase.in)).Interface()
+		ZeroProperties(reflect.ValueOf(got))
 
 		if !reflect.DeepEqual(testCase.out, got) {
 			t.Errorf("test case %s", testString)
