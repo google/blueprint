@@ -24,7 +24,7 @@ type liveTracker struct {
 	sync.Mutex
 	config interface{} // Used to evaluate variable, rule, and pool values.
 
-	variables map[Variable]*ninjaString
+	variables map[Variable]ninjaString
 	pools     map[Pool]*poolDef
 	rules     map[Rule]*ruleDef
 }
@@ -32,7 +32,7 @@ type liveTracker struct {
 func newLiveTracker(config interface{}) *liveTracker {
 	return &liveTracker{
 		config:    config,
-		variables: make(map[Variable]*ninjaString),
+		variables: make(map[Variable]ninjaString),
 		pools:     make(map[Pool]*poolDef),
 		rules:     make(map[Rule]*ruleDef),
 	}
@@ -170,7 +170,7 @@ func (l *liveTracker) addVariable(v Variable) error {
 	return nil
 }
 
-func (l *liveTracker) addNinjaStringListDeps(list []*ninjaString) error {
+func (l *liveTracker) addNinjaStringListDeps(list []ninjaString) error {
 	for _, str := range list {
 		err := l.addNinjaStringDeps(str)
 		if err != nil {
@@ -180,8 +180,8 @@ func (l *liveTracker) addNinjaStringListDeps(list []*ninjaString) error {
 	return nil
 }
 
-func (l *liveTracker) addNinjaStringDeps(str *ninjaString) error {
-	for _, v := range str.variables {
+func (l *liveTracker) addNinjaStringDeps(str ninjaString) error {
+	for _, v := range str.Variables() {
 		err := l.addVariable(v)
 		if err != nil {
 			return err
