@@ -36,7 +36,7 @@ func HasTag(field reflect.StructField, name, value string) bool {
 // are tagged with the given key and value, including ones found in embedded structs or pointers to structs.
 func PropertyIndexesWithTag(ps interface{}, key, value string) [][]int {
 	t := reflect.TypeOf(ps)
-	if t.Kind() != reflect.Ptr || t.Elem().Kind() != reflect.Struct {
+	if !isStructPtr(t) {
 		panic(fmt.Errorf("type %s is not a pointer to a struct", t))
 	}
 	t = t.Elem()
@@ -49,7 +49,7 @@ func propertyIndexesWithTag(t reflect.Type, key, value string) [][]int {
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		ft := field.Type
-		if ft.Kind() == reflect.Struct || (ft.Kind() == reflect.Ptr && ft.Elem().Kind() == reflect.Struct) {
+		if isStruct(ft) || isStructPtr(ft) {
 			if ft.Kind() == reflect.Ptr {
 				ft = ft.Elem()
 			}
