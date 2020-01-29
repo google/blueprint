@@ -164,6 +164,7 @@ const (
 	Int64Type
 	ListType
 	MapType
+	NotEvaluatedType
 )
 
 func (t Type) String() string {
@@ -178,6 +179,8 @@ func (t Type) String() string {
 		return "list"
 	case MapType:
 		return "map"
+	case NotEvaluatedType:
+		return "notevaluated"
 	default:
 		panic(fmt.Errorf("Unknown type %d", t))
 	}
@@ -475,6 +478,29 @@ func (c Comment) Text() string {
 
 	return string(buf)
 }
+
+type NotEvaluated struct {
+	Position scanner.Position
+}
+
+func (n NotEvaluated) Copy() Expression {
+	return NotEvaluated{Position: n.Position}
+}
+
+func (n NotEvaluated) String() string {
+	return "Not Evaluated"
+}
+
+func (n NotEvaluated) Type() Type {
+	return NotEvaluatedType
+}
+
+func (n NotEvaluated) Eval() Expression {
+	return NotEvaluated{Position: n.Position}
+}
+
+func (n NotEvaluated) Pos() scanner.Position { return n.Position }
+func (n NotEvaluated) End() scanner.Position { return n.Position }
 
 func endPos(pos scanner.Position, n int) scanner.Position {
 	pos.Offset += n

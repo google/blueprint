@@ -15,6 +15,7 @@
 package proptools
 
 import (
+	"reflect"
 	"unicode"
 	"unicode/utf8"
 )
@@ -96,4 +97,12 @@ func IntDefault(i *int64, def int) int {
 // if it is non-nil, or 0 if the pointer is nil.
 func Int(i *int64) int {
 	return IntDefault(i, 0)
+}
+
+func isStruct(t reflect.Type) bool {
+	return t.Kind() == reflect.Struct
+}
+
+func isStructPtr(t reflect.Type) bool {
+	return t.Kind() == reflect.Ptr && t.Elem().Kind() == reflect.Struct
 }
