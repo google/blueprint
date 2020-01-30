@@ -128,11 +128,11 @@ func (p *poolDef) WriteTo(nw *ninjaWriter, name string) error {
 // A ruleDef describes a rule definition.  It does not include the name of the
 // rule.
 type ruleDef struct {
-	CommandDeps      []*ninjaString
-	CommandOrderOnly []*ninjaString
+	CommandDeps      []ninjaString
+	CommandOrderOnly []ninjaString
 	Comment          string
 	Pool             Pool
-	Variables        map[string]*ninjaString
+	Variables        map[string]ninjaString
 }
 
 func parseRuleParams(scope scope, params *RuleParams) (*ruleDef,
@@ -141,7 +141,7 @@ func parseRuleParams(scope scope, params *RuleParams) (*ruleDef,
 	r := &ruleDef{
 		Comment:   params.Comment,
 		Pool:      params.Pool,
-		Variables: make(map[string]*ninjaString),
+		Variables: make(map[string]ninjaString),
 	}
 
 	if params.Command == "" {
@@ -252,13 +252,13 @@ type buildDef struct {
 	Comment         string
 	Rule            Rule
 	RuleDef         *ruleDef
-	Outputs         []*ninjaString
-	ImplicitOutputs []*ninjaString
-	Inputs          []*ninjaString
-	Implicits       []*ninjaString
-	OrderOnly       []*ninjaString
-	Args            map[Variable]*ninjaString
-	Variables       map[string]*ninjaString
+	Outputs         []ninjaString
+	ImplicitOutputs []ninjaString
+	Inputs          []ninjaString
+	Implicits       []ninjaString
+	OrderOnly       []ninjaString
+	Args            map[Variable]ninjaString
+	Variables       map[string]ninjaString
 	Optional        bool
 }
 
@@ -273,9 +273,9 @@ func parseBuildParams(scope scope, params *BuildParams) (*buildDef,
 		Rule:    rule,
 	}
 
-	setVariable := func(name string, value *ninjaString) {
+	setVariable := func(name string, value ninjaString) {
 		if b.Variables == nil {
-			b.Variables = make(map[string]*ninjaString)
+			b.Variables = make(map[string]ninjaString)
 		}
 		b.Variables[name] = value
 	}
@@ -339,7 +339,7 @@ func parseBuildParams(scope scope, params *BuildParams) (*buildDef,
 	argNameScope := rule.scope()
 
 	if len(params.Args) > 0 {
-		b.Args = make(map[Variable]*ninjaString)
+		b.Args = make(map[Variable]ninjaString)
 		for name, value := range params.Args {
 			if !rule.isArg(name) {
 				return nil, fmt.Errorf("unknown argument %q", name)
@@ -419,7 +419,7 @@ func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*packageContext]string)
 	return nw.BlankLine()
 }
 
-func valueList(list []*ninjaString, pkgNames map[*packageContext]string,
+func valueList(list []ninjaString, pkgNames map[*packageContext]string,
 	escaper *strings.Replacer) []string {
 
 	result := make([]string, len(list))
@@ -429,7 +429,7 @@ func valueList(list []*ninjaString, pkgNames map[*packageContext]string,
 	return result
 }
 
-func writeVariables(nw *ninjaWriter, variables map[string]*ninjaString,
+func writeVariables(nw *ninjaWriter, variables map[string]ninjaString,
 	pkgNames map[*packageContext]string) error {
 	var keys []string
 	for k := range variables {
