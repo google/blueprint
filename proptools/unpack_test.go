@@ -508,6 +508,21 @@ var validUnpackTestCases = []struct {
 			},
 		},
 	},
+	// Captitalized property
+	{
+		input: `
+			m {
+				CAPITALIZED: "foo",
+			}
+		`,
+		output: []interface{}{
+			&struct {
+				CAPITALIZED string
+			}{
+				CAPITALIZED: "foo",
+			},
+		},
+	},
 }
 
 func TestUnpackProperties(t *testing.T) {
