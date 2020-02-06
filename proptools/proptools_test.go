@@ -42,6 +42,26 @@ func TestPropertyNameForField(t *testing.T) {
 			input: "StRiNg",
 			want:  "stRiNg",
 		},
+		{
+			name:  "underscore",
+			input: "Under_score",
+			want:  "under_score",
+		},
+		{
+			name:  "uppercase underscore",
+			input: "UNDER_SCORE",
+			want:  "UNDER_SCORE",
+		},
+		{
+			name:  "x86",
+			input: "X86",
+			want:  "x86",
+		},
+		{
+			name:  "x86_64",
+			input: "X86_64",
+			want:  "x86_64",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
