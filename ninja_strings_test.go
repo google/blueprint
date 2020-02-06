@@ -22,10 +22,11 @@ import (
 )
 
 var ninjaParseTestCases = []struct {
-	input string
-	vars  []string
-	strs  []string
-	err   string
+	input   string
+	vars    []string
+	strs    []string
+	literal bool
+	err     string
 }{
 	{
 		input: "abc def $ghi jkl",
@@ -56,6 +57,7 @@ var ninjaParseTestCases = []struct {
 		input: "foo $$ bar",
 		vars:  nil,
 		strs:  []string{"foo $$ bar"},
+		// this is technically a literal, but not recognized as such due to the $$
 	},
 	{
 		input: "$foo${bar}",
@@ -68,16 +70,22 @@ var ninjaParseTestCases = []struct {
 		strs:  []string{"", "$$"},
 	},
 	{
-		input: "foo bar",
-		vars:  nil,
-		strs:  []string{"foo bar"},
+		input:   "foo bar",
+		vars:    nil,
+		strs:    []string{"foo bar"},
+		literal: true,
 	},
 	{
-		input: " foo ",
-		vars:  nil,
-		strs:  []string{"$ foo "},
+		input:   " foo ",
+		vars:    nil,
+		strs:    []string{"$ foo "},
+		literal: true,
 	},
 	{
+		input: " $foo ",
+		vars:  []string{"foo"},
+		strs:  []string{"$ ", " "},
+	}, {
 		input: "foo $ bar",
 		err:   "invalid character after '$' at byte offset 5",
 	},
@@ -114,19 +122,25 @@ func TestParseNinjaString(t *testing.T) {
 			expectedVars = append(expectedVars, v)
 		}
 
+		var expected ninjaString
+		if len(testCase.strs) > 0 {
+			if testCase.literal {
+				expected = literalNinjaString(testCase.strs[0])
+			} else {
+				expected = &varNinjaString{
+					strings:   testCase.strs,
+					variables: expectedVars,
+				}
+			}
+		}
+
 		output, err := parseNinjaString(scope, testCase.input)
 		if err == nil {
-			if !reflect.DeepEqual(output.variables, expectedVars) {
-				t.Errorf("incorrect variable list:")
+			if !reflect.DeepEqual(output, expected) {
+				t.Errorf("incorrect ninja string:")
 				t.Errorf("     input: %q", testCase.input)
-				t.Errorf("  expected: %#v", expectedVars)
-				t.Errorf("       got: %#v", output.variables)
-			}
-			if !reflect.DeepEqual(output.strings, testCase.strs) {
-				t.Errorf("incorrect string list:")
-				t.Errorf("     input: %q", testCase.input)
-				t.Errorf("  expected: %#v", testCase.strs)
-				t.Errorf("       got: %#v", output.strings)
+				t.Errorf("  expected: %#v", expected)
+				t.Errorf("       got: %#v", output)
 			}
 		}
 		var errStr string
@@ -156,7 +170,7 @@ func TestParseNinjaStringWithImportedVar(t *testing.T) {
 	}
 
 	expect := []Variable{ImpVar}
-	if !reflect.DeepEqual(output.variables, expect) {
+	if !reflect.DeepEqual(output.(*varNinjaString).variables, expect) {
 		t.Errorf("incorrect output:")
 		t.Errorf("     input: %q", input)
 		t.Errorf("  expected: %#v", expect)

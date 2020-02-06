@@ -34,10 +34,19 @@ var (
 		":", "$:")
 )
 
-type ninjaString struct {
+type ninjaString interface {
+	Value(pkgNames map[*packageContext]string) string
+	ValueWithEscaper(pkgNames map[*packageContext]string, escaper *strings.Replacer) string
+	Eval(variables map[Variable]ninjaString) (string, error)
+	Variables() []Variable
+}
+
+type varNinjaString struct {
 	strings   []string
 	variables []Variable
 }
+
+type literalNinjaString string
 
 type scope interface {
 	LookupVariable(name string) (Variable, error)
@@ -45,10 +54,8 @@ type scope interface {
 	IsPoolVisible(pool Pool) bool
 }
 
-func simpleNinjaString(str string) *ninjaString {
-	return &ninjaString{
-		strings: []string{str},
-	}
+func simpleNinjaString(str string) ninjaString {
+	return literalNinjaString(str)
 }
 
 type parseState struct {
@@ -57,7 +64,7 @@ type parseState struct {
 	pendingStr  string
 	stringStart int
 	varStart    int
-	result      *ninjaString
+	result      *varNinjaString
 }
 
 func (ps *parseState) pushVariable(v Variable) {
@@ -84,10 +91,16 @@ type stateFunc func(*parseState, int, rune) (stateFunc, error)
 // parseNinjaString parses an unescaped ninja string (i.e. all $<something>
 // occurrences are expected to be variables or $$) and returns a list of the
 // variable names that the string references.
-func parseNinjaString(scope scope, str string) (*ninjaString, error) {
+func parseNinjaString(scope scope, str string) (ninjaString, error) {
 	// naively pre-allocate slices by counting $ signs
 	n := strings.Count(str, "$")
-	result := &ninjaString{
+	if n == 0 {
+		if strings.HasPrefix(str, " ") {
+			str = "$" + str
+		}
+		return literalNinjaString(str), nil
+	}
+	result := &varNinjaString{
 		strings:   make([]string, 0, n+1),
 		variables: make([]Variable, 0, n),
 	}
@@ -253,13 +266,13 @@ func parseBracketsState(state *parseState, i int, r rune) (stateFunc, error) {
 	}
 }
 
-func parseNinjaStrings(scope scope, strs []string) ([]*ninjaString,
+func parseNinjaStrings(scope scope, strs []string) ([]ninjaString,
 	error) {
 
 	if len(strs) == 0 {
 		return nil, nil
 	}
-	result := make([]*ninjaString, len(strs))
+	result := make([]ninjaString, len(strs))
 	for i, str := range strs {
 		ninjaStr, err := parseNinjaString(scope, str)
 		if err != nil {
@@ -270,11 +283,11 @@ func parseNinjaStrings(scope scope, strs []string) ([]*ninjaString,
 	return result, nil
 }
 
-func (n *ninjaString) Value(pkgNames map[*packageContext]string) string {
+func (n varNinjaString) Value(pkgNames map[*packageContext]string) string {
 	return n.ValueWithEscaper(pkgNames, defaultEscaper)
 }
 
-func (n *ninjaString) ValueWithEscaper(pkgNames map[*packageContext]string,
+func (n varNinjaString) ValueWithEscaper(pkgNames map[*packageContext]string,
 	escaper *strings.Replacer) string {
 
 	if len(n.strings) == 1 {
@@ -293,7 +306,7 @@ func (n *ninjaString) ValueWithEscaper(pkgNames map[*packageContext]string,
 	return str.String()
 }
 
-func (n *ninjaString) Eval(variables map[Variable]*ninjaString) (string, error) {
+func (n varNinjaString) Eval(variables map[Variable]ninjaString) (string, error) {
 	str := n.strings[0]
 	for i, v := range n.variables {
 		variable, ok := variables[v]
@@ -307,6 +320,27 @@ func (n *ninjaString) Eval(variables map[Variable]*ninjaString) (string, error) 
 		str += value + n.strings[i+1]
 	}
 	return str, nil
+}
+
+func (n varNinjaString) Variables() []Variable {
+	return n.variables
+}
+
+func (l literalNinjaString) Value(pkgNames map[*packageContext]string) string {
+	return l.ValueWithEscaper(pkgNames, defaultEscaper)
+}
+
+func (l literalNinjaString) ValueWithEscaper(pkgNames map[*packageContext]string,
+	escaper *strings.Replacer) string {
+	return escaper.Replace(string(l))
+}
+
+func (l literalNinjaString) Eval(variables map[Variable]ninjaString) (string, error) {
+	return string(l), nil
+}
+
+func (l literalNinjaString) Variables() []Variable {
+	return nil
 }
 
 func validateNinjaName(name string) error {
