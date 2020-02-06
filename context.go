@@ -96,15 +96,15 @@ type Context struct {
 	// set during PrepareBuildActions
 	pkgNames        map[*packageContext]string
 	liveGlobals     *liveTracker
-	globalVariables map[Variable]*ninjaString
+	globalVariables map[Variable]ninjaString
 	globalPools     map[Pool]*poolDef
 	globalRules     map[Rule]*ruleDef
 
 	// set during PrepareBuildActions
-	ninjaBuildDir      *ninjaString // The builddir special Ninja variable
-	requiredNinjaMajor int          // For the ninja_required_version variable
-	requiredNinjaMinor int          // For the ninja_required_version variable
-	requiredNinjaMicro int          // For the ninja_required_version variable
+	ninjaBuildDir      ninjaString // The builddir special Ninja variable
+	requiredNinjaMajor int         // For the ninja_required_version variable
+	requiredNinjaMinor int         // For the ninja_required_version variable
+	requiredNinjaMicro int         // For the ninja_required_version variable
 
 	subninjas []string
 
@@ -2788,7 +2788,7 @@ func (c *Context) requireNinjaVersion(major, minor, micro int) {
 	}
 }
 
-func (c *Context) setNinjaBuildDir(value *ninjaString) {
+func (c *Context) setNinjaBuildDir(value ninjaString) {
 	if c.ninjaBuildDir == nil {
 		c.ninjaBuildDir = value
 	}
@@ -2854,7 +2854,7 @@ func (c *Context) makeUniquePackageNames(
 }
 
 func (c *Context) checkForVariableReferenceCycles(
-	variables map[Variable]*ninjaString, pkgNames map[*packageContext]string) {
+	variables map[Variable]ninjaString, pkgNames map[*packageContext]string) {
 
 	visited := make(map[Variable]bool)  // variables that were already checked
 	checking := make(map[Variable]bool) // variables actively being checked
@@ -2867,7 +2867,7 @@ func (c *Context) checkForVariableReferenceCycles(
 		defer delete(checking, v)
 
 		value := variables[v]
-		for _, dep := range value.variables {
+		for _, dep := range value.Variables() {
 			if checking[dep] {
 				// This is a cycle.
 				return []Variable{dep, v}
@@ -3352,7 +3352,7 @@ func (c *Context) writeGlobalVariables(nw *ninjaWriter) error {
 
 		// First visit variables on which this variable depends.
 		value := c.globalVariables[v]
-		for _, dep := range value.variables {
+		for _, dep := range value.Variables() {
 			if !visited[dep] {
 				err := walk(dep)
 				if err != nil {

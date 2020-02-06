@@ -28,7 +28,7 @@ type Variable interface {
 	packageContext() *packageContext
 	name() string                                        // "foo"
 	fullName(pkgNames map[*packageContext]string) string // "pkg.foo" or "path.to.pkg.foo"
-	value(config interface{}) (*ninjaString, error)
+	value(config interface{}) (ninjaString, error)
 	String() string
 }
 
@@ -351,7 +351,7 @@ func (s *localScope) AddLocalRule(name string, params *RuleParams,
 type localVariable struct {
 	namePrefix string
 	name_      string
-	value_     *ninjaString
+	value_     ninjaString
 }
 
 func (l *localVariable) packageContext() *packageContext {
@@ -366,7 +366,7 @@ func (l *localVariable) fullName(pkgNames map[*packageContext]string) string {
 	return l.namePrefix + l.name_
 }
 
-func (l *localVariable) value(interface{}) (*ninjaString, error) {
+func (l *localVariable) value(interface{}) (ninjaString, error) {
 	return l.value_, nil
 }
 
