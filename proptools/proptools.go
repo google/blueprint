@@ -16,19 +16,34 @@ package proptools
 
 import (
 	"reflect"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
 
+// PropertyNameForField converts the name of a field in property struct to the property name that
+// might appear in a Blueprints file.  Since the property struct fields must always be exported
+// to be accessed with reflection and the canonical Blueprints style is lowercased names, it
+// lower cases the first rune in the field name unless the field name contains an uppercase rune
+// after the first rune (which is always uppercase), and no lowercase runes.
 func PropertyNameForField(fieldName string) string {
 	r, size := utf8.DecodeRuneInString(fieldName)
 	propertyName := string(unicode.ToLower(r))
+	if size == len(fieldName) {
+		return propertyName
+	}
+	if strings.IndexFunc(fieldName[size:], unicode.IsLower) == -1 &&
+		strings.IndexFunc(fieldName[size:], unicode.IsUpper) != -1 {
+		return fieldName
+	}
 	if len(fieldName) > size {
 		propertyName += fieldName[size:]
 	}
 	return propertyName
 }
 
+// FieldNameForProperty converts the name of a property that might appear in a Blueprints file to
+// the name of a field in property struct by uppercasing the first rune.
 func FieldNameForProperty(propertyName string) string {
 	r, size := utf8.DecodeRuneInString(propertyName)
 	fieldName := string(unicode.ToUpper(r))
