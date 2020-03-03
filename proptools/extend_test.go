@@ -412,6 +412,63 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 			order: Replace,
 		},
 		{
+			// Append slice of structs
+			in1: &struct{ S []struct{ F string } }{
+				S: []struct{ F string }{
+					{F: "foo"}, {F: "bar"},
+				},
+			},
+			in2: &struct{ S []struct{ F string } }{
+				S: []struct{ F string }{
+					{F: "baz"},
+				},
+			},
+			out: &struct{ S []struct{ F string } }{
+				S: []struct{ F string }{
+					{F: "foo"}, {F: "bar"}, {F: "baz"},
+				},
+			},
+			order: Append,
+		},
+		{
+			// Prepend slice of structs
+			in1: &struct{ S []struct{ F string } }{
+				S: []struct{ F string }{
+					{F: "foo"}, {F: "bar"},
+				},
+			},
+			in2: &struct{ S []struct{ F string } }{
+				S: []struct{ F string }{
+					{F: "baz"},
+				},
+			},
+			out: &struct{ S []struct{ F string } }{
+				S: []struct{ F string }{
+					{F: "baz"}, {F: "foo"}, {F: "bar"},
+				},
+			},
+			order: Prepend,
+		},
+		{
+			// Replace slice of structs
+			in1: &struct{ S []struct{ F string } }{
+				S: []struct{ F string }{
+					{F: "foo"}, {F: "bar"},
+				},
+			},
+			in2: &struct{ S []struct{ F string } }{
+				S: []struct{ F string }{
+					{F: "baz"},
+				},
+			},
+			out: &struct{ S []struct{ F string } }{
+				S: []struct{ F string }{
+					{F: "baz"},
+				},
+			},
+			order: Replace,
+		},
+		{
 			// Append pointer
 			in1: &struct{ S *struct{ S string } }{
 				S: &struct{ S string }{
