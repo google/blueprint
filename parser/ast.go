@@ -130,7 +130,7 @@ func ExpressionsAreSame(a Expression, b Expression) (equal bool, err error) {
 	return hackyExpressionsAreSame(a, b)
 }
 
-// TODO(jeffrygaston) once positions are removed from Expression stucts,
+// TODO(jeffrygaston) once positions are removed from Expression structs,
 // remove this function and have callers use reflect.DeepEqual(a, b)
 func hackyExpressionsAreSame(a Expression, b Expression) (equal bool, err error) {
 	if a.Type() != b.Type() {

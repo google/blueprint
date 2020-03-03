@@ -193,6 +193,158 @@ var validParseTestCases = []struct {
 		nil,
 	},
 
+	{
+		`
+		foo {
+			list_of_maps: [
+				{
+					var: true,
+					name: "a",
+				},
+				{
+					var: false,
+					name: "b",
+				},
+			],
+		}
+`,
+		[]Definition{
+			&Module{
+				Type:    "foo",
+				TypePos: mkpos(3, 2, 3),
+				Map: Map{
+					LBracePos: mkpos(7, 2, 7),
+					RBracePos: mkpos(127, 13, 3),
+					Properties: []*Property{
+						{
+							Name:     "list_of_maps",
+							NamePos:  mkpos(12, 3, 4),
+							ColonPos: mkpos(24, 3, 16),
+							Value: &List{
+								LBracePos: mkpos(26, 3, 18),
+								RBracePos: mkpos(122, 12, 4),
+								Values: []Expression{
+									&Map{
+										LBracePos: mkpos(32, 4, 5),
+										RBracePos: mkpos(70, 7, 5),
+										Properties: []*Property{
+											{
+												Name:     "var",
+												NamePos:  mkpos(39, 5, 6),
+												ColonPos: mkpos(42, 5, 9),
+												Value: &Bool{
+													LiteralPos: mkpos(44, 5, 11),
+													Value:      true,
+													Token:      "true",
+												},
+											},
+											{
+												Name:     "name",
+												NamePos:  mkpos(55, 6, 6),
+												ColonPos: mkpos(59, 6, 10),
+												Value: &String{
+													LiteralPos: mkpos(61, 6, 12),
+													Value:      "a",
+												},
+											},
+										},
+									},
+									&Map{
+										LBracePos: mkpos(77, 8, 5),
+										RBracePos: mkpos(116, 11, 5),
+										Properties: []*Property{
+											{
+												Name:     "var",
+												NamePos:  mkpos(84, 9, 6),
+												ColonPos: mkpos(87, 9, 9),
+												Value: &Bool{
+													LiteralPos: mkpos(89, 9, 11),
+													Value:      false,
+													Token:      "false",
+												},
+											},
+											{
+												Name:     "name",
+												NamePos:  mkpos(101, 10, 6),
+												ColonPos: mkpos(105, 10, 10),
+												Value: &String{
+													LiteralPos: mkpos(107, 10, 12),
+													Value:      "b",
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		nil,
+	},
+	{
+		`
+		foo {
+			list_of_lists: [
+				[ "a", "b" ],
+				[ "c", "d" ]
+			],
+		}
+`,
+		[]Definition{
+			&Module{
+				Type:    "foo",
+				TypePos: mkpos(3, 2, 3),
+				Map: Map{
+					LBracePos: mkpos(7, 2, 7),
+					RBracePos: mkpos(72, 7, 3),
+					Properties: []*Property{
+						{
+							Name:     "list_of_lists",
+							NamePos:  mkpos(12, 3, 4),
+							ColonPos: mkpos(25, 3, 17),
+							Value: &List{
+								LBracePos: mkpos(27, 3, 19),
+								RBracePos: mkpos(67, 6, 4),
+								Values: []Expression{
+									&List{
+										LBracePos: mkpos(33, 4, 5),
+										RBracePos: mkpos(44, 4, 16),
+										Values: []Expression{
+											&String{
+												LiteralPos: mkpos(35, 4, 7),
+												Value:      "a",
+											},
+											&String{
+												LiteralPos: mkpos(40, 4, 12),
+												Value:      "b",
+											},
+										},
+									},
+									&List{
+										LBracePos: mkpos(51, 5, 5),
+										RBracePos: mkpos(62, 5, 16),
+										Values: []Expression{
+											&String{
+												LiteralPos: mkpos(53, 5, 7),
+												Value:      "c",
+											},
+											&String{
+												LiteralPos: mkpos(58, 5, 12),
+												Value:      "d",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		nil,
+	},
 	{`
 		foo {
 			stuff: {
@@ -1032,7 +1184,7 @@ func TestParseValidInput(t *testing.T) {
 				for i := range file.Defs {
 					if !reflect.DeepEqual(file.Defs[i], testCase.defs[i]) {
 						t.Errorf("test case: %s", testCase.input)
-						t.Errorf("incorrect defintion %d:", i)
+						t.Errorf("incorrect definition %d:", i)
 						t.Errorf("  expected: %s", testCase.defs[i])
 						t.Errorf("       got: %s", file.Defs[i])
 					}
