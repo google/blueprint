@@ -496,21 +496,31 @@ var validUnpackTestCases = []struct {
 			list = ["abc"]
 			string = "def"
 			list_with_variable = [string]
+			struct_value = { name: "foo" }
 			m {
 				s: string,
 				list: list,
 				list2: list_with_variable,
+				structattr: struct_value,
 			}
 		`,
 		output: []interface{}{
 			&struct {
-				S     string
-				List  []string
-				List2 []string
+				S          string
+				List       []string
+				List2      []string
+				Structattr struct {
+					Name string
+				}
 			}{
 				S:     "def",
 				List:  []string{"abc"},
 				List2: []string{"def"},
+				Structattr: struct {
+					Name string
+				}{
+					Name: "foo",
+				},
 			},
 		},
 	},
