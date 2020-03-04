@@ -136,32 +136,32 @@ func (ctx *unpackContext) buildPropertyMap(prefix string, properties []*parser.P
 		}
 
 		ctx.propertyMap[name] = &packedProperty{property, false}
-		if structProperty, ok := property.Value.(*parser.Map); ok {
-			ctx.buildPropertyMap(name, structProperty.Properties)
-		}
-
-		// If it is a list, unroll it unless its elements are of primitive type
-		// (no further mapping will be needed in that case, so we avoid cluttering
-		// the map).
-		listExpr, ok := property.Value.Eval().(*parser.List)
-		if !ok || len(listExpr.Values) == 0 {
-			continue
-		}
-		if t := listExpr.Values[0].Eval().Type(); t == parser.StringType || t == parser.Int64Type || t == parser.BoolType {
-			continue
-		}
-
-		itemProperties := make([]*parser.Property, len(listExpr.Values), len(listExpr.Values))
-		for i, expr := range listExpr.Values {
-			itemProperties[i] = &parser.Property{
-				Name:     property.Name + "[" + strconv.Itoa(i) + "]",
-				NamePos:  property.NamePos,
-				ColonPos: property.ColonPos,
-				Value:    expr,
+		switch propValue := property.Value.Eval().(type) {
+		case *parser.Map:
+			ctx.buildPropertyMap(name, propValue.Properties)
+		case *parser.List:
+			// If it is a list, unroll it unless its elements are of primitive type
+			// (no further mapping will be needed in that case, so we avoid cluttering
+			// the map).
+			if len(propValue.Values) == 0 {
+				continue
 			}
-		}
-		if !ctx.buildPropertyMap(prefix, itemProperties) {
-			return false
+			if t := propValue.Values[0].Type(); t == parser.StringType || t == parser.Int64Type || t == parser.BoolType {
+				continue
+			}
+
+			itemProperties := make([]*parser.Property, len(propValue.Values), len(propValue.Values))
+			for i, expr := range propValue.Values {
+				itemProperties[i] = &parser.Property{
+					Name:     property.Name + "[" + strconv.Itoa(i) + "]",
+					NamePos:  property.NamePos,
+					ColonPos: property.ColonPos,
+					Value:    expr,
+				}
+			}
+			if !ctx.buildPropertyMap(prefix, itemProperties) {
+				return false
+			}
 		}
 	}
 
