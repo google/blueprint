@@ -549,10 +549,6 @@ func (p *parser) parseListValue() *List {
 	var elements []Expression
 	for p.tok != ']' {
 		element := p.parseExpression()
-		if p.eval && element.Type() != StringType {
-			p.errorf("Expected string in list, found %s", element.Type().String())
-			return nil
-		}
 		elements = append(elements, element)
 
 		if p.tok != ',' {

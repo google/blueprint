@@ -2198,7 +2198,7 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 			newVariationsCh <- mctx.newVariations
 		}
 
-		if len(mctx.reverseDeps) > 0 || len(mctx.replace) > 0 || len(mctx.rename) > 0 || len(mctx.newModules) > 0 {
+		if len(mctx.reverseDeps) > 0 || len(mctx.replace) > 0 || len(mctx.rename) > 0 || len(mctx.newModules) > 0 || len(mctx.ninjaFileDeps) > 0 {
 			globalStateCh <- globalStateChange{
 				reverse:    mctx.reverseDeps,
 				replace:    mctx.replace,
