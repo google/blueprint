@@ -33,6 +33,9 @@ func SortLists(file *File) {
 }
 
 func SortList(file *File, list *List) {
+	if !isListOfPrimitives(list.Values) {
+		return
+	}
 	for i := 0; i < len(list.Values); i++ {
 		// Find a set of values on contiguous lines
 		line := list.Values[i].Pos().Line
@@ -91,6 +94,9 @@ func sortListsInValue(value Expression, file *File) {
 }
 
 func sortSubList(values []Expression, nextPos scanner.Position, file *File) {
+	if !isListOfPrimitives(values) {
+		return
+	}
 	l := make(elemList, len(values))
 	for i, v := range values {
 		s, ok := v.(*String)
@@ -135,6 +141,9 @@ func sortSubList(values []Expression, nextPos scanner.Position, file *File) {
 }
 
 func subListIsSorted(values []Expression) bool {
+	if !isListOfPrimitives(values) {
+		return true
+	}
 	prev := ""
 	for _, v := range values {
 		s, ok := v.(*String)
@@ -183,4 +192,16 @@ func (l commentsByOffset) Less(i, j int) bool {
 
 func (l commentsByOffset) Swap(i, j int) {
 	l[i], l[j] = l[j], l[i]
+}
+
+func isListOfPrimitives(values []Expression) bool {
+	if len(values) == 0 {
+		return true
+	}
+	switch values[0].Type() {
+	case BoolType, StringType, Int64Type:
+		return true
+	default:
+		return false
+	}
 }
