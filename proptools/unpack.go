@@ -17,6 +17,9 @@ package proptools
 import (
 	"fmt"
 	"reflect"
+	"sort"
+	"strconv"
+	"strings"
 	"text/scanner"
 
 	"github.com/google/blueprint/parser"
@@ -33,103 +36,153 @@ func (e *UnpackError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Pos, e.Err)
 }
 
+// packedProperty helps to track properties usage (`used` will be true)
 type packedProperty struct {
 	property *parser.Property
-	unpacked bool
+	used     bool
 }
 
-func UnpackProperties(propertyDefs []*parser.Property,
-	propertiesStructs ...interface{}) (map[string]*parser.Property, []error) {
+// unpackContext keeps compound names and their values in a map. It is initialized from
+// parsed properties.
+type unpackContext struct {
+	propertyMap map[string]*packedProperty
+	errs        []error
+}
 
-	propertyMap := make(map[string]*packedProperty)
-	errs := buildPropertyMap("", propertyDefs, propertyMap)
-	if len(errs) > 0 {
-		return nil, errs
+// UnpackProperties populates the list of runtime values ("property structs") from the parsed properties.
+// If a property a.b.c has a value, a field with the matching name in each runtime value is initialized
+// from it. See PropertyNameForField for field and property name matching.
+// For instance, if the input contains
+//   { foo: "abc", bar: {x: 1},}
+// and a runtime value being has been declared as
+//   var v struct { Foo string; Bar int }
+// then v.Foo will be set to "abc" and v.Bar will be set to 1
+// (cf. unpack_test.go for further examples)
+//
+// The type of a receiving field has to match the property type, i.e., a bool/int/string field
+// can be set from a property with bool/int/string value, a struct can be set from a map (only the
+// matching fields are set), and an slice can be set from a list.
+// If a field of a runtime value has been already set prior to the UnpackProperties, the new value
+// is appended to it (see somewhat inappropriately named ExtendBasicType).
+// The same property can initialize fields in multiple runtime values. It is an error if any property
+// value was not used to initialize at least one field.
+func UnpackProperties(properties []*parser.Property, objects ...interface{}) (map[string]*parser.Property, []error) {
+	var unpackContext unpackContext
+	unpackContext.propertyMap = make(map[string]*packedProperty)
+	if !unpackContext.buildPropertyMap("", properties) {
+		return nil, unpackContext.errs
 	}
 
-	for _, properties := range propertiesStructs {
-		propertiesValue := reflect.ValueOf(properties)
-		if !isStructPtr(propertiesValue.Type()) {
+	for _, obj := range objects {
+		valueObject := reflect.ValueOf(obj)
+		if !isStructPtr(valueObject.Type()) {
 			panic(fmt.Errorf("properties must be *struct, got %s",
-				propertiesValue.Type()))
+				valueObject.Type()))
 		}
-		propertiesValue = propertiesValue.Elem()
-
-		newErrs := unpackStructValue("", propertiesValue, propertyMap)
-		errs = append(errs, newErrs...)
-
-		if len(errs) >= maxUnpackErrors {
-			return nil, errs
+		unpackContext.unpackToStruct("", valueObject.Elem())
+		if len(unpackContext.errs) >= maxUnpackErrors {
+			return nil, unpackContext.errs
 		}
 	}
 
-	// Report any properties that didn't have corresponding struct fields as
-	// errors.
+	// Gather property map, and collect any unused properties.
+	// Avoid reporting subproperties of unused properties.
 	result := make(map[string]*parser.Property)
-	for name, packedProperty := range propertyMap {
-		result[name] = packedProperty.property
-		if !packedProperty.unpacked {
-			err := &UnpackError{
-				Err: fmt.Errorf("unrecognized property %q", name),
-				Pos: packedProperty.property.ColonPos,
-			}
-			errs = append(errs, err)
+	var unusedNames []string
+	for name, v := range unpackContext.propertyMap {
+		if v.used {
+			result[name] = v.property
+		} else {
+			unusedNames = append(unusedNames, name)
 		}
 	}
-
-	if len(errs) > 0 {
-		return nil, errs
+	if len(unusedNames) == 0 && len(unpackContext.errs) == 0 {
+		return result, nil
 	}
-
-	return result, nil
+	return nil, unpackContext.reportUnusedNames(unusedNames)
 }
 
-func buildPropertyMap(namePrefix string, propertyDefs []*parser.Property,
-	propertyMap map[string]*packedProperty) (errs []error) {
-
-	for _, propertyDef := range propertyDefs {
-		name := namePrefix + propertyDef.Name
-		if first, present := propertyMap[name]; present {
-			if first.property == propertyDef {
-				// We've already added this property.
+func (ctx *unpackContext) reportUnusedNames(unusedNames []string) []error {
+	sort.Strings(unusedNames)
+	var lastReported string
+	for _, name := range unusedNames {
+		// if 'foo' has been reported, ignore 'foo\..*' and 'foo\[.*'
+		if lastReported != "" {
+			trimmed := strings.TrimPrefix(name, lastReported)
+			if trimmed != name && (trimmed[0] == '.' || trimmed[0] == '[') {
 				continue
 			}
-			errs = append(errs, &UnpackError{
-				Err: fmt.Errorf("property %q already defined", name),
-				Pos: propertyDef.ColonPos,
-			})
-			errs = append(errs, &UnpackError{
-				Err: fmt.Errorf("<-- previous definition here"),
-				Pos: first.property.ColonPos,
-			})
-			if len(errs) >= maxUnpackErrors {
-				return errs
+		}
+		ctx.errs = append(ctx.errs, &UnpackError{
+			fmt.Errorf("unrecognized property %q", name),
+			ctx.propertyMap[name].property.ColonPos})
+		lastReported = name
+	}
+	return ctx.errs
+}
+
+func (ctx *unpackContext) buildPropertyMap(prefix string, properties []*parser.Property) bool {
+	nOldErrors := len(ctx.errs)
+	for _, property := range properties {
+		name := fieldPath(prefix, property.Name)
+		if first, present := ctx.propertyMap[name]; present {
+			ctx.addError(
+				&UnpackError{fmt.Errorf("property %q already defined", name), property.ColonPos})
+			if ctx.addError(
+				&UnpackError{fmt.Errorf("<-- previous definition here"), first.property.ColonPos}) {
+				return false
 			}
 			continue
 		}
 
-		propertyMap[name] = &packedProperty{
-			property: propertyDef,
-			unpacked: false,
-		}
+		ctx.propertyMap[name] = &packedProperty{property, false}
+		switch propValue := property.Value.Eval().(type) {
+		case *parser.Map:
+			ctx.buildPropertyMap(name, propValue.Properties)
+		case *parser.List:
+			// If it is a list, unroll it unless its elements are of primitive type
+			// (no further mapping will be needed in that case, so we avoid cluttering
+			// the map).
+			if len(propValue.Values) == 0 {
+				continue
+			}
+			if t := propValue.Values[0].Type(); t == parser.StringType || t == parser.Int64Type || t == parser.BoolType {
+				continue
+			}
 
-		// We intentionally do not rescursively add MapValue properties to the
-		// property map here.  Instead we add them when we encounter a struct
-		// into which they can be unpacked.  We do this so that if we never
-		// encounter such a struct then the "unrecognized property" error will
-		// be reported only once for the map property and not for each of its
-		// sub-properties.
+			itemProperties := make([]*parser.Property, len(propValue.Values), len(propValue.Values))
+			for i, expr := range propValue.Values {
+				itemProperties[i] = &parser.Property{
+					Name:     property.Name + "[" + strconv.Itoa(i) + "]",
+					NamePos:  property.NamePos,
+					ColonPos: property.ColonPos,
+					Value:    expr,
+				}
+			}
+			if !ctx.buildPropertyMap(prefix, itemProperties) {
+				return false
+			}
+		}
 	}
 
-	return
+	return len(ctx.errs) == nOldErrors
 }
 
-func unpackStructValue(namePrefix string, structValue reflect.Value,
-	propertyMap map[string]*packedProperty) []error {
+func fieldPath(prefix, fieldName string) string {
+	if prefix == "" {
+		return fieldName
+	}
+	return prefix + "." + fieldName
+}
 
+func (ctx *unpackContext) addError(e error) bool {
+	ctx.errs = append(ctx.errs, e)
+	return len(ctx.errs) < maxUnpackErrors
+}
+
+func (ctx *unpackContext) unpackToStruct(namePrefix string, structValue reflect.Value) {
 	structType := structValue.Type()
 
-	var errs []error
 	for i := 0; i < structValue.NumField(); i++ {
 		fieldValue := structValue.Field(i)
 		field := structType.Field(i)
@@ -148,14 +201,14 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			continue
 		}
 
-		propertyName := namePrefix + PropertyNameForField(field.Name)
+		propertyName := fieldPath(namePrefix, PropertyNameForField(field.Name))
 
 		if !fieldValue.CanSet() {
 			panic(fmt.Errorf("field %s is not settable", propertyName))
 		}
 
 		// Get the property value if it was specified.
-		packedProperty, propertyIsSet := propertyMap[propertyName]
+		packedProperty, propertyIsSet := ctx.propertyMap[propertyName]
 
 		origFieldValue := fieldValue
 
@@ -164,15 +217,8 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 		// TODO(ccross): we don't validate types inside nil struct pointers
 		// Move type validation to a function that runs on each factory once
 		switch kind := fieldValue.Kind(); kind {
-		case reflect.Bool, reflect.String, reflect.Struct:
+		case reflect.Bool, reflect.String, reflect.Struct, reflect.Slice:
 			// Do nothing
-		case reflect.Slice:
-			elemType := field.Type.Elem()
-			if elemType.Kind() != reflect.String {
-				if !HasTag(field, "blueprint", "mutated") {
-					panic(fmt.Errorf("field %s is a non-string slice", propertyName))
-				}
-			}
 		case reflect.Interface:
 			if fieldValue.IsNil() {
 				panic(fmt.Errorf("field %s contains a nil interface", propertyName))
@@ -210,8 +256,7 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 		}
 
 		if field.Anonymous && isStruct(fieldValue.Type()) {
-			newErrs := unpackStructValue(namePrefix, fieldValue, propertyMap)
-			errs = append(errs, newErrs...)
+			ctx.unpackToStruct(namePrefix, fieldValue)
 			continue
 		}
 
@@ -220,60 +265,125 @@ func unpackStructValue(namePrefix string, structValue reflect.Value,
 			continue
 		}
 
-		packedProperty.unpacked = true
+		packedProperty.used = true
+		property := packedProperty.property
 
 		if HasTag(field, "blueprint", "mutated") {
-			errs = append(errs,
+			if !ctx.addError(
 				&UnpackError{
-					Err: fmt.Errorf("mutated field %s cannot be set in a Blueprint file", propertyName),
-					Pos: packedProperty.property.ColonPos,
-				})
-			if len(errs) >= maxUnpackErrors {
-				return errs
+					fmt.Errorf("mutated field %s cannot be set in a Blueprint file", propertyName),
+					property.ColonPos,
+				}) {
+				return
 			}
 			continue
 		}
-
-		var newErrs []error
 
 		if isStruct(fieldValue.Type()) {
-			newErrs = unpackStruct(propertyName+".", fieldValue,
-				packedProperty.property, propertyMap)
-
-			errs = append(errs, newErrs...)
-			if len(errs) >= maxUnpackErrors {
-				return errs
+			ctx.unpackToStruct(propertyName, fieldValue)
+			if len(ctx.errs) >= maxUnpackErrors {
+				return
+			}
+		} else if isSlice(fieldValue.Type()) {
+			if unpackedValue, ok := ctx.unpackToSlice(propertyName, property, fieldValue.Type()); ok {
+				ExtendBasicType(fieldValue, unpackedValue, Append)
+			}
+			if len(ctx.errs) >= maxUnpackErrors {
+				return
 			}
 
-			continue
-		}
-
-		// Handle basic types and pointers to basic types
-
-		propertyValue, err := propertyToValue(fieldValue.Type(), packedProperty.property)
-		if err != nil {
-			errs = append(errs, err)
-			if len(errs) >= maxUnpackErrors {
-				return errs
+		} else {
+			unpackedValue, err := propertyToValue(fieldValue.Type(), property)
+			if err != nil && !ctx.addError(err) {
+				return
 			}
+			ExtendBasicType(fieldValue, unpackedValue, Append)
 		}
-
-		ExtendBasicType(fieldValue, propertyValue, Append)
 	}
-
-	return errs
 }
 
-func propertyToValue(typ reflect.Type, property *parser.Property) (reflect.Value, error) {
-	var value reflect.Value
-
-	var ptr bool
-	if typ.Kind() == reflect.Ptr {
-		typ = typ.Elem()
-		ptr = true
+// unpackSlice creates a value of a given slice type from the property which should be a list
+func (ctx *unpackContext) unpackToSlice(
+	sliceName string, property *parser.Property, sliceType reflect.Type) (reflect.Value, bool) {
+	propValueAsList, ok := property.Value.Eval().(*parser.List)
+	if !ok {
+		ctx.addError(fmt.Errorf("%s: can't assign %s value to list property %q",
+			property.Value.Pos(), property.Value.Type(), property.Name))
+		return reflect.MakeSlice(sliceType, 0, 0), false
+	}
+	exprs := propValueAsList.Values
+	value := reflect.MakeSlice(sliceType, 0, len(exprs))
+	if len(exprs) == 0 {
+		return value, true
 	}
 
-	switch kind := typ.Kind(); kind {
+	// The function to construct an item value depends on the type of list elements.
+	var getItemFunc func(*parser.Property, reflect.Type) (reflect.Value, bool)
+	switch exprs[0].Type() {
+	case parser.BoolType, parser.StringType, parser.Int64Type:
+		getItemFunc = func(property *parser.Property, t reflect.Type) (reflect.Value, bool) {
+			value, err := propertyToValue(t, property)
+			if err != nil {
+				ctx.addError(err)
+				return value, false
+			}
+			return value, true
+		}
+	case parser.ListType:
+		getItemFunc = func(property *parser.Property, t reflect.Type) (reflect.Value, bool) {
+			return ctx.unpackToSlice(property.Name, property, t)
+		}
+	case parser.MapType:
+		getItemFunc = func(property *parser.Property, t reflect.Type) (reflect.Value, bool) {
+			itemValue := reflect.New(t).Elem()
+			ctx.unpackToStruct(property.Name, itemValue)
+			return itemValue, true
+		}
+	case parser.NotEvaluatedType:
+		getItemFunc = func(property *parser.Property, t reflect.Type) (reflect.Value, bool) {
+			return reflect.New(t), false
+		}
+	default:
+		panic(fmt.Errorf("bizarre property expression type: %v", exprs[0].Type()))
+	}
+
+	itemProperty := &parser.Property{NamePos: property.NamePos, ColonPos: property.ColonPos}
+	elemType := sliceType.Elem()
+	isPtr := elemType.Kind() == reflect.Ptr
+
+	for i, expr := range exprs {
+		itemProperty.Name = sliceName + "[" + strconv.Itoa(i) + "]"
+		itemProperty.Value = expr
+		if packedProperty, ok := ctx.propertyMap[itemProperty.Name]; ok {
+			packedProperty.used = true
+		}
+		if isPtr {
+			if itemValue, ok := getItemFunc(itemProperty, elemType.Elem()); ok {
+				ptrValue := reflect.New(itemValue.Type())
+				ptrValue.Elem().Set(itemValue)
+				value = reflect.Append(value, ptrValue)
+			}
+		} else {
+			if itemValue, ok := getItemFunc(itemProperty, elemType); ok {
+				value = reflect.Append(value, itemValue)
+			}
+		}
+	}
+	return value, true
+}
+
+// propertyToValue creates a value of a given value type from the property.
+func propertyToValue(typ reflect.Type, property *parser.Property) (reflect.Value, error) {
+	var value reflect.Value
+	var baseType reflect.Type
+	isPtr := typ.Kind() == reflect.Ptr
+	if isPtr {
+		baseType = typ.Elem()
+	} else {
+		baseType = typ
+	}
+
+	switch kind := baseType.Kind(); kind {
 	case reflect.Bool:
 		b, ok := property.Value.Eval().(*parser.Bool)
 		if !ok {
@@ -298,53 +408,16 @@ func propertyToValue(typ reflect.Type, property *parser.Property) (reflect.Value
 		}
 		value = reflect.ValueOf(s.Value)
 
-	case reflect.Slice:
-		l, ok := property.Value.Eval().(*parser.List)
-		if !ok {
-			return value, fmt.Errorf("%s: can't assign %s value to list property %q",
-				property.Value.Pos(), property.Value.Type(), property.Name)
-		}
-
-		list := make([]string, len(l.Values))
-		for i, value := range l.Values {
-			s, ok := value.Eval().(*parser.String)
-			if !ok {
-				// The parser should not produce this.
-				panic(fmt.Errorf("non-string value %q found in list", value))
-			}
-			list[i] = s.Value
-		}
-
-		value = reflect.ValueOf(list)
-
 	default:
-		panic(fmt.Errorf("unexpected kind %s", kind))
+		return value, &UnpackError{
+			fmt.Errorf("cannot assign %s value %s to %s property %s", property.Value.Type(), property.Value, kind, typ),
+			property.NamePos}
 	}
 
-	if ptr {
+	if isPtr {
 		ptrValue := reflect.New(value.Type())
 		ptrValue.Elem().Set(value)
-		value = ptrValue
+		return ptrValue, nil
 	}
-
 	return value, nil
-}
-
-func unpackStruct(namePrefix string, structValue reflect.Value,
-	property *parser.Property, propertyMap map[string]*packedProperty) []error {
-
-	m, ok := property.Value.Eval().(*parser.Map)
-	if !ok {
-		return []error{
-			fmt.Errorf("%s: can't assign %s value to map property %q",
-				property.Value.Pos(), property.Value.Type(), property.Name),
-		}
-	}
-
-	errs := buildPropertyMap(namePrefix, m.Properties, propertyMap)
-	if len(errs) > 0 {
-		return errs
-	}
-
-	return unpackStructValue(namePrefix, structValue, propertyMap)
 }

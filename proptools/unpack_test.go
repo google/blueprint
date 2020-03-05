@@ -17,8 +17,8 @@ package proptools
 import (
 	"bytes"
 	"reflect"
+
 	"testing"
-	"text/scanner"
 
 	"github.com/google/blueprint/parser"
 )
@@ -218,6 +218,144 @@ var validUnpackTestCases = []struct {
 		},
 	},
 
+	// List of maps
+	{
+		input: `
+			m {
+				mapslist: [
+					{
+						foo: "abc",
+						bar: true,
+					},
+					{
+						foo: "def",
+						bar: false,
+					}
+				],
+			}
+		`,
+		output: []interface{}{
+			&struct {
+				Mapslist []struct {
+					Foo string
+					Bar bool
+				}
+			}{
+				Mapslist: []struct {
+					Foo string
+					Bar bool
+				}{
+					{Foo: "abc", Bar: true},
+					{Foo: "def", Bar: false},
+				},
+			},
+		},
+	},
+
+	// List of pointers to structs
+	{
+		input: `
+			m {
+				mapslist: [
+					{
+						foo: "abc",
+						bar: true,
+					},
+					{
+						foo: "def",
+						bar: false,
+					}
+				],
+			}
+		`,
+		output: []interface{}{
+			&struct {
+				Mapslist []*struct {
+					Foo string
+					Bar bool
+				}
+			}{
+				Mapslist: []*struct {
+					Foo string
+					Bar bool
+				}{
+					{Foo: "abc", Bar: true},
+					{Foo: "def", Bar: false},
+				},
+			},
+		},
+	},
+
+	// List of lists
+	{
+		input: `
+			m {
+				listoflists: [
+					["abc",],
+					["def",],
+				],
+			}
+		`,
+		output: []interface{}{
+			&struct {
+				Listoflists [][]string
+			}{
+				Listoflists: [][]string{
+					[]string{"abc"},
+					[]string{"def"},
+				},
+			},
+		},
+	},
+
+	// Multilevel
+	{
+		input: `
+			m {
+				name: "mymodule",
+				flag: true,
+				settings: ["foo1", "foo2", "foo3",],
+				perarch: {
+					arm: "32",
+					arm64: "64",
+				},
+				configvars: [
+					{ var: "var1", values: ["1.1", "1.2", ], },
+					{ var: "var2", values: ["2.1", ], },
+				],
+            }
+        `,
+		output: []interface{}{
+			&struct {
+				Name     string
+				Flag     bool
+				Settings []string
+				Perarch  *struct {
+					Arm   string
+					Arm64 string
+				}
+				Configvars []struct {
+					Var    string
+					Values []string
+				}
+			}{
+				Name:     "mymodule",
+				Flag:     true,
+				Settings: []string{"foo1", "foo2", "foo3"},
+				Perarch: &struct {
+					Arm   string
+					Arm64 string
+				}{Arm: "32", Arm64: "64"},
+				Configvars: []struct {
+					Var    string
+					Values []string
+				}{
+					{Var: "var1", Values: []string{"1.1", "1.2"}},
+					{Var: "var2", Values: []string{"2.1"}},
+				},
+			},
+		},
+	},
 	// Anonymous struct
 	{
 		input: `
@@ -358,21 +496,31 @@ var validUnpackTestCases = []struct {
 			list = ["abc"]
 			string = "def"
 			list_with_variable = [string]
+			struct_value = { name: "foo" }
 			m {
 				s: string,
 				list: list,
 				list2: list_with_variable,
+				structattr: struct_value,
 			}
 		`,
 		output: []interface{}{
 			&struct {
-				S     string
-				List  []string
-				List2 []string
+				S          string
+				List       []string
+				List2      []string
+				Structattr struct {
+					Name string
+				}
 			}{
 				S:     "def",
 				List:  []string{"abc"},
 				List2: []string{"def"},
+				Structattr: struct {
+					Name string
+				}{
+					Name: "foo",
+				},
 			},
 		},
 	},
@@ -585,10 +733,185 @@ func TestUnpackProperties(t *testing.T) {
 	}
 }
 
-func mkpos(offset, line, column int) scanner.Position {
-	return scanner.Position{
-		Offset: offset,
-		Line:   line,
-		Column: column,
+func BenchmarkUnpackProperties(b *testing.B) {
+	run := func(b *testing.B, props []interface{}, input string) {
+		b.ReportAllocs()
+		b.StopTimer()
+		r := bytes.NewBufferString(input)
+		file, errs := parser.ParseAndEval("", r, parser.NewScope(nil))
+		if len(errs) != 0 {
+			b.Errorf("test case: %s", input)
+			b.Errorf("unexpected parse errors:")
+			for _, err := range errs {
+				b.Errorf("  %s", err)
+			}
+			b.FailNow()
+		}
+
+		for i := 0; i < b.N; i++ {
+			for _, def := range file.Defs {
+				module, ok := def.(*parser.Module)
+				if !ok {
+					continue
+				}
+
+				var output []interface{}
+				for _, p := range props {
+					output = append(output, CloneProperties(reflect.ValueOf(p)).Interface())
+				}
+
+				b.StartTimer()
+				_, errs = UnpackProperties(module.Properties, output...)
+				b.StopTimer()
+				if len(errs) > 0 {
+					b.Errorf("unexpected unpack errors:")
+					for _, err := range errs {
+						b.Errorf("  %s", err)
+					}
+				}
+			}
+		}
 	}
+
+	b.Run("basic", func(b *testing.B) {
+		props := []interface{}{
+			&struct {
+				Nested struct {
+					S string
+				}
+			}{},
+		}
+		bp := `
+			m {
+				nested: {
+					s: "abc",
+				},
+			}
+		`
+		run(b, props, bp)
+	})
+
+	b.Run("interface", func(b *testing.B) {
+		props := []interface{}{
+			&struct {
+				Nested interface{}
+			}{
+				Nested: (*struct {
+					S string
+				})(nil),
+			},
+		}
+		bp := `
+			m {
+				nested: {
+					s: "abc",
+				},
+			}
+		`
+		run(b, props, bp)
+	})
+
+	b.Run("many", func(b *testing.B) {
+		props := []interface{}{
+			&struct {
+				A *string
+				B *string
+				C *string
+				D *string
+				E *string
+				F *string
+				G *string
+				H *string
+				I *string
+				J *string
+			}{},
+		}
+		bp := `
+			m {
+				a: "a",
+				b: "b",
+				c: "c",
+				d: "d",
+				e: "e",
+				f: "f",
+				g: "g",
+				h: "h",
+				i: "i",
+				j: "j",
+			}
+		`
+		run(b, props, bp)
+	})
+
+	b.Run("deep", func(b *testing.B) {
+		props := []interface{}{
+			&struct {
+				Nested struct {
+					Nested struct {
+						Nested struct {
+							Nested struct {
+								Nested struct {
+									Nested struct {
+										Nested struct {
+											Nested struct {
+												Nested struct {
+													Nested struct {
+														S string
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}{},
+		}
+		bp := `
+			m {
+				nested: { nested: { nested: { nested: { nested: {
+					nested: { nested: { nested: { nested: { nested: {
+						s: "abc",
+					}, }, }, }, },
+				}, }, }, }, },
+			}
+		`
+		run(b, props, bp)
+	})
+
+	b.Run("mix", func(b *testing.B) {
+		props := []interface{}{
+			&struct {
+				Name     string
+				Flag     bool
+				Settings []string
+				Perarch  *struct {
+					Arm   string
+					Arm64 string
+				}
+				Configvars []struct {
+					Name   string
+					Values []string
+				}
+			}{},
+		}
+		bp := `
+			m {
+				name: "mymodule",
+				flag: true,
+				settings: ["foo1", "foo2", "foo3",],
+				perarch: {
+					arm: "32",
+					arm64: "64",
+				},
+				configvars: [
+					{ name: "var1", values: ["var1:1", "var1:2", ], },
+					{ name: "var2", values: ["var2:1", "var2:2", ], },
+				],
+            }
+        `
+		run(b, props, bp)
+	})
 }
