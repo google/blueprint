@@ -223,12 +223,13 @@ func walkDir(path string) {
 }
 
 func main() {
+	defer func() { os.Exit(exitCode) }()
+
 	flag.Parse()
 
 	if flag.NArg() == 0 {
 		if *write {
-			fmt.Fprintln(os.Stderr, "error: cannot use -w with standard input")
-			exitCode = 2
+			report(fmt.Errorf("error: cannot use -w with standard input"))
 			return
 		}
 		if err := processFile("<standard input>", os.Stdin, os.Stdout); err != nil {
