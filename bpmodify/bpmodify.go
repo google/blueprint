@@ -223,7 +223,12 @@ func walkDir(path string) {
 }
 
 func main() {
-	defer func() { os.Exit(exitCode) }()
+	defer func() {
+		if err := recover(); err != nil {
+			report(fmt.Errorf("error: %s", err))
+		}
+		os.Exit(exitCode)
+	}()
 
 	flag.Parse()
 
