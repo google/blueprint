@@ -31,11 +31,40 @@ type Walker interface {
 	Walk() bool
 }
 
+func walkDependencyGraph(ctx *Context, topModule *moduleInfo, allowDuplicates bool) (string, string) {
+	var outputDown string
+	var outputUp string
+	ctx.walkDeps(topModule, allowDuplicates,
+		func(dep depInfo, parent *moduleInfo) bool {
+			outputDown += ctx.ModuleName(dep.module.logicModule)
+			if tag, ok := dep.tag.(walkerDepsTag); ok {
+				if !tag.follow {
+					return false
+				}
+			}
+			if dep.module.logicModule.(Walker).Walk() {
+				return true
+			}
+
+			return false
+		},
+		func(dep depInfo, parent *moduleInfo) {
+			outputUp += ctx.ModuleName(dep.module.logicModule)
+		})
+	return outputDown, outputUp
+}
+
+type depsProvider interface {
+	Deps() []string
+	IgnoreDeps() []string
+}
+
 type fooModule struct {
 	SimpleName
 	properties struct {
-		Deps []string
-		Foo  string
+		Deps         []string
+		Ignored_deps []string
+		Foo          string
 	}
 }
 
@@ -47,8 +76,12 @@ func newFooModule() (Module, []interface{}) {
 func (f *fooModule) GenerateBuildActions(ModuleContext) {
 }
 
-func (f *fooModule) DynamicDependencies(ctx DynamicDependerModuleContext) []string {
+func (f *fooModule) Deps() []string {
 	return f.properties.Deps
+}
+
+func (f *fooModule) IgnoreDeps() []string {
+	return f.properties.Ignored_deps
 }
 
 func (f *fooModule) Foo() string {
@@ -62,8 +95,9 @@ func (f *fooModule) Walk() bool {
 type barModule struct {
 	SimpleName
 	properties struct {
-		Deps []string
-		Bar  bool
+		Deps         []string
+		Ignored_deps []string
+		Bar          bool
 	}
 }
 
@@ -72,8 +106,12 @@ func newBarModule() (Module, []interface{}) {
 	return m, []interface{}{&m.properties, &m.SimpleName.Properties}
 }
 
-func (b *barModule) DynamicDependencies(ctx DynamicDependerModuleContext) []string {
+func (b *barModule) Deps() []string {
 	return b.properties.Deps
+}
+
+func (b *barModule) IgnoreDeps() []string {
+	return b.properties.Ignored_deps
 }
 
 func (b *barModule) GenerateBuildActions(ModuleContext) {
@@ -85,6 +123,19 @@ func (b *barModule) Bar() bool {
 
 func (b *barModule) Walk() bool {
 	return false
+}
+
+type walkerDepsTag struct {
+	BaseDependencyTag
+	// True if the dependency should be followed, false otherwise.
+	follow bool
+}
+
+func depsMutator(mctx BottomUpMutatorContext) {
+	if m, ok := mctx.Module().(depsProvider); ok {
+		mctx.AddDependency(mctx.Module(), walkerDepsTag{follow: false}, m.IgnoreDeps()...)
+		mctx.AddDependency(mctx.Module(), walkerDepsTag{follow: true}, m.Deps()...)
+	}
 }
 
 func TestContextParse(t *testing.T) {
@@ -168,6 +219,7 @@ func TestWalkDeps(t *testing.T) {
 
 	ctx.RegisterModuleType("foo_module", newFooModule)
 	ctx.RegisterModuleType("bar_module", newBarModule)
+	ctx.RegisterBottomUpMutator("deps", depsMutator)
 	_, errs := ctx.ParseBlueprintsFiles("Blueprints", nil)
 	if len(errs) > 0 {
 		t.Errorf("unexpected parse errors:")
@@ -186,20 +238,8 @@ func TestWalkDeps(t *testing.T) {
 		t.FailNow()
 	}
 
-	var outputDown string
-	var outputUp string
 	topModule := ctx.moduleGroupFromName("A", nil).modules[0]
-	ctx.walkDeps(topModule, false,
-		func(dep depInfo, parent *moduleInfo) bool {
-			outputDown += ctx.ModuleName(dep.module.logicModule)
-			if dep.module.logicModule.(Walker).Walk() {
-				return true
-			}
-			return false
-		},
-		func(dep depInfo, parent *moduleInfo) {
-			outputUp += ctx.ModuleName(dep.module.logicModule)
-		})
+	outputDown, outputUp := walkDependencyGraph(ctx, topModule, false)
 	if outputDown != "BCEFG" {
 		t.Errorf("unexpected walkDeps behaviour: %s\ndown should be: BCEFG", outputDown)
 	}
@@ -260,6 +300,7 @@ func TestWalkDepsDuplicates(t *testing.T) {
 
 	ctx.RegisterModuleType("foo_module", newFooModule)
 	ctx.RegisterModuleType("bar_module", newBarModule)
+	ctx.RegisterBottomUpMutator("deps", depsMutator)
 	_, errs := ctx.ParseBlueprintsFiles("Blueprints", nil)
 	if len(errs) > 0 {
 		t.Errorf("unexpected parse errors:")
@@ -278,25 +319,82 @@ func TestWalkDepsDuplicates(t *testing.T) {
 		t.FailNow()
 	}
 
-	var outputDown string
-	var outputUp string
 	topModule := ctx.moduleGroupFromName("A", nil).modules[0]
-	ctx.walkDeps(topModule, true,
-		func(dep depInfo, parent *moduleInfo) bool {
-			outputDown += ctx.ModuleName(dep.module.logicModule)
-			if dep.module.logicModule.(Walker).Walk() {
-				return true
-			}
-			return false
-		},
-		func(dep depInfo, parent *moduleInfo) {
-			outputUp += ctx.ModuleName(dep.module.logicModule)
-		})
+	outputDown, outputUp := walkDependencyGraph(ctx, topModule, true)
 	if outputDown != "BCEGHFGG" {
 		t.Errorf("unexpected walkDeps behaviour: %s\ndown should be: BCEGHFGG", outputDown)
 	}
 	if outputUp != "BHGEGGFC" {
 		t.Errorf("unexpected walkDeps behaviour: %s\nup should be: BHGEGGFC", outputUp)
+	}
+}
+
+//                     - represents a non-walkable edge
+// A                   = represents a walkable edge
+// |===B-------\       A should not be visited because it's the root node.
+//     |       |       B -> D should not be walked.
+//     |===C===D===E   B -> C -> D -> E should be walked
+func TestWalkDepsDuplicates_IgnoreFirstPath(t *testing.T) {
+	ctx := NewContext()
+	ctx.MockFileSystem(map[string][]byte{
+		"Blueprints": []byte(`
+			foo_module {
+			    name: "A",
+			    deps: ["B"],
+			}
+
+			foo_module {
+			    name: "B",
+			    deps: ["C"],
+			    ignored_deps: ["D"],
+			}
+
+			foo_module {
+			    name: "C",
+			    deps: ["D"],
+			}
+
+			foo_module {
+			    name: "D",
+			    deps: ["E"],
+			}
+
+			foo_module {
+			    name: "E",
+			}
+		`),
+	})
+
+	ctx.RegisterModuleType("foo_module", newFooModule)
+	ctx.RegisterModuleType("bar_module", newBarModule)
+	ctx.RegisterBottomUpMutator("deps", depsMutator)
+	_, errs := ctx.ParseBlueprintsFiles("Blueprints", nil)
+	if len(errs) > 0 {
+		t.Errorf("unexpected parse errors:")
+		for _, err := range errs {
+			t.Errorf("  %s", err)
+		}
+		t.FailNow()
+	}
+
+	_, errs = ctx.ResolveDependencies(nil)
+	if len(errs) > 0 {
+		t.Errorf("unexpected dep errors:")
+		for _, err := range errs {
+			t.Errorf("  %s", err)
+		}
+		t.FailNow()
+	}
+
+	topModule := ctx.moduleGroupFromName("A", nil).modules[0]
+	outputDown, outputUp := walkDependencyGraph(ctx, topModule, true)
+	expectedDown := "BDCDE"
+	if outputDown != expectedDown {
+		t.Errorf("unexpected walkDeps behaviour: %s\ndown should be: %s", outputDown, expectedDown)
+	}
+	expectedUp := "DEDCB"
+	if outputUp != expectedUp {
+		t.Errorf("unexpected walkDeps behaviour: %s\nup should be: %s", outputUp, expectedUp)
 	}
 }
 
@@ -312,7 +410,7 @@ func TestCreateModule(t *testing.T) {
 	})
 
 	ctx.RegisterTopDownMutator("create", createTestMutator)
-	ctx.RegisterBottomUpMutator("deps", blueprintDepsMutator)
+	ctx.RegisterBottomUpMutator("deps", depsMutator)
 
 	ctx.RegisterModuleType("foo_module", newFooModule)
 	ctx.RegisterModuleType("bar_module", newBarModule)
