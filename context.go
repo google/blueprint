@@ -2619,8 +2619,8 @@ func (c *Context) walkDeps(topModule *moduleInfo, allowDuplicates bool,
 				}
 				if recurse && !visited[dep.module] {
 					walk(dep.module)
+					visited[dep.module] = true
 				}
-				visited[dep.module] = true
 				if visitUp != nil {
 					visitUp(dep, module)
 				}
