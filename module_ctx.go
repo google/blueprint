@@ -17,6 +17,7 @@ package blueprint
 import (
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"sync"
 	"text/scanner"
 
@@ -843,6 +844,17 @@ type BaseDependencyTag struct {
 }
 
 func (BaseDependencyTag) dependencyTag(DependencyTag) {
+}
+
+// A regexp for removing boilerplate from BaseDependencyTag from the string representation of
+// a dependency tag.
+var tagCleaner = regexp.MustCompile(`\QBaseDependencyTag:blueprint.BaseDependencyTag{}\E(, )?`)
+
+func (t BaseDependencyTag) String() string {
+	// Get string representation of tag without the boilerplate from BaseDependencyTag.
+	tagString := fmt.Sprintf("%#v", t)
+	tagString = tagCleaner.ReplaceAllString(tagString, "")
+	return tagString
 }
 
 var _ DependencyTag = BaseDependencyTag{}
