@@ -36,6 +36,7 @@ func init() {
 	flag.Var(targetedModules, "m", "comma or whitespace separated list of modules on which to operate")
 	flag.Var(addIdents, "a", "comma or whitespace separated list of identifiers to add")
 	flag.Var(removeIdents, "r", "comma or whitespace separated list of identifiers to remove")
+	flag.Usage = usage
 }
 
 var (
@@ -48,9 +49,8 @@ func report(err error) {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: bpmodify [flags] [path ...]")
+	fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [flags] [path ...]\n", os.Args[0])
 	flag.PrintDefaults()
-	os.Exit(2)
 }
 
 // If in == nil, the source is the contents of the file with the given filename.
@@ -223,12 +223,18 @@ func walkDir(path string) {
 }
 
 func main() {
+	defer func() {
+		if err := recover(); err != nil {
+			report(fmt.Errorf("error: %s", err))
+		}
+		os.Exit(exitCode)
+	}()
+
 	flag.Parse()
 
 	if flag.NArg() == 0 {
 		if *write {
-			fmt.Fprintln(os.Stderr, "error: cannot use -w with standard input")
-			exitCode = 2
+			report(fmt.Errorf("error: cannot use -w with standard input"))
 			return
 		}
 		if err := processFile("<standard input>", os.Stdin, os.Stdout); err != nil {

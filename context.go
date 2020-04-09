@@ -1548,6 +1548,11 @@ func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName s
 		return nil
 	}
 
+	if c.allowMissingDependencies {
+		// Allow missing variants.
+		return c.discoveredMissingDependencies(module, depName+c.prettyPrintVariant(module.dependencyVariant))
+	}
+
 	return []error{&BlueprintError{
 		Err: fmt.Errorf("dependency %q of %q missing variant:\n  %s\navailable variants:\n  %s",
 			depName, module.Name(),
@@ -1576,6 +1581,11 @@ func (c *Context) findReverseDependency(module *moduleInfo, destName string) (*m
 
 	if m := c.findMatchingVariant(module, possibleDeps, true); m != nil {
 		return m, nil
+	}
+
+	if c.allowMissingDependencies {
+		// Allow missing variants.
+		return module, c.discoveredMissingDependencies(module, destName+c.prettyPrintVariant(module.dependencyVariant))
 	}
 
 	return nil, []error{&BlueprintError{
@@ -1638,6 +1648,10 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 	}
 
 	if foundDep == nil {
+		if c.allowMissingDependencies {
+			// Allow missing variants.
+			return c.discoveredMissingDependencies(module, depName+c.prettyPrintVariant(newVariant))
+		}
 		return []error{&BlueprintError{
 			Err: fmt.Errorf("dependency %q of %q missing variant:\n  %s\navailable variants:\n  %s",
 				depName, module.Name(),
@@ -2198,7 +2212,7 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 			newVariationsCh <- mctx.newVariations
 		}
 
-		if len(mctx.reverseDeps) > 0 || len(mctx.replace) > 0 || len(mctx.rename) > 0 || len(mctx.newModules) > 0 {
+		if len(mctx.reverseDeps) > 0 || len(mctx.replace) > 0 || len(mctx.rename) > 0 || len(mctx.newModules) > 0 || len(mctx.ninjaFileDeps) > 0 {
 			globalStateCh <- globalStateChange{
 				reverse:    mctx.reverseDeps,
 				replace:    mctx.replace,
@@ -2605,8 +2619,8 @@ func (c *Context) walkDeps(topModule *moduleInfo, allowDuplicates bool,
 				}
 				if recurse && !visited[dep.module] {
 					walk(dep.module)
+					visited[dep.module] = true
 				}
-				visited[dep.module] = true
 				if visitUp != nil {
 					visitUp(dep, module)
 				}
