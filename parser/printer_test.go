@@ -361,6 +361,73 @@ test { // test
 }
 `,
 	},
+	{
+		input: `
+// test
+stuff {
+    namespace: "google",
+    string_vars: [
+      {
+          var: "one",
+          values: [ "one_a", "one_b",],
+      },
+      {
+          var: "two",
+          values: [ "two_a", "two_b", ],
+      },
+    ],
+}`,
+		output: `
+// test
+stuff {
+    namespace: "google",
+    string_vars: [
+        {
+            var: "one",
+            values: [
+                "one_a",
+                "one_b",
+            ],
+        },
+        {
+            var: "two",
+            values: [
+                "two_a",
+                "two_b",
+            ],
+        },
+    ],
+}
+`,
+	},
+	{
+		input: `
+// test
+stuff {
+    namespace: "google",
+    list_of_lists: [
+        [ "a", "b" ],
+        [ "c", "d" ],
+    ],
+}
+`,
+		output: `
+// test
+stuff {
+    namespace: "google",
+    list_of_lists: [
+        [
+            "a",
+            "b",
+        ],
+        [
+            "c",
+            "d",
+        ],
+    ],
+}
+`,
+	},
 }
 
 func TestPrinter(t *testing.T) {
