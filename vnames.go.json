@@ -1,9 +1,0 @@
-[
-    {
-        "pattern": "(.*)",
-        "vname": {
-            "corpus": "android.googlesource.com/platform/superproject",
-            "path": "build/blueprint/@1@"
-        }
-    }
-]

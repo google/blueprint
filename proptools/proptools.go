@@ -121,3 +121,7 @@ func isStruct(t reflect.Type) bool {
 func isStructPtr(t reflect.Type) bool {
 	return t.Kind() == reflect.Ptr && t.Elem().Kind() == reflect.Struct
 }
+
+func isSlice(t reflect.Type) bool {
+	return t.Kind() == reflect.Slice
+}
