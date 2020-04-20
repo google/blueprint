@@ -183,6 +183,12 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	var f *os.File
 	var buf *bufio.Writer
 
+	if emptyNinjaFile {
+		if err := ioutil.WriteFile(absolutePath(outFile), []byte(nil), outFilePermissions); err != nil {
+			fatalf("error writing empty Ninja file: %s", err)
+		}
+	}
+
 	if stage != StageMain || !emptyNinjaFile {
 		f, err = os.OpenFile(absolutePath(outFile), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, outFilePermissions)
 		if err != nil {
