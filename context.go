@@ -218,7 +218,16 @@ type depInfo struct {
 }
 
 func (module *moduleInfo) Name() string {
-	return module.group.name
+	// If this is called from a LoadHook (which is run before the module has been registered)
+	// then group will not be set and so the name is retrieved from logicModule.Name().
+	// Usually, using that method is not safe as it does not track renames (group.name does).
+	// However, when called from LoadHook it is safe as there is no way to rename a module
+	// until after the LoadHook has run and the module has been registered.
+	if module.group != nil {
+		return module.group.name
+	} else {
+		return module.logicModule.Name()
+	}
 }
 
 func (module *moduleInfo) String() string {
@@ -683,14 +692,18 @@ func (c *Context) ParseFileList(rootDir string, filePaths []string,
 		var scopedModuleFactories map[string]ModuleFactory
 
 		var addModule func(module *moduleInfo) []error
-		addModule = func(module *moduleInfo) (errs []error) {
-			moduleCh <- newModuleInfo{module, addedCh}
-			<-addedCh
-			var newModules []*moduleInfo
-			newModules, errs = runAndRemoveLoadHooks(c, config, module, &scopedModuleFactories)
+		addModule = func(module *moduleInfo) ([]error) {
+			// Run any load hooks immediately before it is sent to the moduleCh and is
+			// registered by name. This allows load hooks to set and/or modify any aspect
+			// of the module (including names) using information that is not available when
+			// the module factory is called.
+			newModules, errs := runAndRemoveLoadHooks(c, config, module, &scopedModuleFactories)
 			if len(errs) > 0 {
 				return errs
 			}
+
+			moduleCh <- newModuleInfo{module, addedCh}
+			<-addedCh
 			for _, n := range newModules {
 				errs = addModule(n)
 				if len(errs) > 0 {
