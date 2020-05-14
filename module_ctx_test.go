@@ -195,3 +195,89 @@ func TestAliases(t *testing.T) {
 			"\n  1:a, 2:a\n  1:a, 2:b\n  1:b, 2:a\n  1:b, 2:b")
 	})
 }
+
+func expectedErrors(t *testing.T, errs []error, expectedMessages ...string) {
+	t.Helper()
+	if len(errs) != len(expectedMessages) {
+		t.Errorf("expected %d error, found: %q", len(expectedMessages), errs)
+	} else {
+		for i, expected := range expectedMessages {
+			err := errs[i]
+			if err.Error() != expected {
+				t.Errorf("expected error %q found %q", expected, err)
+			}
+		}
+	}
+}
+
+func TestCheckBlueprintSyntax(t *testing.T) {
+	factories := map[string]ModuleFactory{
+		"test": newModuleCtxTestModule,
+	}
+
+	t.Run("valid", func(t *testing.T) {
+		errs := CheckBlueprintSyntax(factories, "path/Blueprint", `
+test {
+	name: "test",
+}
+`)
+		expectedErrors(t, errs)
+	})
+
+	t.Run("syntax error", func(t *testing.T) {
+		errs := CheckBlueprintSyntax(factories, "path/Blueprint", `
+test {
+	name: "test",
+
+`)
+
+		expectedErrors(t, errs, `path/Blueprint:5:1: expected "}", found EOF`)
+	})
+
+	t.Run("unknown module type", func(t *testing.T) {
+		errs := CheckBlueprintSyntax(factories, "path/Blueprint", `
+test2 {
+	name: "test",
+}
+`)
+
+		expectedErrors(t, errs, `path/Blueprint:2:1: unrecognized module type "test2"`)
+	})
+
+	t.Run("unknown property name", func(t *testing.T) {
+		errs := CheckBlueprintSyntax(factories, "path/Blueprint", `
+test {
+	nam: "test",
+}
+`)
+
+		expectedErrors(t, errs, `path/Blueprint:3:5: unrecognized property "nam"`)
+	})
+
+	t.Run("invalid property type", func(t *testing.T) {
+		errs := CheckBlueprintSyntax(factories, "path/Blueprint", `
+test {
+	name: false,
+}
+`)
+
+		expectedErrors(t, errs, `path/Blueprint:3:8: can't assign bool value to string property "name"`)
+	})
+
+	t.Run("multiple failures", func(t *testing.T) {
+		errs := CheckBlueprintSyntax(factories, "path/Blueprint", `
+test {
+	name: false,
+}
+
+test2 {
+	name: false,
+}
+`)
+
+		expectedErrors(t, errs,
+			`path/Blueprint:3:8: can't assign bool value to string property "name"`,
+			`path/Blueprint:6:1: unrecognized module type "test2"`,
+		)
+	})
+}
