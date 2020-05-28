@@ -147,10 +147,6 @@ type SingletonContext interface {
 	// Fs returns a pathtools.Filesystem that can be used to interact with files.  Using the Filesystem interface allows
 	// the singleton to be used in build system tests that run against a mock filesystem.
 	Fs() pathtools.FileSystem
-
-	// ModuleListFile returns a string representation of the path to the file
-	// which lists blueprint files to parse.
-	ModuleListFile() string
 }
 
 var _ SingletonContext = (*singletonContext)(nil)
@@ -353,8 +349,4 @@ func (s *singletonContext) GlobWithDeps(pattern string,
 
 func (s *singletonContext) Fs() pathtools.FileSystem {
 	return s.context.fs
-}
-
-func (s *singletonContext) ModuleListFile() string {
-	return s.context.moduleListFile
 }
