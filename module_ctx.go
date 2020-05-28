@@ -275,6 +275,19 @@ type BaseModuleContext interface {
 	// OtherModuleExists returns true if a module with the specified name exists, as determined by the NameInterface
 	// passed to Context.SetNameInterface, or SimpleNameInterface if it was not called.
 	OtherModuleExists(name string) bool
+
+	// OtherModuleDependencyVariantExists returns true if a module with the
+	// specified name and variant exists. The variant must match the given
+	// variations. It must also match all the non-local variations of the current
+	// module. In other words, it checks for the module AddVariationDependencies
+	// would add a dependency on with the same arguments.
+	OtherModuleDependencyVariantExists(variations []Variation, name string) bool
+
+	// OtherModuleReverseDependencyVariantExists returns true if a module with the
+	// specified name exists with the same variations as the current module. In
+	// other words, it checks for the module AddReverseDependency would add a
+	// dependency on with the same argument.
+	OtherModuleReverseDependencyVariantExists(name string) bool
 }
 
 type DynamicDependerModuleContext BottomUpMutatorContext
@@ -490,6 +503,24 @@ func (m *baseModuleContext) OtherModuleDependencyTag(logicModule Module) Depende
 func (m *baseModuleContext) OtherModuleExists(name string) bool {
 	_, exists := m.context.nameInterface.ModuleFromName(name, m.module.namespace())
 	return exists
+}
+
+func (m *baseModuleContext) OtherModuleDependencyVariantExists(variations []Variation, name string) bool {
+	possibleDeps := m.context.moduleGroupFromName(name, m.module.namespace())
+	if possibleDeps == nil {
+		return false
+	}
+	found, _ := m.context.findVariant(m.module, possibleDeps, variations, false, false)
+	return found != nil
+}
+
+func (m *baseModuleContext) OtherModuleReverseDependencyVariantExists(name string) bool {
+	possibleDeps := m.context.moduleGroupFromName(name, m.module.namespace())
+	if possibleDeps == nil {
+		return false
+	}
+	found, _ := m.context.findVariant(m.module, possibleDeps, nil, false, true)
+	return found != nil
 }
 
 func (m *baseModuleContext) GetDirectDep(name string) (Module, DependencyTag) {

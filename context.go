@@ -1610,23 +1610,20 @@ func (c *Context) findReverseDependency(module *moduleInfo, destName string) (*m
 	}}
 }
 
-func (c *Context) addVariationDependency(module *moduleInfo, variations []Variation,
-	tag DependencyTag, depName string, far bool) []error {
-	if _, ok := tag.(BaseDependencyTag); ok {
-		panic("BaseDependencyTag is not allowed to be used directly!")
-	}
-
-	possibleDeps := c.moduleGroupFromName(depName, module.namespace())
-	if possibleDeps == nil {
-		return c.discoveredMissingDependencies(module, depName)
-	}
-
+func (c *Context) findVariant(module *moduleInfo, possibleDeps *moduleGroup, variations []Variation, far bool, reverse bool) (*moduleInfo, variationMap) {
 	// We can't just append variant.Variant to module.dependencyVariants.variantName and
 	// compare the strings because the result won't be in mutator registration order.
 	// Create a new map instead, and then deep compare the maps.
 	var newVariant variationMap
 	if !far {
-		newVariant = module.dependencyVariant.clone()
+		if !reverse {
+			// For forward dependency, ignore local variants by matching against
+			// dependencyVariant which doesn't have the local variants
+			newVariant = module.dependencyVariant.clone()
+		} else {
+			// For reverse dependency, use all the variants
+			newVariant = module.variant.clone()
+		}
 	}
 	for _, v := range variations {
 		if newVariant == nil {
@@ -1659,6 +1656,22 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 			}
 		}
 	}
+
+	return foundDep, newVariant
+}
+
+func (c *Context) addVariationDependency(module *moduleInfo, variations []Variation,
+	tag DependencyTag, depName string, far bool) []error {
+	if _, ok := tag.(BaseDependencyTag); ok {
+		panic("BaseDependencyTag is not allowed to be used directly!")
+	}
+
+	possibleDeps := c.moduleGroupFromName(depName, module.namespace())
+	if possibleDeps == nil {
+		return c.discoveredMissingDependencies(module, depName)
+	}
+
+	foundDep, newVariant := c.findVariant(module, possibleDeps, variations, far, false)
 
 	if foundDep == nil {
 		if c.allowMissingDependencies {
