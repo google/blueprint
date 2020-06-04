@@ -41,10 +41,10 @@ var (
 	traceFile      string
 	runGoTests     bool
 	noGC           bool
-	moduleListFile string
 	emptyNinjaFile bool
 
 	BuildDir      string
+	ModuleListFile string
 	NinjaBuildDir string
 	SrcDir        string
 
@@ -105,9 +105,9 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	}
 
 	SrcDir = filepath.Dir(flag.Arg(0))
-	if moduleListFile != "" {
-		ctx.SetModuleListFile(moduleListFile)
-		extraNinjaFileDeps = append(extraNinjaFileDeps, moduleListFile)
+	if ModuleListFile != "" {
+		ctx.SetModuleListFile(ModuleListFile)
+		extraNinjaFileDeps = append(extraNinjaFileDeps, ModuleListFile)
 	} else {
 		fatalf("-l <moduleListFile> is required and must be nonempty")
 	}
@@ -133,7 +133,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		topLevelBlueprintsFile: flag.Arg(0),
 		emptyNinjaFile:         emptyNinjaFile,
 		runGoTests:             runGoTests,
-		moduleListFile:         moduleListFile,
+		moduleListFile:         ModuleListFile,
 	}
 
 	ctx.RegisterBottomUpMutator("bootstrap_plugin_deps", pluginDeps)
