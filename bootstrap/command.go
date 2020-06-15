@@ -42,13 +42,11 @@ var (
 	runGoTests     bool
 	noGC           bool
 	emptyNinjaFile bool
-
-	BuildDir      string
+	BuildDir       string
 	ModuleListFile string
-	NinjaBuildDir string
-	SrcDir        string
-
-	absSrcDir string
+	NinjaBuildDir  string
+	SrcDir         string
+	absSrcDir      string
 )
 
 func init() {
