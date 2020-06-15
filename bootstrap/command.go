@@ -41,14 +41,12 @@ var (
 	traceFile      string
 	runGoTests     bool
 	noGC           bool
-	moduleListFile string
 	emptyNinjaFile bool
-
-	BuildDir      string
-	NinjaBuildDir string
-	SrcDir        string
-
-	absSrcDir string
+	BuildDir       string
+	ModuleListFile string
+	NinjaBuildDir  string
+	SrcDir         string
+	absSrcDir      string
 )
 
 func init() {
@@ -63,7 +61,7 @@ func init() {
 	flag.StringVar(&memprofile, "memprofile", "", "write memory profile to file")
 	flag.BoolVar(&noGC, "nogc", false, "turn off GC for debugging")
 	flag.BoolVar(&runGoTests, "t", false, "build and run go tests during bootstrap")
-	flag.StringVar(&moduleListFile, "l", "", "file that lists filepaths to parse")
+	flag.StringVar(&ModuleListFile, "l", "", "file that lists filepaths to parse")
 	flag.BoolVar(&emptyNinjaFile, "empty-ninja-file", false, "write out a 0-byte ninja file")
 }
 
@@ -105,9 +103,9 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	}
 
 	SrcDir = filepath.Dir(flag.Arg(0))
-	if moduleListFile != "" {
-		ctx.SetModuleListFile(moduleListFile)
-		extraNinjaFileDeps = append(extraNinjaFileDeps, moduleListFile)
+	if ModuleListFile != "" {
+		ctx.SetModuleListFile(ModuleListFile)
+		extraNinjaFileDeps = append(extraNinjaFileDeps, ModuleListFile)
 	} else {
 		fatalf("-l <moduleListFile> is required and must be nonempty")
 	}
@@ -133,7 +131,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		topLevelBlueprintsFile: flag.Arg(0),
 		emptyNinjaFile:         emptyNinjaFile,
 		runGoTests:             runGoTests,
-		moduleListFile:         moduleListFile,
+		moduleListFile:         ModuleListFile,
 	}
 
 	ctx.RegisterBottomUpMutator("bootstrap_plugin_deps", pluginDeps)
