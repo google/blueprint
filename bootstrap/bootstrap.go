@@ -333,11 +333,13 @@ func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
 		testSrcs = append(g.properties.TestSrcs, g.properties.Linux.TestSrcs...)
 	}
 
-	testArchiveFile := filepath.Join(testRoot(ctx, g.config),
-		filepath.FromSlash(g.properties.PkgPath)+".a")
-	g.testResultFile = buildGoTest(ctx, testRoot(ctx, g.config), testArchiveFile,
-		g.properties.PkgPath, srcs, genSrcs,
-		testSrcs)
+	if g.config.runGoTests {
+		testArchiveFile := filepath.Join(testRoot(ctx, g.config),
+			filepath.FromSlash(g.properties.PkgPath)+".a")
+		g.testResultFile = buildGoTest(ctx, testRoot(ctx, g.config), testArchiveFile,
+			g.properties.PkgPath, srcs, genSrcs,
+			testSrcs)
+	}
 
 	buildGoPackage(ctx, g.pkgRoot, g.properties.PkgPath, g.archiveFile,
 		srcs, genSrcs)
@@ -434,10 +436,9 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 		testSrcs = append(g.properties.TestSrcs, g.properties.Linux.TestSrcs...)
 	}
 
-	testDeps := buildGoTest(ctx, testRoot(ctx, g.config), testArchiveFile,
-		name, srcs, genSrcs, testSrcs)
 	if g.config.runGoTests {
-		deps = append(deps, testDeps...)
+		deps = buildGoTest(ctx, testRoot(ctx, g.config), testArchiveFile,
+			name, srcs, genSrcs, testSrcs)
 	}
 
 	buildGoPackage(ctx, objDir, "main", archiveFile, srcs, genSrcs)
@@ -450,9 +451,7 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 			linkDeps = append(linkDeps, dep.GoPackageTarget())
 			libDir := dep.GoPkgRoot()
 			libDirFlags = append(libDirFlags, "-L "+libDir)
-			if g.config.runGoTests {
-				deps = append(deps, dep.GoTestTargets()...)
-			}
+			deps = append(deps, dep.GoTestTargets()...)
 		})
 
 	linkArgs := map[string]string{}
@@ -636,22 +635,17 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	var primaryBuilders []*goBinary
 	// blueprintTools contains blueprint go binaries that will be built in StageMain
 	var blueprintTools []string
-	// blueprintTests contains the result files from the tests
-	var blueprintTests []string
-	ctx.VisitAllModules(func(module blueprint.Module) {
-		if binaryModule, ok := module.(*goBinary); ok {
+	ctx.VisitAllModulesIf(isBootstrapBinaryModule,
+		func(module blueprint.Module) {
+			binaryModule := module.(*goBinary)
+
 			if binaryModule.properties.Tool_dir {
 				blueprintTools = append(blueprintTools, binaryModule.InstallPath())
 			}
 			if binaryModule.properties.PrimaryBuilder {
 				primaryBuilders = append(primaryBuilders, binaryModule)
 			}
-		}
-
-		if packageModule, ok := module.(goPackageProducer); ok {
-			blueprintTests = append(blueprintTests, packageModule.GoTestTargets()...)
-		}
-	})
+		})
 
 	var extraSharedFlagArray []string
 	if s.config.runGoTests {
@@ -765,14 +759,6 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 			Outputs: []string{"blueprint_tools"},
 			Inputs:  blueprintTools,
 		})
-
-		// Add a phony target for running all of the tests
-		ctx.Build(pctx, blueprint.BuildParams{
-			Rule:    blueprint.Phony,
-			Outputs: []string{"blueprint_tests"},
-			Inputs:  blueprintTests,
-		})
-
 	}
 }
 
