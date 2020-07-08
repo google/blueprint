@@ -2658,7 +2658,8 @@ func (c *Context) walkDeps(topModule *moduleInfo, allowDuplicates bool,
 }
 
 type replace struct {
-	from, to *moduleInfo
+	from, to  *moduleInfo
+	predicate ReplaceDependencyPredicate
 }
 
 type rename struct {
@@ -2704,18 +2705,25 @@ func (c *Context) handleRenames(renames []rename) []error {
 
 func (c *Context) handleReplacements(replacements []replace) []error {
 	var errs []error
+	changedDeps := false
 	for _, replace := range replacements {
 		for _, m := range replace.from.reverseDeps {
 			for i, d := range m.directDeps {
 				if d.module == replace.from {
-					m.directDeps[i].module = replace.to
+					// If the replacement has a predicate then check it.
+					if replace.predicate == nil || replace.predicate(m.logicModule, d.tag, d.module.logicModule) {
+						m.directDeps[i].module = replace.to
+						changedDeps = true
+					}
 				}
 			}
 		}
 
-		atomic.AddUint32(&c.depsModified, 1)
 	}
 
+	if changedDeps {
+		atomic.AddUint32(&c.depsModified, 1)
+	}
 	return errs
 }
 
