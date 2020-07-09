@@ -217,6 +217,14 @@ type depInfo struct {
 	tag    DependencyTag
 }
 
+func (c *Context) LogicModules() []Module {
+	modules := []Module{}
+	for k, _ := range c.moduleInfo {
+		modules = append(modules, k)
+	}
+	return modules
+}
+
 func (module *moduleInfo) Name() string {
 	// If this is called from a LoadHook (which is run before the module has been registered)
 	// then group will not be set and so the name is retrieved from logicModule.Name().
@@ -3069,6 +3077,32 @@ func (c *Context) ModuleType(logicModule Module) string {
 func (c *Context) BlueprintFile(logicModule Module) string {
 	module := c.moduleInfo[logicModule]
 	return module.relBlueprintsFile
+}
+
+func (c *Context) TargetNameWithVariant(logicModule Module) string {
+	name := ""
+	if c.ModuleSubDir(logicModule) != "" {
+		name = c.ModuleName(logicModule) + "--" + c.ModuleSubDir(logicModule)
+	} else {
+		name = c.ModuleName(logicModule)
+	}
+
+	return strings.Replace(name, "//", "", 1)
+}
+
+func (c *Context) QualifiedTargetLabel(logicModule Module) string {
+	packagePathParts := strings.Split(c.BlueprintFile(logicModule), "/")
+	packagePath := strings.Join(packagePathParts[:len(packagePathParts)-1], "/")
+
+	return "//" + packagePath + ":" + c.TargetNameWithVariant(logicModule)
+}
+
+func (c *Context) DirectDeps(logicModule Module) []Module {
+	directDeps := []Module{}
+	for _, depInfo := range c.moduleInfo[logicModule].directDeps {
+		directDeps = append(directDeps, depInfo.module.logicModule)
+	}
+	return directDeps
 }
 
 func (c *Context) ModuleErrorf(logicModule Module, format string,
