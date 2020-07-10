@@ -107,5 +107,6 @@ type Config struct {
 
 	emptyNinjaFile bool
 	runGoTests     bool
+	useValidations bool
 	moduleListFile string
 }
