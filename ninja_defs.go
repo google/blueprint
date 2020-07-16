@@ -87,6 +87,7 @@ type BuildParams struct {
 	Inputs          []string          // The list of explicit input dependencies.
 	Implicits       []string          // The list of implicit input dependencies.
 	OrderOnly       []string          // The list of order-only dependencies.
+	Validations     []string          // The list of validations to run when this rule runs.
 	Args            map[string]string // The variable/value pairs to set.
 	Optional        bool              // Skip outputting a default statement
 }
@@ -257,6 +258,7 @@ type buildDef struct {
 	Inputs          []ninjaString
 	Implicits       []ninjaString
 	OrderOnly       []ninjaString
+	Validations     []ninjaString
 	Args            map[Variable]ninjaString
 	Variables       map[string]ninjaString
 	Optional        bool
@@ -312,6 +314,11 @@ func parseBuildParams(scope scope, params *BuildParams) (*buildDef,
 	b.OrderOnly, err = parseNinjaStrings(scope, params.OrderOnly)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing OrderOnly param: %s", err)
+	}
+
+	b.Validations, err = parseNinjaStrings(scope, params.Validations)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing Validations param: %s", err)
 	}
 
 	b.Optional = params.Optional
@@ -373,6 +380,7 @@ func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*packageContext]string)
 		explicitDeps  = valueList(b.Inputs, pkgNames, inputEscaper)
 		implicitDeps  = valueList(b.Implicits, pkgNames, inputEscaper)
 		orderOnlyDeps = valueList(b.OrderOnly, pkgNames, inputEscaper)
+		validations   = valueList(b.Validations, pkgNames, inputEscaper)
 	)
 
 	if b.RuleDef != nil {
@@ -380,7 +388,7 @@ func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*packageContext]string)
 		orderOnlyDeps = append(valueList(b.RuleDef.CommandOrderOnly, pkgNames, inputEscaper), orderOnlyDeps...)
 	}
 
-	err := nw.Build(comment, rule, outputs, implicitOuts, explicitDeps, implicitDeps, orderOnlyDeps)
+	err := nw.Build(comment, rule, outputs, implicitOuts, explicitDeps, implicitDeps, orderOnlyDeps, validations)
 	if err != nil {
 		return err
 	}
