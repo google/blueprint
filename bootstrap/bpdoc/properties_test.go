@@ -28,8 +28,11 @@ func TestExcludeByTag(t *testing.T) {
 
 	ps.ExcludeByTag("tag1", "a")
 
-	expected := []string{"c", "d", "g"}
-	actual := actualProperties(t, ps.Properties)
+	expected := []string{"c"}
+	actual := []string{}
+	for _, p := range ps.Properties {
+		actual = append(actual, p.Name)
+	}
 	if !reflect.DeepEqual(expected, actual) {
 		t.Errorf("unexpected ExcludeByTag result, expected: %q, actual: %q", expected, actual)
 	}
@@ -44,20 +47,12 @@ func TestIncludeByTag(t *testing.T) {
 
 	ps.IncludeByTag("tag1", "c")
 
-	expected := []string{"b", "c", "d", "f", "g"}
-	actual := actualProperties(t, ps.Properties)
+	expected := []string{"b", "c"}
+	actual := []string{}
+	for _, p := range ps.Properties {
+		actual = append(actual, p.Name)
+	}
 	if !reflect.DeepEqual(expected, actual) {
 		t.Errorf("unexpected IncludeByTag result, expected: %q, actual: %q", expected, actual)
 	}
-}
-
-func actualProperties(t *testing.T, props []Property) []string {
-	t.Helper()
-
-	actual := []string{}
-	for _, p := range props {
-		actual = append(actual, p.Name)
-		actual = append(actual, actualProperties(t, p.Properties)...)
-	}
-	return actual
 }

@@ -251,7 +251,6 @@ func filterPropsByTag(props *[]Property, key, value string, exclude bool) {
 	filtered := (*props)[:0]
 	for _, x := range *props {
 		if hasTag(x.Tag, key, value) == !exclude {
-			// filterPropsByTag(&x.Properties, key, value, exclude)
 			filtered = append(filtered, x)
 		}
 	}
