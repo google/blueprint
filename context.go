@@ -3047,13 +3047,8 @@ func (c *Context) ModuleName(logicModule Module) string {
 	return module.Name()
 }
 
-func (c *Context) ModulePath(logicModule Module) string {
-	module := c.moduleInfo[logicModule]
-	return module.relBlueprintsFile
-}
-
 func (c *Context) ModuleDir(logicModule Module) string {
-	return filepath.Dir(c.ModulePath(logicModule))
+	return filepath.Dir(c.BlueprintFile(logicModule))
 }
 
 func (c *Context) ModuleSubDir(logicModule Module) string {
