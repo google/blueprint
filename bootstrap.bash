@@ -67,12 +67,14 @@ usage() {
     echo "  -h: print a help message and exit"
     echo "  -b <builddir>: set the build directory"
     echo "  -t: run tests"
+    echo "  -n: use validations to depend on tests"
 }
 
 # Parse the command line flags.
-while getopts ":b:ht" opt; do
+while getopts ":b:hnt" opt; do
     case $opt in
         b) BUILDDIR="$OPTARG";;
+        n) USE_VALIDATIONS=true;;
         t) RUN_TESTS=true;;
         h)
             usage
@@ -92,6 +94,9 @@ done
 
 # If RUN_TESTS is set, behave like -t was passed in as an option.
 [ ! -z "$RUN_TESTS" ] && EXTRA_ARGS="${EXTRA_ARGS} -t"
+
+# If $USE_VALIDATIONS is set, pass --use-validations.
+[ ! -z "$USE_VALIDATIONS" ] && EXTRA_ARGS="${EXTRA_ARGS} --use-validations"
 
 # If EMPTY_NINJA_FILE is set, have the primary build write out a 0-byte ninja
 # file instead of a full length one. Useful if you don't plan on executing the
