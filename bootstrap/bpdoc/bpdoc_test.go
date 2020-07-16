@@ -44,3 +44,34 @@ func TestNestedPropertyStructs(t *testing.T) {
 		}
 	}
 }
+
+func TestAllModules(t *testing.T) {
+	packages, err := AllPackages(pkgFiles, moduleTypeNameFactories, moduleTypeNamePropertyStructs)
+	if err != nil {
+		t.Fatalf("expected no errors, got %s", err)
+	}
+
+	if numPackages := len(packages); numPackages != 1 {
+		t.Fatalf("Expected 1 package, got %q", numPackages)
+	}
+
+	p := packages[0]
+
+	for _, m := range p.ModuleTypes {
+		for _, p := range m.PropertyStructs {
+			noMutatedProperties(t, p.Properties)
+		}
+	}
+
+}
+
+func noMutatedProperties(t *testing.T, properties []Property) {
+	t.Helper()
+
+	for _, p := range properties {
+		if hasTag(p.Tag, "blueprint", "mutated") {
+			t.Errorf("Property %s has `blueprint:\"mutated\" tag but should have been excluded.", p)
+		}
+		noMutatedProperties(t, p.Properties)
+	}
+}

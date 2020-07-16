@@ -16,6 +16,7 @@
 package bpdoc
 
 import (
+	"html/template"
 	"reflect"
 	"runtime"
 	"testing"
@@ -23,9 +24,27 @@ import (
 	"github.com/google/blueprint"
 )
 
+type factoryFn func() (blueprint.Module, []interface{})
+
 // foo docs.
 func fooFactory() (blueprint.Module, []interface{}) {
 	return nil, []interface{}{&props{}}
+}
+
+// bar docs.
+func barFactory() (blueprint.Module, []interface{}) {
+	return nil, []interface{}{&complexProps{}}
+}
+
+// for bpdoc_test.go
+type complexProps struct {
+	A         string
+	B_mutated string `blueprint:"mutated"`
+
+	Nested struct {
+		C         string
+		D_mutated string `blueprint:"mutated"`
+	}
 }
 
 // props docs.
@@ -39,10 +58,18 @@ type tagTestProps struct {
 	A string `tag1:"a,b" tag2:"c"`
 	B string `tag1:"a,c"`
 	C string `tag1:"b,c"`
+
+	D struct {
+		E string `tag1:"a,b" tag2:"c"`
+		F string `tag1:"a,c"`
+		G string `tag1:"b,c"`
+	} `tag1:"b,c"`
 }
 
 var pkgPath string
 var pkgFiles map[string][]string
+var moduleTypeNameFactories map[string]reflect.Value
+var moduleTypeNamePropertyStructs map[string][]interface{}
 
 func init() {
 	pc, filename, _, _ := runtime.Caller(0)
@@ -57,21 +84,34 @@ func init() {
 	pkgFiles = map[string][]string{
 		pkgPath: {filename},
 	}
+
+	factories := map[string]factoryFn{"foo": fooFactory, "bar": barFactory}
+
+	moduleTypeNameFactories = make(map[string]reflect.Value, len(factories))
+	moduleTypeNamePropertyStructs = make(map[string][]interface{}, len(factories))
+	for name, factory := range factories {
+		moduleTypeNameFactories[name] = reflect.ValueOf(factory)
+		_, structs := factory()
+		moduleTypeNamePropertyStructs[name] = structs
+	}
 }
 
 func TestModuleTypeDocs(t *testing.T) {
 	r := NewReader(pkgFiles)
-	mt, err := r.ModuleType("foo_module", reflect.ValueOf(fooFactory))
-	if err != nil {
-		t.Fatal(err)
-	}
+	for m := range moduleTypeNameFactories {
+		mt, err := r.ModuleType(m+"_module", moduleTypeNameFactories[m])
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	if mt.Text != "foo docs.\n\n" {
-		t.Errorf("unexpected docs %q", mt.Text)
-	}
+		expectedText := template.HTML(m + " docs.\n\n")
+		if mt.Text != expectedText {
+			t.Errorf("unexpected docs %q", mt.Text)
+		}
 
-	if mt.PkgPath != pkgPath {
-		t.Errorf("expected pkgpath %q, got %q", pkgPath, mt.PkgPath)
+		if mt.PkgPath != pkgPath {
+			t.Errorf("expected pkgpath %q, got %q", pkgPath, mt.PkgPath)
+		}
 	}
 }
 
