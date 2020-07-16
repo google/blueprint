@@ -1,6 +1,7 @@
 package bpdoc
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -48,30 +49,33 @@ func TestNestedPropertyStructs(t *testing.T) {
 func TestAllPackages(t *testing.T) {
 	packages, err := AllPackages(pkgFiles, moduleTypeNameFactories, moduleTypeNamePropertyStructs)
 	if err != nil {
-		t.Fatalf("expected no errors, got %s", err)
+		t.Errorf("expected nil error for AllPackages(%v, %v, %v), got %s", pkgFiles, moduleTypeNameFactories, moduleTypeNamePropertyStructs, err)
 	}
 
 	if numPackages := len(packages); numPackages != 1 {
-		t.Fatalf("Expected 1 package, got %q", numPackages)
+		t.Errorf("Expected %d package, got %d packages %v instead", len(pkgFiles), numPackages, packages)
 	}
 
-	p := packages[0]
+	pkg := packages[0]
 
-	for _, m := range p.ModuleTypes {
+	for _, m := range pkg.ModuleTypes {
 		for _, p := range m.PropertyStructs {
-			noMutatedProperties(t, p.Properties)
+			for _, err := range noMutatedProperties(p.Properties) {
+				t.Errorf("%s", err)
+			}
 		}
 	}
-
 }
 
-func noMutatedProperties(t *testing.T, properties []Property) {
-	t.Helper()
-
+func noMutatedProperties(properties []Property) []error {
+	errs := []error{}
 	for _, p := range properties {
 		if hasTag(p.Tag, "blueprint", "mutated") {
-			t.Errorf("Property %s has `blueprint:\"mutated\" tag but should have been excluded.", p)
+			err := fmt.Errorf("Property %s has `blueprint:\"mutated\" tag but should have been excluded.", p)
+			errs = append(errs, err)
 		}
-		noMutatedProperties(t, p.Properties)
+
+		errs = append(errs, noMutatedProperties(p.Properties)...)
 	}
+	return errs
 }
