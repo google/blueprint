@@ -104,7 +104,7 @@ func (n *ninjaWriter) Rule(name string) error {
 }
 
 func (n *ninjaWriter) Build(comment string, rule string, outputs, implicitOuts,
-	explicitDeps, implicitDeps, orderOnlyDeps []string) error {
+	explicitDeps, implicitDeps, orderOnlyDeps, validations []string) error {
 
 	n.justDidBlankLine = false
 
@@ -157,6 +157,14 @@ func (n *ninjaWriter) Build(comment string, rule string, outputs, implicitOuts,
 		wrapper.WriteStringWithSpace("||")
 
 		for _, dep := range orderOnlyDeps {
+			wrapper.WriteStringWithSpace(dep)
+		}
+	}
+
+	if len(validations) > 0 {
+		wrapper.WriteStringWithSpace("|@")
+
+		for _, dep := range validations {
 			wrapper.WriteStringWithSpace(dep)
 		}
 	}
