@@ -1172,9 +1172,8 @@ func runAndRemoveLoadHooks(ctx *Context, config interface{}, module *moduleInfo,
 
 // Check the syntax of a generated blueprint file.
 //
-// This is intended to perform a quick sanity check for generated blueprint
-// code to ensure that it is syntactically correct, where syntactically correct
-// means:
+// This is intended to perform a quick syntactic check for generated blueprint
+// code, where syntactically correct means:
 // * No variable definitions.
 // * Valid module types.
 // * Valid property names.
