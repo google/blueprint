@@ -201,8 +201,8 @@ type moduleInfo struct {
 	waitingCount int
 
 	// set during each runMutator
-	splitModules []*moduleInfo
-	aliasTarget  *moduleInfo
+	splitModules   []*moduleInfo
+	pendingAliases []pendingAlias
 
 	// set during PrepareBuildActions
 	actionDefs localBuildActions
@@ -1317,12 +1317,30 @@ func (c *Context) convertDepsToVariation(module *moduleInfo,
 					break
 				}
 			}
+			if newDep == nil {
+				// check aliases against variationNam
+				for _, a := range dep.module.pendingAliases {
+					if a.fromVariant.variations[mutatorName] == variationName {
+						newDep = a.target
+						break
+					}
+				}
+			}
 			if newDep == nil && defaultVariationName != nil {
 				// give it a second chance; match with defaultVariationName
 				for _, m := range dep.module.splitModules {
 					if m.variant.variations[mutatorName] == *defaultVariationName {
 						newDep = m
 						break
+					}
+				}
+				if newDep == nil {
+					// check aliases against defaultVariationName
+					for _, a := range dep.module.pendingAliases {
+						if a.fromVariant.variations[mutatorName] == *defaultVariationName {
+							newDep = a.target
+							break
+						}
 					}
 				}
 			}
@@ -2221,6 +2239,8 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 			panic("split module found in sorted module list")
 		}
 
+		module.pendingAliases = nil
+
 		mctx := &mutatorContext{
 			baseModuleContext: baseModuleContext{
 				context: c,
@@ -2315,10 +2335,10 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 			}
 
 			// Create any new aliases.
-			if module.aliasTarget != nil {
+			for _, alias := range module.pendingAliases {
 				group.aliases = append(group.aliases, &moduleAlias{
-					variant: module.variant,
-					target:  module.aliasTarget,
+					variant: alias.fromVariant,
+					target:  alias.target,
 				})
 			}
 
@@ -2339,13 +2359,23 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 			module.newDirectDeps = nil
 		}
 
+		findAliasTarget := func(variant variant) *moduleInfo {
+			for _, alias := range group.aliases {
+				if alias.variant.variations.equal(variant.variations) {
+					return alias.target
+				}
+			}
+			return nil
+		}
+
 		// Forward or delete any dangling aliases.
 		for i := 0; i < len(group.aliases); i++ {
 			alias := group.aliases[i]
 
 			if alias.target.logicModule == nil {
-				if alias.target.aliasTarget != nil {
-					alias.target = alias.target.aliasTarget
+				newTarget := findAliasTarget(alias.target.variant)
+				if newTarget != nil {
+					alias.target = newTarget
 				} else {
 					// The alias was left dangling, remove it.
 					group.aliases = append(group.aliases[:i], group.aliases[i+1:]...)
@@ -3538,14 +3568,17 @@ func (s moduleSorter) Less(i, j int) bool {
 	iName := s.nameInterface.UniqueName(newNamespaceContext(iMod), iMod.group.name)
 	jName := s.nameInterface.UniqueName(newNamespaceContext(jMod), jMod.group.name)
 	if iName == jName {
-		iName = s.modules[i].variant.name
-		jName = s.modules[j].variant.name
+		iVariantName := s.modules[i].variant.name
+		jVariantName := s.modules[j].variant.name
+		if iVariantName == jVariantName {
+			panic(fmt.Sprintf("duplicate module name: %s %s: %#v and %#v\n",
+				iName, iVariantName, iMod.variant.variations, jMod.variant.variations))
+		} else {
+			return iVariantName < jVariantName
+		}
+	} else {
+		return iName < jName
 	}
-
-	if iName == jName {
-		panic(fmt.Sprintf("duplicate module name: %s: %#v and %#v\n", iName, iMod, jMod))
-	}
-	return iName < jName
 }
 
 func (s moduleSorter) Swap(i, j int) {
