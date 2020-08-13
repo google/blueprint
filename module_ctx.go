@@ -464,7 +464,7 @@ func (m *baseModuleContext) OtherModuleDir(logicModule Module) string {
 
 func (m *baseModuleContext) OtherModuleSubDir(logicModule Module) string {
 	module := m.context.moduleInfo[logicModule]
-	return module.variantName
+	return module.variant.name
 }
 
 func (m *baseModuleContext) OtherModuleType(logicModule Module) string {
@@ -655,7 +655,7 @@ func (m *baseModuleContext) ModuleFactories() map[string]ModuleFactory {
 }
 
 func (m *moduleContext) ModuleSubDir() string {
-	return m.module.variantName
+	return m.module.variant.name
 }
 
 func (m *moduleContext) Variable(pctx PackageContext, name, value string) {
@@ -901,19 +901,13 @@ func (mctx *mutatorContext) CreateLocalVariations(variationNames ...string) []Mo
 
 func (mctx *mutatorContext) createVariations(variationNames []string, local bool) []Module {
 	ret := []Module{}
-	modules, errs := mctx.context.createVariations(mctx.module, mctx.name, mctx.defaultVariation, variationNames)
+	modules, errs := mctx.context.createVariations(mctx.module, mctx.name, mctx.defaultVariation, variationNames, local)
 	if len(errs) > 0 {
 		mctx.errs = append(mctx.errs, errs...)
 	}
 
-	for i, module := range modules {
+	for _, module := range modules {
 		ret = append(ret, module.logicModule)
-		if !local {
-			if module.dependencyVariant == nil {
-				module.dependencyVariant = make(variationMap)
-			}
-			module.dependencyVariant[mctx.name] = variationNames[i]
-		}
 	}
 
 	if mctx.newVariations != nil {
@@ -934,7 +928,7 @@ func (mctx *mutatorContext) AliasVariation(variationName string) {
 	}
 
 	for _, variant := range mctx.newVariations {
-		if variant.variant[mctx.name] == variationName {
+		if variant.variant.variations[mctx.name] == variationName {
 			mctx.module.aliasTarget = variant
 			return
 		}
@@ -942,7 +936,7 @@ func (mctx *mutatorContext) AliasVariation(variationName string) {
 
 	var foundVariations []string
 	for _, variant := range mctx.newVariations {
-		foundVariations = append(foundVariations, variant.variant[mctx.name])
+		foundVariations = append(foundVariations, variant.variant.variations[mctx.name])
 	}
 	panic(fmt.Errorf("no %q variation in module variations %q", variationName, foundVariations))
 }
@@ -1023,7 +1017,7 @@ func (mctx *mutatorContext) ReplaceDependenciesIf(name string, predicate Replace
 
 	if target == nil {
 		panic(fmt.Errorf("ReplaceDependencies could not find identical variant %q for module %q",
-			mctx.module.variantName, name))
+			mctx.module.variant.name, name))
 	}
 
 	mctx.replace = append(mctx.replace, replace{target, mctx.module, predicate})

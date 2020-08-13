@@ -123,7 +123,7 @@ func TestAliases(t *testing.T) {
 		foo := ctx.moduleGroupFromName("foo", nil).modules[0]
 		barB := ctx.moduleGroupFromName("bar", nil).modules[1]
 
-		if g, w := barB.variantName, "b"; g != w {
+		if g, w := barB.variant.name, "b"; g != w {
 			t.Fatalf("expected bar.modules[1] variant to be %q, got %q", w, g)
 		}
 
@@ -147,7 +147,7 @@ func TestAliases(t *testing.T) {
 		foo := ctx.moduleGroupFromName("foo", nil).modules[0]
 		barBB := ctx.moduleGroupFromName("bar", nil).modules[3]
 
-		if g, w := barBB.variantName, "b_b"; g != w {
+		if g, w := barBB.variant.name, "b_b"; g != w {
 			t.Fatalf("expected bar.modules[3] variant to be %q, got %q", w, g)
 		}
 
@@ -171,7 +171,7 @@ func TestAliases(t *testing.T) {
 		foo := ctx.moduleGroupFromName("foo", nil).modules[0]
 		barAB := ctx.moduleGroupFromName("bar", nil).modules[1]
 
-		if g, w := barAB.variantName, "a_b"; g != w {
+		if g, w := barAB.variant.name, "a_b"; g != w {
 			t.Fatalf("expected bar.modules[1] variant to be %q, got %q", w, g)
 		}
 
