@@ -159,10 +159,8 @@ type localBuildActions struct {
 }
 
 type moduleAlias struct {
-	variantName       string
-	variant           variationMap
-	dependencyVariant variationMap
-	target            *moduleInfo
+	variant variant
+	target  *moduleInfo
 }
 
 type moduleGroup struct {
@@ -184,9 +182,7 @@ type moduleInfo struct {
 	propertyPos       map[string]scanner.Position
 	createdBy         *moduleInfo
 
-	variantName       string
-	variant           variationMap
-	dependencyVariant variationMap
+	variant variant
 
 	logicModule Module
 	group       *moduleGroup
@@ -205,11 +201,17 @@ type moduleInfo struct {
 	waitingCount int
 
 	// set during each runMutator
-	splitModules []*moduleInfo
-	aliasTarget  *moduleInfo
+	splitModules   []*moduleInfo
+	pendingAliases []pendingAlias
 
 	// set during PrepareBuildActions
 	actionDefs localBuildActions
+}
+
+type variant struct {
+	name                 string
+	variations           variationMap
+	dependencyVariations variationMap
 }
 
 type depInfo struct {
@@ -232,8 +234,8 @@ func (module *moduleInfo) Name() string {
 
 func (module *moduleInfo) String() string {
 	s := fmt.Sprintf("module %q", module.Name())
-	if module.variantName != "" {
-		s += fmt.Sprintf(" variant %q", module.variantName)
+	if module.variant.name != "" {
+		s += fmt.Sprintf(" variant %q", module.variant.name)
 	}
 	if module.createdBy != nil {
 		s += fmt.Sprintf(" (created by %s)", module.createdBy)
@@ -1224,8 +1226,37 @@ func (c *Context) cloneLogicModule(origModule *moduleInfo) (Module, []interface{
 	return newLogicModule, newProperties
 }
 
+func newVariant(module *moduleInfo, mutatorName string, variationName string,
+	local bool) variant {
+
+	newVariantName := module.variant.name
+	if variationName != "" {
+		if newVariantName == "" {
+			newVariantName = variationName
+		} else {
+			newVariantName += "_" + variationName
+		}
+	}
+
+	newVariations := module.variant.variations.clone()
+	if newVariations == nil {
+		newVariations = make(variationMap)
+	}
+	newVariations[mutatorName] = variationName
+
+	newDependencyVariations := module.variant.dependencyVariations.clone()
+	if !local {
+		if newDependencyVariations == nil {
+			newDependencyVariations = make(variationMap)
+		}
+		newDependencyVariations[mutatorName] = variationName
+	}
+
+	return variant{newVariantName, newVariations, newDependencyVariations}
+}
+
 func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
-	defaultVariationName *string, variationNames []string) ([]*moduleInfo, []error) {
+	defaultVariationName *string, variationNames []string, local bool) ([]*moduleInfo, []error) {
 
 	if len(variationNames) == 0 {
 		panic(fmt.Errorf("mutator %q passed zero-length variation list for module %q",
@@ -1249,27 +1280,12 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 			newLogicModule, newProperties = c.cloneLogicModule(origModule)
 		}
 
-		newVariant := origModule.variant.clone()
-		if newVariant == nil {
-			newVariant = make(variationMap)
-		}
-		newVariant[mutatorName] = variationName
-
 		m := *origModule
 		newModule := &m
 		newModule.directDeps = append([]depInfo{}, origModule.directDeps...)
 		newModule.logicModule = newLogicModule
-		newModule.variant = newVariant
-		newModule.dependencyVariant = origModule.dependencyVariant.clone()
+		newModule.variant = newVariant(origModule, mutatorName, variationName, local)
 		newModule.properties = newProperties
-
-		if variationName != "" {
-			if newModule.variantName == "" {
-				newModule.variantName = variationName
-			} else {
-				newModule.variantName += "_" + variationName
-			}
-		}
 
 		newModules = append(newModules, newModule)
 
@@ -1296,17 +1312,35 @@ func (c *Context) convertDepsToVariation(module *moduleInfo,
 		if dep.module.logicModule == nil {
 			var newDep *moduleInfo
 			for _, m := range dep.module.splitModules {
-				if m.variant[mutatorName] == variationName {
+				if m.variant.variations[mutatorName] == variationName {
 					newDep = m
 					break
+				}
+			}
+			if newDep == nil {
+				// check aliases against variationNam
+				for _, a := range dep.module.pendingAliases {
+					if a.fromVariant.variations[mutatorName] == variationName {
+						newDep = a.target
+						break
+					}
 				}
 			}
 			if newDep == nil && defaultVariationName != nil {
 				// give it a second chance; match with defaultVariationName
 				for _, m := range dep.module.splitModules {
-					if m.variant[mutatorName] == *defaultVariationName {
+					if m.variant.variations[mutatorName] == *defaultVariationName {
 						newDep = m
 						break
+					}
+				}
+				if newDep == nil {
+					// check aliases against defaultVariationName
+					for _, a := range dep.module.pendingAliases {
+						if a.fromVariant.variations[mutatorName] == *defaultVariationName {
+							newDep = a.target
+							break
+						}
 					}
 				}
 			}
@@ -1325,10 +1359,10 @@ func (c *Context) convertDepsToVariation(module *moduleInfo,
 	return errs
 }
 
-func (c *Context) prettyPrintVariant(variant variationMap) string {
-	names := make([]string, 0, len(variant))
+func (c *Context) prettyPrintVariant(variations variationMap) string {
+	names := make([]string, 0, len(variations))
 	for _, m := range c.variantMutatorNames {
-		if v, ok := variant[m]; ok {
+		if v, ok := variations[m]; ok {
 			names = append(names, m+":"+v)
 		}
 	}
@@ -1339,11 +1373,11 @@ func (c *Context) prettyPrintVariant(variant variationMap) string {
 func (c *Context) prettyPrintGroupVariants(group *moduleGroup) string {
 	var variants []string
 	for _, mod := range group.modules {
-		variants = append(variants, c.prettyPrintVariant(mod.variant))
+		variants = append(variants, c.prettyPrintVariant(mod.variant.variations))
 	}
 	for _, mod := range group.aliases {
-		variants = append(variants, c.prettyPrintVariant(mod.variant)+
-			"(alias to "+c.prettyPrintVariant(mod.target.variant)+")")
+		variants = append(variants, c.prettyPrintVariant(mod.variant.variations)+
+			"(alias to "+c.prettyPrintVariant(mod.target.variant.variations)+")")
 	}
 	sort.Strings(variants)
 	return strings.Join(variants, "\n  ")
@@ -1518,18 +1552,18 @@ func (c *Context) findMatchingVariant(module *moduleInfo, possible *moduleGroup,
 		if !reverse {
 			// For forward dependency, ignore local variants by matching against
 			// dependencyVariant which doesn't have the local variants
-			variantToMatch = module.dependencyVariant
+			variantToMatch = module.variant.dependencyVariations
 		} else {
 			// For reverse dependency, use all the variants
-			variantToMatch = module.variant
+			variantToMatch = module.variant.variations
 		}
 		for _, m := range possible.modules {
-			if m.variant.equal(variantToMatch) {
+			if m.variant.variations.equal(variantToMatch) {
 				return m
 			}
 		}
 		for _, m := range possible.aliases {
-			if m.variant.equal(variantToMatch) {
+			if m.variant.variations.equal(variantToMatch) {
 				return m.target
 			}
 		}
@@ -1563,13 +1597,13 @@ func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName s
 
 	if c.allowMissingDependencies {
 		// Allow missing variants.
-		return c.discoveredMissingDependencies(module, depName+c.prettyPrintVariant(module.dependencyVariant))
+		return c.discoveredMissingDependencies(module, depName+c.prettyPrintVariant(module.variant.dependencyVariations))
 	}
 
 	return []error{&BlueprintError{
 		Err: fmt.Errorf("dependency %q of %q missing variant:\n  %s\navailable variants:\n  %s",
 			depName, module.Name(),
-			c.prettyPrintVariant(module.dependencyVariant),
+			c.prettyPrintVariant(module.variant.dependencyVariations),
 			c.prettyPrintGroupVariants(possibleDeps)),
 		Pos: module.pos,
 	}}
@@ -1598,20 +1632,20 @@ func (c *Context) findReverseDependency(module *moduleInfo, destName string) (*m
 
 	if c.allowMissingDependencies {
 		// Allow missing variants.
-		return module, c.discoveredMissingDependencies(module, destName+c.prettyPrintVariant(module.dependencyVariant))
+		return module, c.discoveredMissingDependencies(module, destName+c.prettyPrintVariant(module.variant.dependencyVariations))
 	}
 
 	return nil, []error{&BlueprintError{
 		Err: fmt.Errorf("reverse dependency %q of %q missing variant:\n  %s\navailable variants:\n  %s",
 			destName, module.Name(),
-			c.prettyPrintVariant(module.dependencyVariant),
+			c.prettyPrintVariant(module.variant.dependencyVariations),
 			c.prettyPrintGroupVariants(possibleDeps)),
 		Pos: module.pos,
 	}}
 }
 
 func (c *Context) findVariant(module *moduleInfo, possibleDeps *moduleGroup, variations []Variation, far bool, reverse bool) (*moduleInfo, variationMap) {
-	// We can't just append variant.Variant to module.dependencyVariants.variantName and
+	// We can't just append variant.Variant to module.dependencyVariant.variantName and
 	// compare the strings because the result won't be in mutator registration order.
 	// Create a new map instead, and then deep compare the maps.
 	var newVariant variationMap
@@ -1619,10 +1653,10 @@ func (c *Context) findVariant(module *moduleInfo, possibleDeps *moduleGroup, var
 		if !reverse {
 			// For forward dependency, ignore local variants by matching against
 			// dependencyVariant which doesn't have the local variants
-			newVariant = module.dependencyVariant.clone()
+			newVariant = module.variant.dependencyVariations.clone()
 		} else {
 			// For reverse dependency, use all the variants
-			newVariant = module.variant.clone()
+			newVariant = module.variant.variations.clone()
 		}
 	}
 	for _, v := range variations {
@@ -1642,7 +1676,7 @@ func (c *Context) findVariant(module *moduleInfo, possibleDeps *moduleGroup, var
 
 	var foundDep *moduleInfo
 	for _, m := range possibleDeps.modules {
-		if check(m.variant) {
+		if check(m.variant.variations) {
 			foundDep = m
 			break
 		}
@@ -1650,7 +1684,7 @@ func (c *Context) findVariant(module *moduleInfo, possibleDeps *moduleGroup, var
 
 	if foundDep == nil {
 		for _, m := range possibleDeps.aliases {
-			if check(m.variant) {
+			if check(m.variant.variations) {
 				foundDep = m.target
 				break
 			}
@@ -2205,6 +2239,8 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 			panic("split module found in sorted module list")
 		}
 
+		module.pendingAliases = nil
+
 		mctx := &mutatorContext{
 			baseModuleContext: baseModuleContext{
 				context: c,
@@ -2299,12 +2335,10 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 			}
 
 			// Create any new aliases.
-			if module.aliasTarget != nil {
+			for _, alias := range module.pendingAliases {
 				group.aliases = append(group.aliases, &moduleAlias{
-					variantName:       module.variantName,
-					variant:           module.variant,
-					dependencyVariant: module.dependencyVariant,
-					target:            module.aliasTarget,
+					variant: alias.fromVariant,
+					target:  alias.target,
 				})
 			}
 
@@ -2325,13 +2359,23 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 			module.newDirectDeps = nil
 		}
 
+		findAliasTarget := func(variant variant) *moduleInfo {
+			for _, alias := range group.aliases {
+				if alias.variant.variations.equal(variant.variations) {
+					return alias.target
+				}
+			}
+			return nil
+		}
+
 		// Forward or delete any dangling aliases.
 		for i := 0; i < len(group.aliases); i++ {
 			alias := group.aliases[i]
 
 			if alias.target.logicModule == nil {
-				if alias.target.aliasTarget != nil {
-					alias.target = alias.target.aliasTarget
+				newTarget := findAliasTarget(alias.target.variant)
+				if newTarget != nil {
+					alias.target = newTarget
 				} else {
 					// The alias was left dangling, remove it.
 					group.aliases = append(group.aliases[:i], group.aliases[i+1:]...)
@@ -2461,7 +2505,7 @@ func (c *Context) generateModuleBuildActions(config interface{},
 		uniqueName := c.nameInterface.UniqueName(newNamespaceContext(module), module.group.name)
 		sanitizedName := toNinjaName(uniqueName)
 
-		prefix := moduleNamespacePrefix(sanitizedName + "_" + module.variantName)
+		prefix := moduleNamespacePrefix(sanitizedName + "_" + module.variant.name)
 
 		// The parent scope of the moduleContext's local scope gets overridden to be that of the
 		// calling Go package on a per-call basis.  Since the initial parent scope doesn't matter we
@@ -2675,13 +2719,13 @@ func (c *Context) moduleMatchingVariant(module *moduleInfo, name string) *module
 	}
 
 	for _, m := range group.modules {
-		if module.variantName == m.variantName {
+		if module.variant.name == m.variant.name {
 			return m
 		}
 	}
 
 	for _, m := range group.aliases {
-		if module.variantName == m.variantName {
+		if module.variant.name == m.variant.name {
 			return m.target
 		}
 	}
@@ -3053,7 +3097,7 @@ func (c *Context) ModuleDir(logicModule Module) string {
 
 func (c *Context) ModuleSubDir(logicModule Module) string {
 	module := c.moduleInfo[logicModule]
-	return module.variantName
+	return module.variant.name
 }
 
 func (c *Context) ModuleType(logicModule Module) string {
@@ -3499,8 +3543,8 @@ func (s depSorter) Less(i, j int) bool {
 	iName := s[i].module.Name()
 	jName := s[j].module.Name()
 	if iName == jName {
-		iName = s[i].module.variantName
-		jName = s[j].module.variantName
+		iName = s[i].module.variant.name
+		jName = s[j].module.variant.name
 	}
 	return iName < jName
 }
@@ -3524,14 +3568,17 @@ func (s moduleSorter) Less(i, j int) bool {
 	iName := s.nameInterface.UniqueName(newNamespaceContext(iMod), iMod.group.name)
 	jName := s.nameInterface.UniqueName(newNamespaceContext(jMod), jMod.group.name)
 	if iName == jName {
-		iName = s.modules[i].variantName
-		jName = s.modules[j].variantName
+		iVariantName := s.modules[i].variant.name
+		jVariantName := s.modules[j].variant.name
+		if iVariantName == jVariantName {
+			panic(fmt.Sprintf("duplicate module name: %s %s: %#v and %#v\n",
+				iName, iVariantName, iMod.variant.variations, jMod.variant.variations))
+		} else {
+			return iVariantName < jVariantName
+		}
+	} else {
+		return iName < jName
 	}
-
-	if iName == jName {
-		panic(fmt.Sprintf("duplicate module name: %s: %#v and %#v\n", iName, iMod, jMod))
-	}
-	return iName < jName
 }
 
 func (s moduleSorter) Swap(i, j int) {
@@ -3576,7 +3623,7 @@ func (c *Context) writeAllModuleActions(nw *ninjaWriter) error {
 			"typeName":  module.typeName,
 			"goFactory": factoryName,
 			"pos":       relPos,
-			"variant":   module.variantName,
+			"variant":   module.variant.name,
 		}
 		err = headerTemplate.Execute(buf, infoMap)
 		if err != nil {

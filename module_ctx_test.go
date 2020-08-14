@@ -32,10 +32,19 @@ func newModuleCtxTestModule() (Module, []interface{}) {
 func (f *moduleCtxTestModule) GenerateBuildActions(ModuleContext) {
 }
 
-func noCreateAliasMutator(name string) func(ctx BottomUpMutatorContext) {
+func noAliasMutator(name string) func(ctx BottomUpMutatorContext) {
 	return func(ctx BottomUpMutatorContext) {
 		if ctx.ModuleName() == name {
 			ctx.CreateVariations("a", "b")
+		}
+	}
+}
+
+func aliasMutator(name string) func(ctx BottomUpMutatorContext) {
+	return func(ctx BottomUpMutatorContext) {
+		if ctx.ModuleName() == name {
+			ctx.CreateVariations("a", "b")
+			ctx.AliasVariation("b")
 		}
 	}
 }
@@ -44,7 +53,9 @@ func createAliasMutator(name string) func(ctx BottomUpMutatorContext) {
 	return func(ctx BottomUpMutatorContext) {
 		if ctx.ModuleName() == name {
 			ctx.CreateVariations("a", "b")
-			ctx.AliasVariation("b")
+			ctx.CreateAliasVariation("c", "a")
+			ctx.CreateAliasVariation("d", "b")
+			ctx.CreateAliasVariation("e", "a")
 		}
 	}
 }
@@ -57,7 +68,7 @@ func addVariantDepsMutator(variants []Variation, tag DependencyTag, from, to str
 	}
 }
 
-func TestAliases(t *testing.T) {
+func TestAliasVariation(t *testing.T) {
 	runWithFailures := func(ctx *Context, expectedErr string) {
 		t.Helper()
 		bp := `
@@ -115,7 +126,7 @@ func TestAliases(t *testing.T) {
 		// Tests a dependency from "foo" to "bar" variant "b" through alias "".
 		ctx := NewContext()
 		ctx.RegisterModuleType("test", newModuleCtxTestModule)
-		ctx.RegisterBottomUpMutator("1", createAliasMutator("bar"))
+		ctx.RegisterBottomUpMutator("1", aliasMutator("bar"))
 		ctx.RegisterBottomUpMutator("2", addVariantDepsMutator(nil, nil, "foo", "bar"))
 
 		run(ctx)
@@ -123,7 +134,7 @@ func TestAliases(t *testing.T) {
 		foo := ctx.moduleGroupFromName("foo", nil).modules[0]
 		barB := ctx.moduleGroupFromName("bar", nil).modules[1]
 
-		if g, w := barB.variantName, "b"; g != w {
+		if g, w := barB.variant.name, "b"; g != w {
 			t.Fatalf("expected bar.modules[1] variant to be %q, got %q", w, g)
 		}
 
@@ -138,8 +149,8 @@ func TestAliases(t *testing.T) {
 		// Tests a dependency from "foo" to "bar" variant "b_b" through alias "".
 		ctx := NewContext()
 		ctx.RegisterModuleType("test", newModuleCtxTestModule)
-		ctx.RegisterBottomUpMutator("1", createAliasMutator("bar"))
-		ctx.RegisterBottomUpMutator("2", createAliasMutator("bar"))
+		ctx.RegisterBottomUpMutator("1", aliasMutator("bar"))
+		ctx.RegisterBottomUpMutator("2", aliasMutator("bar"))
 		ctx.RegisterBottomUpMutator("3", addVariantDepsMutator(nil, nil, "foo", "bar"))
 
 		run(ctx)
@@ -147,7 +158,7 @@ func TestAliases(t *testing.T) {
 		foo := ctx.moduleGroupFromName("foo", nil).modules[0]
 		barBB := ctx.moduleGroupFromName("bar", nil).modules[3]
 
-		if g, w := barBB.variantName, "b_b"; g != w {
+		if g, w := barBB.variant.name, "b_b"; g != w {
 			t.Fatalf("expected bar.modules[3] variant to be %q, got %q", w, g)
 		}
 
@@ -162,8 +173,8 @@ func TestAliases(t *testing.T) {
 		// Tests a dependency from "foo" to "bar" variant "a_b" through alias "a".
 		ctx := NewContext()
 		ctx.RegisterModuleType("test", newModuleCtxTestModule)
-		ctx.RegisterBottomUpMutator("1", createAliasMutator("bar"))
-		ctx.RegisterBottomUpMutator("2", createAliasMutator("bar"))
+		ctx.RegisterBottomUpMutator("1", aliasMutator("bar"))
+		ctx.RegisterBottomUpMutator("2", aliasMutator("bar"))
 		ctx.RegisterBottomUpMutator("3", addVariantDepsMutator([]Variation{{"1", "a"}}, nil, "foo", "bar"))
 
 		run(ctx)
@@ -171,7 +182,7 @@ func TestAliases(t *testing.T) {
 		foo := ctx.moduleGroupFromName("foo", nil).modules[0]
 		barAB := ctx.moduleGroupFromName("bar", nil).modules[1]
 
-		if g, w := barAB.variantName, "a_b"; g != w {
+		if g, w := barAB.variant.name, "a_b"; g != w {
 			t.Fatalf("expected bar.modules[1] variant to be %q, got %q", w, g)
 		}
 
@@ -186,11 +197,126 @@ func TestAliases(t *testing.T) {
 		// Tests a dependency from "foo" to removed "bar" alias "" fails.
 		ctx := NewContext()
 		ctx.RegisterModuleType("test", newModuleCtxTestModule)
-		ctx.RegisterBottomUpMutator("1", createAliasMutator("bar"))
-		ctx.RegisterBottomUpMutator("2", noCreateAliasMutator("bar"))
+		ctx.RegisterBottomUpMutator("1", aliasMutator("bar"))
+		ctx.RegisterBottomUpMutator("2", noAliasMutator("bar"))
 		ctx.RegisterBottomUpMutator("3", addVariantDepsMutator(nil, nil, "foo", "bar"))
 
 		runWithFailures(ctx, `dependency "bar" of "foo" missing variant:`+"\n  \n"+
+			"available variants:"+
+			"\n  1:a, 2:a\n  1:a, 2:b\n  1:b, 2:a\n  1:b, 2:b")
+	})
+}
+
+func TestCreateAliasVariations(t *testing.T) {
+	runWithFailures := func(ctx *Context, expectedErr string) {
+		t.Helper()
+		bp := `
+			test {
+				name: "foo",
+			}
+
+			test {
+				name: "bar",
+			}
+		`
+
+		mockFS := map[string][]byte{
+			"Blueprints": []byte(bp),
+		}
+
+		ctx.MockFileSystem(mockFS)
+
+		_, errs := ctx.ParseFileList(".", []string{"Blueprints"}, nil)
+		if len(errs) > 0 {
+			t.Errorf("unexpected parse errors:")
+			for _, err := range errs {
+				t.Errorf("  %s", err)
+			}
+		}
+
+		_, errs = ctx.ResolveDependencies(nil)
+		if len(errs) > 0 {
+			if expectedErr == "" {
+				t.Errorf("unexpected dep errors:")
+				for _, err := range errs {
+					t.Errorf("  %s", err)
+				}
+			} else {
+				for _, err := range errs {
+					if strings.Contains(err.Error(), expectedErr) {
+						continue
+					} else {
+						t.Errorf("unexpected dep error: %s", err)
+					}
+				}
+			}
+		} else if expectedErr != "" {
+			t.Errorf("missing dep error: %s", expectedErr)
+		}
+	}
+
+	run := func(ctx *Context) {
+		t.Helper()
+		runWithFailures(ctx, "")
+	}
+
+	t.Run("simple", func(t *testing.T) {
+		// Creates a module "bar" with variants "a" and "b" and alias "c" -> "a", "d" -> "b", and "e" -> "a".
+		// Tests a dependency from "foo" to "bar" variant "b" through alias "d".
+		ctx := NewContext()
+		ctx.RegisterModuleType("test", newModuleCtxTestModule)
+		ctx.RegisterBottomUpMutator("1", createAliasMutator("bar"))
+		ctx.RegisterBottomUpMutator("2", addVariantDepsMutator([]Variation{{"1", "d"}}, nil, "foo", "bar"))
+
+		run(ctx)
+
+		foo := ctx.moduleGroupFromName("foo", nil).modules[0]
+		barB := ctx.moduleGroupFromName("bar", nil).modules[1]
+
+		if g, w := barB.variant.name, "b"; g != w {
+			t.Fatalf("expected bar.modules[1] variant to be %q, got %q", w, g)
+		}
+
+		if g, w := foo.forwardDeps, []*moduleInfo{barB}; !reflect.DeepEqual(g, w) {
+			t.Fatalf("expected foo deps to be %q, got %q", w, g)
+		}
+	})
+
+	t.Run("chained", func(t *testing.T) {
+		// Creates a module "bar" with variants "a_a", "a_b", "b_a" and "b_b" and aliases "c" -> "a_b",
+		// "d" -> "b_b", and "d" -> "a_b".
+		// Tests a dependency from "foo" to "bar" variant "b_b" through alias "d".
+		ctx := NewContext()
+		ctx.RegisterModuleType("test", newModuleCtxTestModule)
+		ctx.RegisterBottomUpMutator("1", createAliasMutator("bar"))
+		ctx.RegisterBottomUpMutator("2", aliasMutator("bar"))
+		ctx.RegisterBottomUpMutator("3", addVariantDepsMutator([]Variation{{"1", "d"}}, nil, "foo", "bar"))
+
+		run(ctx)
+
+		foo := ctx.moduleGroupFromName("foo", nil).modules[0]
+		barBB := ctx.moduleGroupFromName("bar", nil).modules[3]
+
+		if g, w := barBB.variant.name, "b_b"; g != w {
+			t.Fatalf("expected bar.modules[3] variant to be %q, got %q", w, g)
+		}
+
+		if g, w := foo.forwardDeps, []*moduleInfo{barBB}; !reflect.DeepEqual(g, w) {
+			t.Fatalf("expected foo deps to be %q, got %q", w, g)
+		}
+	})
+
+	t.Run("removed dangling alias", func(t *testing.T) {
+		// Creates a module "bar" with variants "a" and "b" and alias "c" -> "a", "d" -> "b", and "e" -> "a",
+		// then splits the variants into "a_a", "a_b", "b_a" and "b_b" without creating new aliases.
+		// Tests a dependency from "foo" to removed "bar" alias "d" fails.
+		ctx := NewContext()
+		ctx.RegisterModuleType("test", newModuleCtxTestModule)
+		ctx.RegisterBottomUpMutator("1", createAliasMutator("bar"))
+		ctx.RegisterBottomUpMutator("2", noAliasMutator("bar"))
+		ctx.RegisterBottomUpMutator("3", addVariantDepsMutator([]Variation{{"1", "d"}}, nil, "foo", "bar"))
+
+		runWithFailures(ctx, `dependency "bar" of "foo" missing variant:`+"\n  1:d\n"+
 			"available variants:"+
 			"\n  1:a, 2:a\n  1:a, 2:b\n  1:b, 2:a\n  1:b, 2:b")
 	})
