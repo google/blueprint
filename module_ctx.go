@@ -464,7 +464,7 @@ func (m *baseModuleContext) OtherModuleDir(logicModule Module) string {
 
 func (m *baseModuleContext) OtherModuleSubDir(logicModule Module) string {
 	module := m.context.moduleInfo[logicModule]
-	return module.variantName
+	return module.variant.name
 }
 
 func (m *baseModuleContext) OtherModuleType(logicModule Module) string {
@@ -655,7 +655,7 @@ func (m *baseModuleContext) ModuleFactories() map[string]ModuleFactory {
 }
 
 func (m *moduleContext) ModuleSubDir() string {
-	return m.module.variantName
+	return m.module.variant.name
 }
 
 func (m *moduleContext) Variable(pctx PackageContext, name, value string) {
@@ -850,12 +850,21 @@ type BottomUpMutatorContext interface {
 	// Replacements don't take effect until after the mutator pass is finished.
 	ReplaceDependenciesIf(string, ReplaceDependencyPredicate)
 
-	// AliasVariation takes a variationName that was passed to CreateVariations for this module, and creates an
-	// alias from the current variant to the new variant.  The alias will be valid until the next time a mutator
-	// calls CreateVariations or CreateLocalVariations on this module without also calling AliasVariation.  The
-	// alias can be used to add dependencies on the newly created variant using the variant map from before
-	// CreateVariations was run.
+	// AliasVariation takes a variationName that was passed to CreateVariations for this module,
+	// and creates an alias from the current variant (before the mutator has run) to the new
+	// variant.  The alias will be valid until the next time a mutator calls CreateVariations or
+	// CreateLocalVariations on this module without also calling AliasVariation.  The alias can
+	// be used to add dependencies on the newly created variant using the variant map from
+	// before CreateVariations was run.
 	AliasVariation(variationName string)
+
+	// CreateAliasVariation takes a toVariationName that was passed to CreateVariations for this
+	// module, and creates an alias from a new fromVariationName variant the toVariationName
+	// variant.  The alias will be valid until the next time a mutator calls CreateVariations or
+	// CreateLocalVariations on this module without also calling AliasVariation.  The alias can
+	// be used to add dependencies on the toVariationName variant using the fromVariationName
+	// variant.
+	CreateAliasVariation(fromVariationName, toVariationName string)
 }
 
 // A Mutator function is called for each Module, and can use
@@ -899,21 +908,20 @@ func (mctx *mutatorContext) CreateLocalVariations(variationNames ...string) []Mo
 	return mctx.createVariations(variationNames, true)
 }
 
+type pendingAlias struct {
+	fromVariant variant
+	target      *moduleInfo
+}
+
 func (mctx *mutatorContext) createVariations(variationNames []string, local bool) []Module {
 	ret := []Module{}
-	modules, errs := mctx.context.createVariations(mctx.module, mctx.name, mctx.defaultVariation, variationNames)
+	modules, errs := mctx.context.createVariations(mctx.module, mctx.name, mctx.defaultVariation, variationNames, local)
 	if len(errs) > 0 {
 		mctx.errs = append(mctx.errs, errs...)
 	}
 
-	for i, module := range modules {
+	for _, module := range modules {
 		ret = append(ret, module.logicModule)
-		if !local {
-			if module.dependencyVariant == nil {
-				module.dependencyVariant = make(variationMap)
-			}
-			module.dependencyVariant[mctx.name] = variationNames[i]
-		}
 	}
 
 	if mctx.newVariations != nil {
@@ -929,22 +937,53 @@ func (mctx *mutatorContext) createVariations(variationNames []string, local bool
 }
 
 func (mctx *mutatorContext) AliasVariation(variationName string) {
-	if mctx.module.aliasTarget != nil {
-		panic(fmt.Errorf("AliasVariation already called"))
+	for _, alias := range mctx.module.pendingAliases {
+		if alias.fromVariant.variations.equal(mctx.module.variant.variations) {
+			panic(fmt.Errorf("AliasVariation already called"))
+		}
 	}
 
 	for _, variant := range mctx.newVariations {
-		if variant.variant[mctx.name] == variationName {
-			mctx.module.aliasTarget = variant
+		if variant.variant.variations[mctx.name] == variationName {
+			mctx.module.pendingAliases = append(mctx.module.pendingAliases, pendingAlias{
+				fromVariant: mctx.module.variant,
+				target:      variant,
+			})
 			return
 		}
 	}
 
 	var foundVariations []string
 	for _, variant := range mctx.newVariations {
-		foundVariations = append(foundVariations, variant.variant[mctx.name])
+		foundVariations = append(foundVariations, variant.variant.variations[mctx.name])
 	}
 	panic(fmt.Errorf("no %q variation in module variations %q", variationName, foundVariations))
+}
+
+func (mctx *mutatorContext) CreateAliasVariation(aliasVariationName, targetVariationName string) {
+	newVariant := newVariant(mctx.module, mctx.name, aliasVariationName, false)
+
+	for _, alias := range mctx.module.pendingAliases {
+		if alias.fromVariant.variations.equal(newVariant.variations) {
+			panic(fmt.Errorf("can't alias %q to %q, already aliased to %q", aliasVariationName, targetVariationName, alias.target.variant.name))
+		}
+	}
+
+	for _, variant := range mctx.newVariations {
+		if variant.variant.variations[mctx.name] == targetVariationName {
+			mctx.module.pendingAliases = append(mctx.module.pendingAliases, pendingAlias{
+				fromVariant: newVariant,
+				target:      variant,
+			})
+			return
+		}
+	}
+
+	var foundVariations []string
+	for _, variant := range mctx.newVariations {
+		foundVariations = append(foundVariations, variant.variant.variations[mctx.name])
+	}
+	panic(fmt.Errorf("no %q variation in module variations %q", targetVariationName, foundVariations))
 }
 
 func (mctx *mutatorContext) SetDependencyVariation(variationName string) {
@@ -1023,7 +1062,7 @@ func (mctx *mutatorContext) ReplaceDependenciesIf(name string, predicate Replace
 
 	if target == nil {
 		panic(fmt.Errorf("ReplaceDependencies could not find identical variant %q for module %q",
-			mctx.module.variantName, name))
+			mctx.module.variant.name, name))
 	}
 
 	mctx.replace = append(mctx.replace, replace{target, mctx.module, predicate})
