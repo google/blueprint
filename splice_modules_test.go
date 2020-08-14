@@ -20,12 +20,12 @@ import (
 )
 
 var (
-	testModuleA = &moduleInfo{variantName: "testModuleA"}
-	testModuleB = &moduleInfo{variantName: "testModuleB"}
-	testModuleC = &moduleInfo{variantName: "testModuleC"}
-	testModuleD = &moduleInfo{variantName: "testModuleD"}
-	testModuleE = &moduleInfo{variantName: "testModuleE"}
-	testModuleF = &moduleInfo{variantName: "testModuleF"}
+	testModuleA = &moduleInfo{variant: variant{name: "testModuleA"}}
+	testModuleB = &moduleInfo{variant: variant{name: "testModuleB"}}
+	testModuleC = &moduleInfo{variant: variant{name: "testModuleC"}}
+	testModuleD = &moduleInfo{variant: variant{name: "testModuleD"}}
+	testModuleE = &moduleInfo{variant: variant{name: "testModuleE"}}
+	testModuleF = &moduleInfo{variant: variant{name: "testModuleF"}}
 )
 
 var spliceModulesTestCases = []struct {
