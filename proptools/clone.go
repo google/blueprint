@@ -54,13 +54,23 @@ func copyProperties(dstValue, srcValue reflect.Value) {
 
 	for i, field := range typeFields(typ) {
 		if field.PkgPath != "" {
-			panic(fmt.Errorf("can't copy a private field %q", field.Name))
+			panic(fmt.Errorf("can't copy an unexported field %q", field.Name))
 		}
 
 		srcFieldValue := srcValue.Field(i)
 		dstFieldValue := dstValue.Field(i)
 		dstFieldInterfaceValue := reflect.Value{}
 		origDstFieldValue := dstFieldValue
+
+		if HasTag(field, "blueprint", "immutable_ptr") {
+			if srcFieldValue.Kind() != reflect.Ptr {
+				panic(fmt.Errorf(`field %s.%s tagged blueprint:"immutable_ptr" is not pointer`, typ, field.Name))
+			}
+			// Pointers to immutable data can be shared between copies, so just copy the pointer.  Unfortunately
+			// Go has no way to enforce immutability, so this is on the honor system.
+			dstFieldValue.Set(srcFieldValue)
+			continue
+		}
 
 		switch srcFieldValue.Kind() {
 		case reflect.Bool, reflect.String, reflect.Int, reflect.Uint:
@@ -157,6 +167,12 @@ func zeroProperties(structValue reflect.Value) {
 
 		fieldValue := structValue.Field(i)
 
+		if HasTag(field, "blueprint", "immutable_ptr") {
+			// Immutable pointers are zeroed instead of recursed into.
+			fieldValue.Set(reflect.Zero(field.Type))
+			continue
+		}
+
 		switch fieldValue.Kind() {
 		case reflect.Bool, reflect.String, reflect.Slice, reflect.Int, reflect.Uint:
 			fieldValue.Set(reflect.Zero(fieldValue.Type()))
@@ -212,6 +228,11 @@ func cloneEmptyProperties(dstValue, srcValue reflect.Value) {
 	for i, field := range typeFields(typ) {
 		if field.PkgPath != "" {
 			// The field is not exported so just skip it.
+			continue
+		}
+
+		if HasTag(field, "blueprint", "immutable_ptr") {
+			// Leave immutable pointers zeroed.
 			continue
 		}
 

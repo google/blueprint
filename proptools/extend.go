@@ -273,13 +273,15 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 			}
 		}
 
-		// Step into source pointers to structs
-		if isStructPtr(srcFieldValue.Type()) {
-			if srcFieldValue.IsNil() {
-				continue
-			}
+		if !HasTag(srcField, "blueprint", "immutable_ptr") {
+			// Step into source pointers to structs
+			if isStructPtr(srcFieldValue.Type()) {
+				if srcFieldValue.IsNil() {
+					continue
+				}
 
-			srcFieldValue = srcFieldValue.Elem()
+				srcFieldValue = srcFieldValue.Elem()
+			}
 		}
 
 		found := false
@@ -308,6 +310,23 @@ func extendPropertiesRecursive(dstValues []reflect.Value, srcValue reflect.Value
 
 			dstFieldValue := dstValue.FieldByIndex(dstField.Index)
 			origDstFieldValue := dstFieldValue
+
+			if HasTag(srcField, "blueprint", "immutable_ptr") {
+				if !HasTag(dstField, "blueprint", "immutable_ptr") {
+					return extendPropertyErrorf(propertyName, `mismatched blueprint:"immutable_ptr" tag`)
+				}
+				if srcFieldValue.Type() != dstFieldValue.Type() {
+					return extendPropertyErrorf(propertyName, "mismatched types %s and %s",
+						dstFieldValue.Type(), srcFieldValue.Type())
+				}
+				if !srcFieldValue.IsZero() && !dstFieldValue.IsZero() {
+					return extendPropertyErrorf(propertyName, `cannot overwrite immutable pointer`)
+				}
+				if dstFieldValue.IsZero() && !srcFieldValue.IsZero() {
+					dstFieldValue.Set(srcFieldValue)
+				}
+				continue
+			}
 
 			// Step into destination interfaces
 			if dstFieldValue.Kind() == reflect.Interface {

@@ -265,6 +265,27 @@ var clonePropertiesTestCases = []struct {
 			},
 		},
 	},
+	{
+		// Immutable pointer
+		in: &struct {
+			Value string
+			Ptr   *unexportedType `blueprint:"immutable_ptr"`
+			Bool  bool
+		}{
+			Value: "foo",
+			Ptr:   immutablePtr,
+			Bool:  true,
+		},
+		out: &struct {
+			Value string
+			Ptr   *unexportedType `blueprint:"immutable_ptr"`
+			Bool  bool
+		}{
+			Value: "foo",
+			Ptr:   immutablePtr,
+			Bool:  true,
+		},
+	},
 }
 
 type EmbeddedStruct struct {
@@ -272,6 +293,14 @@ type EmbeddedStruct struct {
 	I *int64
 }
 type EmbeddedInterface interface{}
+
+type unexportedType struct {
+	value string
+}
+
+var immutablePtr = &unexportedType{
+	value: "foo",
+}
 
 func TestCloneProperties(t *testing.T) {
 	for _, testCase := range clonePropertiesTestCases {
@@ -492,6 +521,23 @@ var cloneEmptyPropertiesTestCases = []struct {
 				EmbeddedInterface: &struct{ S string }{},
 			},
 		},
+	},
+	{
+		// Immutable pointer
+		in: &struct {
+			Value string
+			Ptr   *unexportedType `blueprint:"immutable_ptr"`
+			Bool  bool
+		}{
+			Value: "foo",
+			Ptr:   immutablePtr,
+			Bool:  true,
+		},
+		out: &struct {
+			Value string
+			Ptr   *unexportedType `blueprint:"immutable_ptr"`
+			Bool  bool
+		}{},
 	},
 }
 

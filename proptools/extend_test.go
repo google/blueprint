@@ -782,6 +782,42 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				},
 			},
 		},
+		{
+			// Immutable pointer in in1
+			in1: &struct {
+				Ptr *unexportedType `blueprint:"immutable_ptr"`
+			}{
+				Ptr: immutablePtr,
+			},
+			in2: &struct {
+				Ptr *unexportedType `blueprint:"immutable_ptr"`
+			}{
+				Ptr: nil,
+			},
+			out: &struct {
+				Ptr *unexportedType `blueprint:"immutable_ptr"`
+			}{
+				Ptr: immutablePtr,
+			},
+		},
+		{
+			// Immutable pointer in in2
+			in1: &struct {
+				Ptr *unexportedType `blueprint:"immutable_ptr"`
+			}{
+				Ptr: nil,
+			},
+			in2: &struct {
+				Ptr *unexportedType `blueprint:"immutable_ptr"`
+			}{
+				Ptr: immutablePtr,
+			},
+			out: &struct {
+				Ptr *unexportedType `blueprint:"immutable_ptr"`
+			}{
+				Ptr: immutablePtr,
+			},
+		},
 
 		// Errors
 
@@ -936,6 +972,25 @@ func appendPropertiesTestCases() []appendPropertyTestCase {
 				},
 			},
 			err: extendPropertyErrorf("s.i", "unsupported kind int"),
+		},
+		{
+			// Immutable pointer in both
+			in1: &struct {
+				Ptr *unexportedType `blueprint:"immutable_ptr"`
+			}{
+				Ptr: immutablePtr,
+			},
+			in2: &struct {
+				Ptr *unexportedType `blueprint:"immutable_ptr"`
+			}{
+				Ptr: immutablePtr,
+			},
+			out: &struct {
+				Ptr *unexportedType `blueprint:"immutable_ptr"`
+			}{
+				Ptr: immutablePtr,
+			},
+			err: extendPropertyErrorf("ptr", "cannot overwrite immutable pointer"),
 		},
 
 		// Filters
@@ -1451,9 +1506,11 @@ func TestExtendMatchingProperties(t *testing.T) {
 func check(t *testing.T, testType, testString string,
 	got interface{}, err error,
 	expected interface{}, expectedErr error) {
+	t.Helper()
 
 	printedTestCase := false
 	e := func(s string, expected, got interface{}) {
+		t.Helper()
 		if !printedTestCase {
 			t.Errorf("test case %s: %s", testType, testString)
 			printedTestCase = true
