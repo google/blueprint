@@ -510,7 +510,7 @@ func (m *baseModuleContext) OtherModuleDependencyVariantExists(variations []Vari
 	if possibleDeps == nil {
 		return false
 	}
-	found, _ := m.context.findVariant(m.module, possibleDeps, variations, false, false)
+	found, _ := findVariant(m.module, possibleDeps, variations, false, false)
 	return found != nil
 }
 
@@ -519,7 +519,7 @@ func (m *baseModuleContext) OtherModuleReverseDependencyVariantExists(name strin
 	if possibleDeps == nil {
 		return false
 	}
-	found, _ := m.context.findVariant(m.module, possibleDeps, nil, false, true)
+	found, _ := findVariant(m.module, possibleDeps, nil, false, true)
 	return found != nil
 }
 

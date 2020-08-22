@@ -1542,31 +1542,15 @@ func blueprintDepsMutator(ctx BottomUpMutatorContext) {
 	}
 }
 
-// findMatchingVariant searches the moduleGroup for a module with the same variant as module,
-// and returns the matching module, or nil if one is not found.
-func (c *Context) findMatchingVariant(module *moduleInfo, possible *moduleGroup, reverse bool) *moduleInfo {
+// findExactVariantOrSingle searches the moduleGroup for a module with the same variant as module,
+// and returns the matching module, or nil if one is not found.  A group with exactly one module
+// is always considered matching.
+func findExactVariantOrSingle(module *moduleInfo, possible *moduleGroup, reverse bool) *moduleInfo {
 	if len(possible.modules) == 1 {
 		return possible.modules[0]
 	} else {
-		var variantToMatch variationMap
-		if !reverse {
-			// For forward dependency, ignore local variants by matching against
-			// dependencyVariant which doesn't have the local variants
-			variantToMatch = module.variant.dependencyVariations
-		} else {
-			// For reverse dependency, use all the variants
-			variantToMatch = module.variant.variations
-		}
-		for _, m := range possible.modules {
-			if m.variant.variations.equal(variantToMatch) {
-				return m
-			}
-		}
-		for _, m := range possible.aliases {
-			if m.variant.variations.equal(variantToMatch) {
-				return m.target
-			}
-		}
+		found, _ := findVariant(module, possible, nil, false, reverse)
+		return found
 	}
 
 	return nil
@@ -1589,7 +1573,7 @@ func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName s
 		return c.discoveredMissingDependencies(module, depName)
 	}
 
-	if m := c.findMatchingVariant(module, possibleDeps, false); m != nil {
+	if m := findExactVariantOrSingle(module, possibleDeps, false); m != nil {
 		module.newDirectDeps = append(module.newDirectDeps, depInfo{m, tag})
 		atomic.AddUint32(&c.depsModified, 1)
 		return nil
@@ -1626,7 +1610,7 @@ func (c *Context) findReverseDependency(module *moduleInfo, destName string) (*m
 		}}
 	}
 
-	if m := c.findMatchingVariant(module, possibleDeps, true); m != nil {
+	if m := findExactVariantOrSingle(module, possibleDeps, true); m != nil {
 		return m, nil
 	}
 
@@ -1644,7 +1628,7 @@ func (c *Context) findReverseDependency(module *moduleInfo, destName string) (*m
 	}}
 }
 
-func (c *Context) findVariant(module *moduleInfo, possibleDeps *moduleGroup, variations []Variation, far bool, reverse bool) (*moduleInfo, variationMap) {
+func findVariant(module *moduleInfo, possibleDeps *moduleGroup, variations []Variation, far bool, reverse bool) (*moduleInfo, variationMap) {
 	// We can't just append variant.Variant to module.dependencyVariant.variantName and
 	// compare the strings because the result won't be in mutator registration order.
 	// Create a new map instead, and then deep compare the maps.
