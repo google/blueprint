@@ -323,10 +323,10 @@ func (vm variationMap) clone() variationMap {
 }
 
 // Compare this variationMap to another one.  Returns true if the every entry in this map
-// is either the same in the other map or doesn't exist in the other map.
-func (vm variationMap) subset(other variationMap) bool {
+// exists and has the same value in the other map.
+func (vm variationMap) subsetOf(other variationMap) bool {
 	for k, v1 := range vm {
-		if v2, ok := other[k]; ok && v1 != v2 {
+		if v2, ok := other[k]; !ok || v1 != v2 {
 			return false
 		}
 	}
@@ -1687,7 +1687,7 @@ func findVariant(module *moduleInfo, possibleDeps *moduleGroup, variations []Var
 
 	check := func(variant variationMap) bool {
 		if far {
-			return variant.subset(newVariant)
+			return newVariant.subsetOf(variant)
 		} else {
 			return variant.equal(newVariant)
 		}

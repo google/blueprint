@@ -740,6 +740,12 @@ func Test_findVariant(t *testing.T) {
 			possibleDeps: makeDependencyGroup(
 				&moduleInfo{
 					variant: variant{
+						name:       "",
+						variations: nil,
+					},
+				},
+				&moduleInfo{
+					variant: variant{
 						name: "far",
 						variations: variationMap{
 							"far": "far",
@@ -789,12 +795,45 @@ func Test_findVariant(t *testing.T) {
 			reverse:    false,
 			want:       "far_b",
 		},
+		{
+			name: "AddFarVariationDependencies(far, b) to missing",
+			// A dependency with far variations and aliases
+			possibleDeps: makeDependencyGroup(
+				alias{
+					variant: variant{
+						name: "far",
+						variations: variationMap{
+							"far": "far",
+						},
+					},
+					target: 1,
+				},
+				&moduleInfo{
+					variant: variant{
+						name: "far_a",
+						variations: variationMap{
+							"far": "far",
+							"a":   "a",
+						},
+					},
+				},
+			),
+			variations: []Variation{{"far", "far"}, {"a", "b"}},
+			far:        true,
+			reverse:    false,
+			want:       "nil",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, _ := findVariant(module, tt.possibleDeps, tt.variations, tt.far, tt.reverse)
-			if g, w := got.String(), fmt.Sprintf("module %q variant %q", "dep", tt.want); g != w {
-				t.Errorf("findVariant() got = %v, want %v", g, w)
+			if g, w := got == nil, tt.want == "nil"; g != w {
+				t.Fatalf("findVariant() got = %v, want %v", got, tt.want)
+			}
+			if got != nil {
+				if g, w := got.String(), fmt.Sprintf("module %q variant %q", "dep", tt.want); g != w {
+					t.Errorf("findVariant() got = %v, want %v", g, w)
+				}
 			}
 		})
 	}
