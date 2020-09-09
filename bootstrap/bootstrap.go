@@ -180,8 +180,10 @@ func toolDir(config interface{}) string {
 
 func pluginDeps(ctx blueprint.BottomUpMutatorContext) {
 	if pkg, ok := ctx.Module().(*goPackage); ok {
-		for _, plugin := range pkg.properties.PluginFor {
-			ctx.AddReverseDependency(ctx.Module(), nil, plugin)
+		if ctx.PrimaryModule() == ctx.Module() {
+			for _, plugin := range pkg.properties.PluginFor {
+				ctx.AddReverseDependency(ctx.Module(), nil, plugin)
+			}
 		}
 	}
 }
@@ -211,7 +213,7 @@ func isGoPluginFor(name string) func(blueprint.Module) bool {
 	}
 }
 
-func isBootstrapModule(module blueprint.Module) bool {
+func IsBootstrapModule(module blueprint.Module) bool {
 	_, isPackage := module.(*goPackage)
 	_, isBinary := module.(*goBinary)
 	return isPackage || isBinary
@@ -268,6 +270,9 @@ func newGoPackageModuleFactory(config *Config) func() (blueprint.Module, []inter
 }
 
 func (g *goPackage) DynamicDependencies(ctx blueprint.DynamicDependerModuleContext) []string {
+	if ctx.Module() != ctx.PrimaryModule() {
+		return nil
+	}
 	return g.properties.Deps
 }
 
@@ -297,6 +302,16 @@ func (g *goPackage) IsPluginFor(name string) bool {
 }
 
 func (g *goPackage) GenerateBuildActions(ctx blueprint.ModuleContext) {
+	// Allow the primary builder to create multiple variants.  Any variants after the first
+	// will copy outputs from the first.
+	if ctx.Module() != ctx.PrimaryModule() {
+		primary := ctx.PrimaryModule().(*goPackage)
+		g.pkgRoot = primary.pkgRoot
+		g.archiveFile = primary.archiveFile
+		g.testResultFile = primary.testResultFile
+		return
+	}
+
 	var (
 		name       = ctx.ModuleName()
 		hasPlugins = false
@@ -386,6 +401,9 @@ func newGoBinaryModuleFactory(config *Config, tooldir bool) func() (blueprint.Mo
 }
 
 func (g *goBinary) DynamicDependencies(ctx blueprint.DynamicDependerModuleContext) []string {
+	if ctx.Module() != ctx.PrimaryModule() {
+		return nil
+	}
 	return g.properties.Deps
 }
 
@@ -395,6 +413,14 @@ func (g *goBinary) InstallPath() string {
 }
 
 func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
+	// Allow the primary builder to create multiple variants.  Any variants after the first
+	// will copy outputs from the first.
+	if ctx.Module() != ctx.PrimaryModule() {
+		primary := ctx.PrimaryModule().(*goBinary)
+		g.installPath = primary.installPath
+		return
+	}
+
 	var (
 		name            = ctx.ModuleName()
 		objDir          = moduleObjDir(ctx, g.config)
@@ -653,13 +679,15 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	var blueprintTools []string
 	ctx.VisitAllModulesIf(isBootstrapBinaryModule,
 		func(module blueprint.Module) {
-			binaryModule := module.(*goBinary)
+			if ctx.PrimaryModule(module) == module {
+				binaryModule := module.(*goBinary)
 
-			if binaryModule.properties.Tool_dir {
-				blueprintTools = append(blueprintTools, binaryModule.InstallPath())
-			}
-			if binaryModule.properties.PrimaryBuilder {
-				primaryBuilders = append(primaryBuilders, binaryModule)
+				if binaryModule.properties.Tool_dir {
+					blueprintTools = append(blueprintTools, binaryModule.InstallPath())
+				}
+				if binaryModule.properties.PrimaryBuilder {
+					primaryBuilders = append(primaryBuilders, binaryModule)
+				}
 			}
 		})
 
