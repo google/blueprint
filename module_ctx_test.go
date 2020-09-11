@@ -131,12 +131,8 @@ func TestAliasVariation(t *testing.T) {
 
 		run(ctx)
 
-		foo := ctx.moduleGroupFromName("foo", nil).modules[0]
-		barB := ctx.moduleGroupFromName("bar", nil).modules[1]
-
-		if g, w := barB.variant.name, "b"; g != w {
-			t.Fatalf("expected bar.modules[1] variant to be %q, got %q", w, g)
-		}
+		foo := ctx.moduleGroupFromName("foo", nil).moduleByVariantName("")
+		barB := ctx.moduleGroupFromName("bar", nil).moduleByVariantName("b")
 
 		if g, w := foo.forwardDeps, []*moduleInfo{barB}; !reflect.DeepEqual(g, w) {
 			t.Fatalf("expected foo deps to be %q, got %q", w, g)
@@ -155,12 +151,8 @@ func TestAliasVariation(t *testing.T) {
 
 		run(ctx)
 
-		foo := ctx.moduleGroupFromName("foo", nil).modules[0]
-		barBB := ctx.moduleGroupFromName("bar", nil).modules[3]
-
-		if g, w := barBB.variant.name, "b_b"; g != w {
-			t.Fatalf("expected bar.modules[3] variant to be %q, got %q", w, g)
-		}
+		foo := ctx.moduleGroupFromName("foo", nil).moduleByVariantName("")
+		barBB := ctx.moduleGroupFromName("bar", nil).moduleByVariantName("b_b")
 
 		if g, w := foo.forwardDeps, []*moduleInfo{barBB}; !reflect.DeepEqual(g, w) {
 			t.Fatalf("expected foo deps to be %q, got %q", w, g)
@@ -179,12 +171,8 @@ func TestAliasVariation(t *testing.T) {
 
 		run(ctx)
 
-		foo := ctx.moduleGroupFromName("foo", nil).modules[0]
-		barAB := ctx.moduleGroupFromName("bar", nil).modules[1]
-
-		if g, w := barAB.variant.name, "a_b"; g != w {
-			t.Fatalf("expected bar.modules[1] variant to be %q, got %q", w, g)
-		}
+		foo := ctx.moduleGroupFromName("foo", nil).moduleByVariantName("")
+		barAB := ctx.moduleGroupFromName("bar", nil).moduleByVariantName("a_b")
 
 		if g, w := foo.forwardDeps, []*moduleInfo{barAB}; !reflect.DeepEqual(g, w) {
 			t.Fatalf("expected foo deps to be %q, got %q", w, g)
@@ -270,12 +258,8 @@ func TestCreateAliasVariations(t *testing.T) {
 
 		run(ctx)
 
-		foo := ctx.moduleGroupFromName("foo", nil).modules[0]
-		barB := ctx.moduleGroupFromName("bar", nil).modules[1]
-
-		if g, w := barB.variant.name, "b"; g != w {
-			t.Fatalf("expected bar.modules[1] variant to be %q, got %q", w, g)
-		}
+		foo := ctx.moduleGroupFromName("foo", nil).moduleByVariantName("")
+		barB := ctx.moduleGroupFromName("bar", nil).moduleByVariantName("b")
 
 		if g, w := foo.forwardDeps, []*moduleInfo{barB}; !reflect.DeepEqual(g, w) {
 			t.Fatalf("expected foo deps to be %q, got %q", w, g)
@@ -294,12 +278,8 @@ func TestCreateAliasVariations(t *testing.T) {
 
 		run(ctx)
 
-		foo := ctx.moduleGroupFromName("foo", nil).modules[0]
-		barBB := ctx.moduleGroupFromName("bar", nil).modules[3]
-
-		if g, w := barBB.variant.name, "b_b"; g != w {
-			t.Fatalf("expected bar.modules[3] variant to be %q, got %q", w, g)
-		}
+		foo := ctx.moduleGroupFromName("foo", nil).moduleByVariantName("")
+		barBB := ctx.moduleGroupFromName("bar", nil).moduleByVariantName("b_b")
 
 		if g, w := foo.forwardDeps, []*moduleInfo{barBB}; !reflect.DeepEqual(g, w) {
 			t.Fatalf("expected foo deps to be %q, got %q", w, g)
