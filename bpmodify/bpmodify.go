@@ -22,18 +22,20 @@ import (
 
 var (
 	// main operation modes
-	list            = flag.Bool("l", false, "list files that would be modified by bpmodify")
-	write           = flag.Bool("w", false, "write result to (source) file instead of stdout")
-	doDiff          = flag.Bool("d", false, "display diffs instead of rewriting files")
-	sortLists       = flag.Bool("s", false, "sort touched lists, even if they were unsorted")
-	parameter       = flag.String("parameter", "deps", "name of parameter to modify on each module")
-	targetedModules = new(identSet)
-	addIdents       = new(identSet)
-	removeIdents    = new(identSet)
+	list             = flag.Bool("l", false, "list files that would be modified by bpmodify")
+	write            = flag.Bool("w", false, "write result to (source) file instead of stdout")
+	doDiff           = flag.Bool("d", false, "display diffs instead of rewriting files")
+	sortLists        = flag.Bool("s", false, "sort touched lists, even if they were unsorted")
+	targetedModules  = new(identSet)
+	targetedProperty = new(qualifiedProperty)
+	addIdents        = new(identSet)
+	removeIdents     = new(identSet)
 )
 
 func init() {
 	flag.Var(targetedModules, "m", "comma or whitespace separated list of modules on which to operate")
+	flag.Var(targetedProperty, "parameter", "alias to -property=`name`")
+	flag.Var(targetedProperty, "property", "fully qualified `name` of property to modify (default \"deps\")")
 	flag.Var(addIdents, "a", "comma or whitespace separated list of identifiers to add")
 	flag.Var(removeIdents, "r", "comma or whitespace separated list of identifiers to remove")
 	flag.Usage = usage
@@ -140,22 +142,72 @@ func findModules(file *parser.File) (modified bool, errs []error) {
 
 func processModule(module *parser.Module, moduleName string,
 	file *parser.File) (modified bool, errs []error) {
-
-	for _, prop := range module.Properties {
-		if prop.Name == *parameter {
-			modified, errs = processParameter(prop.Value, *parameter, moduleName, file)
-			return
+	prop, err := getRecursiveProperty(module, targetedProperty.name(), targetedProperty.prefixes())
+	if err != nil {
+		return false, []error{err}
+	}
+	if prop == nil {
+		if len(addIdents.idents) == 0 {
+			// We cannot find an existing prop, and we aren't adding anything to the prop,
+			// which means we must be removing something from a non-existing prop,
+			// which means this is a noop.
+			return false, nil
+		}
+		// Else we are adding something to a non-existing prop, so we need to create it first.
+		prop, modified, err = createRecursiveProperty(module, targetedProperty.name(), targetedProperty.prefixes())
+		if err != nil {
+			// Here should be unreachable, but still handle it for completeness.
+			return false, []error{err}
 		}
 	}
-
-	prop := parser.Property{Name: *parameter, Value: &parser.List{}}
-	modified, errs = processParameter(prop.Value, *parameter, moduleName, file)
-
-	if modified {
-		module.Properties = append(module.Properties, &prop)
-	}
-
+	m, errs := processParameter(prop.Value, targetedProperty.String(), moduleName, file)
+	modified = modified || m
 	return modified, errs
+}
+
+func getRecursiveProperty(module *parser.Module, name string, prefixes []string) (prop *parser.Property, err error) {
+	prop, _, err = getOrCreateRecursiveProperty(module, name, prefixes, false)
+	return prop, err
+}
+
+func createRecursiveProperty(module *parser.Module, name string, prefixes []string) (prop *parser.Property, modified bool, err error) {
+	return getOrCreateRecursiveProperty(module, name, prefixes, true)
+}
+
+func getOrCreateRecursiveProperty(module *parser.Module, name string, prefixes []string,
+	createIfNotFound bool) (prop *parser.Property, modified bool, err error) {
+	m := &module.Map
+	for i, prefix := range prefixes {
+		if prop, found := m.GetProperty(prefix); found {
+			if mm, ok := prop.Value.Eval().(*parser.Map); ok {
+				m = mm
+			} else {
+				// We've found a property in the AST and such property is not of type
+				// *parser.Map, which must mean we didn't modify the AST.
+				return nil, false, fmt.Errorf("Expected property %q to be a map, found %s",
+					strings.Join(prefixes[:i+1], "."), prop.Value.Type())
+			}
+		} else if createIfNotFound {
+			mm := &parser.Map{}
+			m.Properties = append(m.Properties, &parser.Property{Name: prefix, Value: mm})
+			m = mm
+			// We've created a new node in the AST. This means the m.GetProperty(name)
+			// check after this for loop must fail, because the node we inserted is an
+			// empty parser.Map, thus this function will return |modified| is true.
+		} else {
+			return nil, false, nil
+		}
+	}
+	if prop, found := m.GetProperty(name); found {
+		// We've found a property in the AST, which must mean we didn't modify the AST.
+		return prop, false, nil
+	} else if createIfNotFound {
+		prop = &parser.Property{Name: name, Value: &parser.List{}}
+		m.Properties = append(m.Properties, prop)
+		return prop, true, nil
+	} else {
+		return nil, false, nil
+	}
 }
 
 func processParameter(value parser.Expression, paramName, moduleName string,
@@ -231,6 +283,10 @@ func main() {
 	}()
 
 	flag.Parse()
+
+	if len(targetedProperty.parts) == 0 {
+		targetedProperty.Set("deps")
+	}
 
 	if flag.NArg() == 0 {
 		if *write {
@@ -317,4 +373,39 @@ func (m *identSet) Set(s string) error {
 
 func (m *identSet) Get() interface{} {
 	return m.idents
+}
+
+type qualifiedProperty struct {
+	parts []string
+}
+
+var _ flag.Getter = (*qualifiedProperty)(nil)
+
+func (p *qualifiedProperty) name() string {
+	return p.parts[len(p.parts)-1]
+}
+
+func (p *qualifiedProperty) prefixes() []string {
+	return p.parts[:len(p.parts)-1]
+}
+
+func (p *qualifiedProperty) String() string {
+	return strings.Join(p.parts, ".")
+}
+
+func (p *qualifiedProperty) Set(s string) error {
+	p.parts = strings.Split(s, ".")
+	if len(p.parts) == 0 {
+		return fmt.Errorf("%q is not a valid property name", s)
+	}
+	for _, part := range p.parts {
+		if part == "" {
+			return fmt.Errorf("%q is not a valid property name", s)
+		}
+	}
+	return nil
+}
+
+func (p *qualifiedProperty) Get() interface{} {
+	return p.parts
 }
