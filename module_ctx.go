@@ -510,7 +510,7 @@ func (m *baseModuleContext) OtherModuleDependencyVariantExists(variations []Vari
 	if possibleDeps == nil {
 		return false
 	}
-	found, _ := m.context.findVariant(m.module, possibleDeps, variations, false, false)
+	found, _ := findVariant(m.module, possibleDeps, variations, false, false)
 	return found != nil
 }
 
@@ -519,7 +519,7 @@ func (m *baseModuleContext) OtherModuleReverseDependencyVariantExists(name strin
 	if possibleDeps == nil {
 		return false
 	}
-	found, _ := m.context.findVariant(m.module, possibleDeps, nil, false, true)
+	found, _ := findVariant(m.module, possibleDeps, nil, false, true)
 	return found != nil
 }
 
@@ -643,11 +643,11 @@ func (m *baseModuleContext) WalkDeps(visit func(child, parent Module) bool) {
 }
 
 func (m *baseModuleContext) PrimaryModule() Module {
-	return m.module.group.modules[0].logicModule
+	return m.module.group.modules.firstModule().logicModule
 }
 
 func (m *baseModuleContext) FinalModule() Module {
-	return m.module.group.modules[len(m.module.group.modules)-1].logicModule
+	return m.module.group.modules.lastModule().logicModule
 }
 
 func (m *baseModuleContext) VisitAllModuleVariants(visit func(Module)) {
@@ -722,8 +722,8 @@ type mutatorContext struct {
 	reverseDeps      []reverseDep
 	rename           []rename
 	replace          []replace
-	newVariations    []*moduleInfo // new variants of existing modules
-	newModules       []*moduleInfo // brand new modules
+	newVariations    modulesOrAliases // new variants of existing modules
+	newModules       []*moduleInfo    // brand new modules
 	defaultVariation *string
 }
 
@@ -921,7 +921,7 @@ func (mctx *mutatorContext) createVariations(variationNames []string, local bool
 	}
 
 	for _, module := range modules {
-		ret = append(ret, module.logicModule)
+		ret = append(ret, module.module().logicModule)
 	}
 
 	if mctx.newVariations != nil {
@@ -937,25 +937,30 @@ func (mctx *mutatorContext) createVariations(variationNames []string, local bool
 }
 
 func (mctx *mutatorContext) AliasVariation(variationName string) {
-	for _, alias := range mctx.module.pendingAliases {
-		if alias.fromVariant.variations.equal(mctx.module.variant.variations) {
-			panic(fmt.Errorf("AliasVariation already called"))
+	for _, moduleOrAlias := range mctx.module.splitModules {
+		if alias := moduleOrAlias.alias(); alias != nil {
+			if alias.variant.variations.equal(mctx.module.variant.variations) {
+				panic(fmt.Errorf("AliasVariation already called"))
+			}
 		}
 	}
 
 	for _, variant := range mctx.newVariations {
-		if variant.variant.variations[mctx.name] == variationName {
-			mctx.module.pendingAliases = append(mctx.module.pendingAliases, pendingAlias{
-				fromVariant: mctx.module.variant,
-				target:      variant,
-			})
+		if variant.moduleOrAliasVariant().variations[mctx.name] == variationName {
+			alias := &moduleAlias{
+				variant: mctx.module.variant,
+				target:  variant.moduleOrAliasTarget(),
+			}
+			// Prepend the alias so that AddFarVariationDependencies subset match matches
+			// the alias before matching the first variation.
+			mctx.module.splitModules = append(modulesOrAliases{alias}, mctx.module.splitModules...)
 			return
 		}
 	}
 
 	var foundVariations []string
 	for _, variant := range mctx.newVariations {
-		foundVariations = append(foundVariations, variant.variant.variations[mctx.name])
+		foundVariations = append(foundVariations, variant.moduleOrAliasVariant().variations[mctx.name])
 	}
 	panic(fmt.Errorf("no %q variation in module variations %q", variationName, foundVariations))
 }
@@ -963,17 +968,22 @@ func (mctx *mutatorContext) AliasVariation(variationName string) {
 func (mctx *mutatorContext) CreateAliasVariation(aliasVariationName, targetVariationName string) {
 	newVariant := newVariant(mctx.module, mctx.name, aliasVariationName, false)
 
-	for _, alias := range mctx.module.pendingAliases {
-		if alias.fromVariant.variations.equal(newVariant.variations) {
-			panic(fmt.Errorf("can't alias %q to %q, already aliased to %q", aliasVariationName, targetVariationName, alias.target.variant.name))
+	for _, moduleOrAlias := range mctx.module.splitModules {
+		if moduleOrAlias.moduleOrAliasVariant().variations.equal(newVariant.variations) {
+			if alias := moduleOrAlias.alias(); alias != nil {
+				panic(fmt.Errorf("can't alias %q to %q, already aliased to %q", aliasVariationName, targetVariationName, alias.target.variant.name))
+			} else {
+				panic(fmt.Errorf("can't alias %q to %q, there is already a variant with that name", aliasVariationName, targetVariationName))
+			}
 		}
 	}
 
 	for _, variant := range mctx.newVariations {
-		if variant.variant.variations[mctx.name] == targetVariationName {
-			mctx.module.pendingAliases = append(mctx.module.pendingAliases, pendingAlias{
-				fromVariant: newVariant,
-				target:      variant,
+		if variant.moduleOrAliasVariant().variations[mctx.name] == targetVariationName {
+			// Append the alias here so that it comes after any aliases created by AliasVariation.
+			mctx.module.splitModules = append(mctx.module.splitModules, &moduleAlias{
+				variant: newVariant,
+				target:  variant.moduleOrAliasTarget(),
 			})
 			return
 		}
@@ -981,7 +991,7 @@ func (mctx *mutatorContext) CreateAliasVariation(aliasVariationName, targetVaria
 
 	var foundVariations []string
 	for _, variant := range mctx.newVariations {
-		foundVariations = append(foundVariations, variant.variant.variations[mctx.name])
+		foundVariations = append(foundVariations, variant.moduleOrAliasVariant().variations[mctx.name])
 	}
 	panic(fmt.Errorf("no %q variation in module variations %q", targetVariationName, foundVariations))
 }

@@ -109,7 +109,7 @@ func (s *SimpleNameInterface) NewModule(ctx NamespaceContext, group ModuleGroup,
 		return nil, []error{
 			// seven characters at the start of the second line to align with the string "error: "
 			fmt.Errorf("module %q already defined\n"+
-				"       %s <-- previous definition here", name, group.modules[0].pos),
+				"       %s <-- previous definition here", name, group.modules.firstModule().pos),
 		}
 	}
 
@@ -130,7 +130,7 @@ func (s *SimpleNameInterface) Rename(oldName string, newName string, namespace N
 			// seven characters at the start of the second line to align with the string "error: "
 			fmt.Errorf("renaming module %q to %q conflicts with existing module\n"+
 				"       %s <-- existing module defined here",
-				oldName, newName, existingGroup.modules[0].pos),
+				oldName, newName, existingGroup.modules.firstModule().pos),
 		}
 	}
 
