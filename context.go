@@ -2733,7 +2733,7 @@ func (c *Context) moduleMatchingVariant(module *moduleInfo, name string) *module
 	}
 
 	for _, m := range group.modules {
-		if module.variant.variations.equal(m.moduleOrAliasVariant().variations) {
+		if module.variant.name == m.moduleOrAliasVariant().name {
 			return m.moduleOrAliasTarget()
 		}
 	}
