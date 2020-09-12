@@ -29,82 +29,82 @@ var (
 )
 
 var spliceModulesTestCases = []struct {
-	in         []*moduleInfo
+	in         modulesOrAliases
 	at         int
-	with       []*moduleInfo
-	out        []*moduleInfo
+	with       modulesOrAliases
+	out        modulesOrAliases
 	outAt      int
 	reallocate bool
 }{
 	{
 		// Insert at the beginning
-		in:         []*moduleInfo{testModuleA, testModuleB, testModuleC},
+		in:         modulesOrAliases{testModuleA, testModuleB, testModuleC},
 		at:         0,
-		with:       []*moduleInfo{testModuleD, testModuleE},
-		out:        []*moduleInfo{testModuleD, testModuleE, testModuleB, testModuleC},
+		with:       modulesOrAliases{testModuleD, testModuleE},
+		out:        modulesOrAliases{testModuleD, testModuleE, testModuleB, testModuleC},
 		outAt:      1,
 		reallocate: true,
 	},
 	{
 		// Insert in the middle
-		in:         []*moduleInfo{testModuleA, testModuleB, testModuleC},
+		in:         modulesOrAliases{testModuleA, testModuleB, testModuleC},
 		at:         1,
-		with:       []*moduleInfo{testModuleD, testModuleE},
-		out:        []*moduleInfo{testModuleA, testModuleD, testModuleE, testModuleC},
+		with:       modulesOrAliases{testModuleD, testModuleE},
+		out:        modulesOrAliases{testModuleA, testModuleD, testModuleE, testModuleC},
 		outAt:      2,
 		reallocate: true,
 	},
 	{
 		// Insert at the end
-		in:         []*moduleInfo{testModuleA, testModuleB, testModuleC},
+		in:         modulesOrAliases{testModuleA, testModuleB, testModuleC},
 		at:         2,
-		with:       []*moduleInfo{testModuleD, testModuleE},
-		out:        []*moduleInfo{testModuleA, testModuleB, testModuleD, testModuleE},
+		with:       modulesOrAliases{testModuleD, testModuleE},
+		out:        modulesOrAliases{testModuleA, testModuleB, testModuleD, testModuleE},
 		outAt:      3,
 		reallocate: true,
 	},
 	{
 		// Insert over a single element
-		in:         []*moduleInfo{testModuleA},
+		in:         modulesOrAliases{testModuleA},
 		at:         0,
-		with:       []*moduleInfo{testModuleD, testModuleE},
-		out:        []*moduleInfo{testModuleD, testModuleE},
+		with:       modulesOrAliases{testModuleD, testModuleE},
+		out:        modulesOrAliases{testModuleD, testModuleE},
 		outAt:      1,
 		reallocate: true,
 	},
 	{
 		// Insert at the beginning without reallocating
-		in:         []*moduleInfo{testModuleA, testModuleB, testModuleC, nil}[0:3],
+		in:         modulesOrAliases{testModuleA, testModuleB, testModuleC, nil}[0:3],
 		at:         0,
-		with:       []*moduleInfo{testModuleD, testModuleE},
-		out:        []*moduleInfo{testModuleD, testModuleE, testModuleB, testModuleC},
+		with:       modulesOrAliases{testModuleD, testModuleE},
+		out:        modulesOrAliases{testModuleD, testModuleE, testModuleB, testModuleC},
 		outAt:      1,
 		reallocate: false,
 	},
 	{
 		// Insert in the middle without reallocating
-		in:         []*moduleInfo{testModuleA, testModuleB, testModuleC, nil}[0:3],
+		in:         modulesOrAliases{testModuleA, testModuleB, testModuleC, nil}[0:3],
 		at:         1,
-		with:       []*moduleInfo{testModuleD, testModuleE},
-		out:        []*moduleInfo{testModuleA, testModuleD, testModuleE, testModuleC},
+		with:       modulesOrAliases{testModuleD, testModuleE},
+		out:        modulesOrAliases{testModuleA, testModuleD, testModuleE, testModuleC},
 		outAt:      2,
 		reallocate: false,
 	},
 	{
 		// Insert at the end without reallocating
-		in:         []*moduleInfo{testModuleA, testModuleB, testModuleC, nil}[0:3],
+		in:         modulesOrAliases{testModuleA, testModuleB, testModuleC, nil}[0:3],
 		at:         2,
-		with:       []*moduleInfo{testModuleD, testModuleE},
-		out:        []*moduleInfo{testModuleA, testModuleB, testModuleD, testModuleE},
+		with:       modulesOrAliases{testModuleD, testModuleE},
+		out:        modulesOrAliases{testModuleA, testModuleB, testModuleD, testModuleE},
 		outAt:      3,
 		reallocate: false,
 	},
 	{
 		// Insert over a single element without reallocating
-		in:         []*moduleInfo{testModuleA, nil}[0:1],
+		in:         modulesOrAliases{testModuleA, nil}[0:1],
 		at:         0,
-		with:       []*moduleInfo{testModuleD, testModuleE},
-		out:        []*moduleInfo{testModuleD, testModuleE},
+		with:       modulesOrAliases{testModuleD, testModuleE},
+		out:        modulesOrAliases{testModuleD, testModuleE},
 		outAt:      1,
 		reallocate: false,
 	},
@@ -112,7 +112,7 @@ var spliceModulesTestCases = []struct {
 
 func TestSpliceModules(t *testing.T) {
 	for _, testCase := range spliceModulesTestCases {
-		in := make([]*moduleInfo, len(testCase.in), cap(testCase.in))
+		in := make(modulesOrAliases, len(testCase.in), cap(testCase.in))
 		copy(in, testCase.in)
 		origIn := in
 		got, gotAt := spliceModules(in, testCase.at, testCase.with)
@@ -139,6 +139,6 @@ func TestSpliceModules(t *testing.T) {
 	}
 }
 
-func sameArray(a, b []*moduleInfo) bool {
+func sameArray(a, b modulesOrAliases) bool {
 	return &a[0:cap(a)][cap(a)-1] == &b[0:cap(b)][cap(b)-1]
 }
