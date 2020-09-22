@@ -725,6 +725,7 @@ type mutatorContext struct {
 	newVariations    modulesOrAliases // new variants of existing modules
 	newModules       []*moduleInfo    // brand new modules
 	defaultVariation *string
+	pauseCh          chan<- pauseSpec
 }
 
 type BaseMutatorContext interface {
@@ -1100,6 +1101,23 @@ func (mctx *mutatorContext) CreateModule(factory ModuleFactory, props ...interfa
 	mctx.newModules = append(mctx.newModules, module)
 
 	return module.logicModule
+}
+
+// pause waits until the given dependency has been visited by the mutator's parallelVisit call.
+// It returns true if the pause was supported, false if the pause was not supported and did not
+// occur, which will happen when the mutator is not parallelizable.
+func (mctx *mutatorContext) pause(dep *moduleInfo) bool {
+	if mctx.pauseCh != nil {
+		unpause := make(unpause)
+		mctx.pauseCh <- pauseSpec{
+			paused:  mctx.module,
+			until:   dep,
+			unpause: unpause,
+		}
+		<-unpause
+		return true
+	}
+	return false
 }
 
 // SimpleName is an embeddable object to implement the ModuleContext.Name method using a property

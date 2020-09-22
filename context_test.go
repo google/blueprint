@@ -838,3 +838,219 @@ func Test_findVariant(t *testing.T) {
 		})
 	}
 }
+
+func Test_parallelVisit(t *testing.T) {
+	moduleA := &moduleInfo{
+		group: &moduleGroup{
+			name: "A",
+		},
+	}
+	moduleB := &moduleInfo{
+		group: &moduleGroup{
+			name: "B",
+		},
+	}
+	moduleC := &moduleInfo{
+		group: &moduleGroup{
+			name: "C",
+		},
+	}
+	moduleD := &moduleInfo{
+		group: &moduleGroup{
+			name: "D",
+		},
+	}
+	moduleA.group.modules = modulesOrAliases{moduleA}
+	moduleB.group.modules = modulesOrAliases{moduleB}
+	moduleC.group.modules = modulesOrAliases{moduleC}
+	moduleD.group.modules = modulesOrAliases{moduleD}
+
+	addDep := func(from, to *moduleInfo) {
+		from.directDeps = append(from.directDeps, depInfo{to, nil})
+		from.forwardDeps = append(from.forwardDeps, to)
+		to.reverseDeps = append(to.reverseDeps, from)
+	}
+
+	// A depends on B, B depends on C.  Nothing depends on D, and D doesn't depend on anything.
+	addDep(moduleA, moduleB)
+	addDep(moduleB, moduleC)
+
+	t.Run("no modules", func(t *testing.T) {
+		errs := parallelVisit(nil, bottomUpVisitorImpl{}, 1,
+			func(module *moduleInfo, pause chan<- pauseSpec) bool {
+				panic("unexpected call to visitor")
+			})
+		if errs != nil {
+			t.Errorf("expected no errors, got %q", errs)
+		}
+	})
+	t.Run("bottom up", func(t *testing.T) {
+		order := ""
+		errs := parallelVisit([]*moduleInfo{moduleA, moduleB, moduleC}, bottomUpVisitorImpl{}, 1,
+			func(module *moduleInfo, pause chan<- pauseSpec) bool {
+				order += module.group.name
+				return false
+			})
+		if errs != nil {
+			t.Errorf("expected no errors, got %q", errs)
+		}
+		if g, w := order, "CBA"; g != w {
+			t.Errorf("expected order %q, got %q", w, g)
+		}
+	})
+	t.Run("pause", func(t *testing.T) {
+		order := ""
+		errs := parallelVisit([]*moduleInfo{moduleA, moduleB, moduleC, moduleD}, bottomUpVisitorImpl{}, 1,
+			func(module *moduleInfo, pause chan<- pauseSpec) bool {
+				if module == moduleC {
+					// Pause module C on module D
+					unpause := make(chan struct{})
+					pause <- pauseSpec{moduleC, moduleD, unpause}
+					<-unpause
+				}
+				order += module.group.name
+				return false
+			})
+		if errs != nil {
+			t.Errorf("expected no errors, got %q", errs)
+		}
+		if g, w := order, "DCBA"; g != w {
+			t.Errorf("expected order %q, got %q", w, g)
+		}
+	})
+	t.Run("cancel", func(t *testing.T) {
+		order := ""
+		errs := parallelVisit([]*moduleInfo{moduleA, moduleB, moduleC}, bottomUpVisitorImpl{}, 1,
+			func(module *moduleInfo, pause chan<- pauseSpec) bool {
+				order += module.group.name
+				// Cancel in module B
+				return module == moduleB
+			})
+		if errs != nil {
+			t.Errorf("expected no errors, got %q", errs)
+		}
+		if g, w := order, "CB"; g != w {
+			t.Errorf("expected order %q, got %q", w, g)
+		}
+	})
+	t.Run("pause and cancel", func(t *testing.T) {
+		order := ""
+		errs := parallelVisit([]*moduleInfo{moduleA, moduleB, moduleC, moduleD}, bottomUpVisitorImpl{}, 1,
+			func(module *moduleInfo, pause chan<- pauseSpec) bool {
+				if module == moduleC {
+					// Pause module C on module D
+					unpause := make(chan struct{})
+					pause <- pauseSpec{moduleC, moduleD, unpause}
+					<-unpause
+				}
+				order += module.group.name
+				// Cancel in module D
+				return module == moduleD
+			})
+		if errs != nil {
+			t.Errorf("expected no errors, got %q", errs)
+		}
+		if g, w := order, "D"; g != w {
+			t.Errorf("expected order %q, got %q", w, g)
+		}
+	})
+	t.Run("parallel", func(t *testing.T) {
+		order := ""
+		errs := parallelVisit([]*moduleInfo{moduleA, moduleB, moduleC}, bottomUpVisitorImpl{}, 3,
+			func(module *moduleInfo, pause chan<- pauseSpec) bool {
+				order += module.group.name
+				return false
+			})
+		if errs != nil {
+			t.Errorf("expected no errors, got %q", errs)
+		}
+		if g, w := order, "CBA"; g != w {
+			t.Errorf("expected order %q, got %q", w, g)
+		}
+	})
+	t.Run("pause existing", func(t *testing.T) {
+		order := ""
+		errs := parallelVisit([]*moduleInfo{moduleA, moduleB, moduleC}, bottomUpVisitorImpl{}, 3,
+			func(module *moduleInfo, pause chan<- pauseSpec) bool {
+				if module == moduleA {
+					// Pause module A on module B (an existing dependency)
+					unpause := make(chan struct{})
+					pause <- pauseSpec{moduleA, moduleB, unpause}
+					<-unpause
+				}
+				order += module.group.name
+				return false
+			})
+		if errs != nil {
+			t.Errorf("expected no errors, got %q", errs)
+		}
+		if g, w := order, "CBA"; g != w {
+			t.Errorf("expected order %q, got %q", w, g)
+		}
+	})
+	t.Run("cycle", func(t *testing.T) {
+		errs := parallelVisit([]*moduleInfo{moduleA, moduleB, moduleC}, bottomUpVisitorImpl{}, 3,
+			func(module *moduleInfo, pause chan<- pauseSpec) bool {
+				if module == moduleC {
+					// Pause module C on module A (a dependency cycle)
+					unpause := make(chan struct{})
+					pause <- pauseSpec{moduleC, moduleA, unpause}
+					<-unpause
+				}
+				return false
+			})
+		want := []string{
+			`encountered dependency cycle`,
+			`"C" depends on "A"`,
+			`"A" depends on "B"`,
+			`"B" depends on "C"`,
+		}
+		for i := range want {
+			if len(errs) <= i {
+				t.Errorf("missing error %s", want[i])
+			} else if !strings.Contains(errs[i].Error(), want[i]) {
+				t.Errorf("expected error %s, got %s", want[i], errs[i])
+			}
+		}
+		if len(errs) > len(want) {
+			for _, err := range errs[len(want):] {
+				t.Errorf("unexpected error %s", err.Error())
+			}
+		}
+	})
+	t.Run("pause cycle", func(t *testing.T) {
+		errs := parallelVisit([]*moduleInfo{moduleA, moduleB, moduleC, moduleD}, bottomUpVisitorImpl{}, 3,
+			func(module *moduleInfo, pause chan<- pauseSpec) bool {
+				if module == moduleC {
+					// Pause module C on module D
+					unpause := make(chan struct{})
+					pause <- pauseSpec{moduleC, moduleD, unpause}
+					<-unpause
+				}
+				if module == moduleD {
+					// Pause module D on module C (a pause cycle)
+					unpause := make(chan struct{})
+					pause <- pauseSpec{moduleD, moduleC, unpause}
+					<-unpause
+				}
+				return false
+			})
+		want := []string{
+			`encountered dependency cycle`,
+			`"C" depends on "D"`,
+			`"D" depends on "C"`,
+		}
+		for i := range want {
+			if len(errs) <= i {
+				t.Errorf("missing error %s", want[i])
+			} else if !strings.Contains(errs[i].Error(), want[i]) {
+				t.Errorf("expected error %s, got %s", want[i], errs[i])
+			}
+		}
+		if len(errs) > len(want) {
+			for _, err := range errs[len(want):] {
+				t.Errorf("unexpected error %s", err.Error())
+			}
+		}
+	})
+}
