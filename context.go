@@ -1591,13 +1591,13 @@ func findExactVariantOrSingle(module *moduleInfo, possible *moduleGroup, reverse
 	return found
 }
 
-func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName string) []error {
+func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName string) (*moduleInfo, []error) {
 	if _, ok := tag.(BaseDependencyTag); ok {
 		panic("BaseDependencyTag is not allowed to be used directly!")
 	}
 
 	if depName == module.Name() {
-		return []error{&BlueprintError{
+		return nil, []error{&BlueprintError{
 			Err: fmt.Errorf("%q depends on itself", depName),
 			Pos: module.pos,
 		}}
@@ -1605,21 +1605,21 @@ func (c *Context) addDependency(module *moduleInfo, tag DependencyTag, depName s
 
 	possibleDeps := c.moduleGroupFromName(depName, module.namespace())
 	if possibleDeps == nil {
-		return c.discoveredMissingDependencies(module, depName)
+		return nil, c.discoveredMissingDependencies(module, depName)
 	}
 
 	if m := findExactVariantOrSingle(module, possibleDeps, false); m != nil {
 		module.newDirectDeps = append(module.newDirectDeps, depInfo{m, tag})
 		atomic.AddUint32(&c.depsModified, 1)
-		return nil
+		return m, nil
 	}
 
 	if c.allowMissingDependencies {
 		// Allow missing variants.
-		return c.discoveredMissingDependencies(module, depName+c.prettyPrintVariant(module.variant.dependencyVariations))
+		return nil, c.discoveredMissingDependencies(module, depName+c.prettyPrintVariant(module.variant.dependencyVariations))
 	}
 
-	return []error{&BlueprintError{
+	return nil, []error{&BlueprintError{
 		Err: fmt.Errorf("dependency %q of %q missing variant:\n  %s\navailable variants:\n  %s",
 			depName, module.Name(),
 			c.prettyPrintVariant(module.variant.dependencyVariations),
@@ -1705,14 +1705,14 @@ func findVariant(module *moduleInfo, possibleDeps *moduleGroup, variations []Var
 }
 
 func (c *Context) addVariationDependency(module *moduleInfo, variations []Variation,
-	tag DependencyTag, depName string, far bool) []error {
+	tag DependencyTag, depName string, far bool) (*moduleInfo, []error) {
 	if _, ok := tag.(BaseDependencyTag); ok {
 		panic("BaseDependencyTag is not allowed to be used directly!")
 	}
 
 	possibleDeps := c.moduleGroupFromName(depName, module.namespace())
 	if possibleDeps == nil {
-		return c.discoveredMissingDependencies(module, depName)
+		return nil, c.discoveredMissingDependencies(module, depName)
 	}
 
 	foundDep, newVariant := findVariant(module, possibleDeps, variations, far, false)
@@ -1720,9 +1720,9 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 	if foundDep == nil {
 		if c.allowMissingDependencies {
 			// Allow missing variants.
-			return c.discoveredMissingDependencies(module, depName+c.prettyPrintVariant(newVariant))
+			return nil, c.discoveredMissingDependencies(module, depName+c.prettyPrintVariant(newVariant))
 		}
-		return []error{&BlueprintError{
+		return nil, []error{&BlueprintError{
 			Err: fmt.Errorf("dependency %q of %q missing variant:\n  %s\navailable variants:\n  %s",
 				depName, module.Name(),
 				c.prettyPrintVariant(newVariant),
@@ -1732,7 +1732,7 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 	}
 
 	if module == foundDep {
-		return []error{&BlueprintError{
+		return nil, []error{&BlueprintError{
 			Err: fmt.Errorf("%q depends on itself", depName),
 			Pos: module.pos,
 		}}
@@ -1741,18 +1741,18 @@ func (c *Context) addVariationDependency(module *moduleInfo, variations []Variat
 	// that module is earlier in the module list than this one, since we always
 	// run GenerateBuildActions in order for the variants of a module
 	if foundDep.group == module.group && beforeInModuleList(module, foundDep, module.group.modules) {
-		return []error{&BlueprintError{
+		return nil, []error{&BlueprintError{
 			Err: fmt.Errorf("%q depends on later version of itself", depName),
 			Pos: module.pos,
 		}}
 	}
 	module.newDirectDeps = append(module.newDirectDeps, depInfo{foundDep, tag})
 	atomic.AddUint32(&c.depsModified, 1)
-	return nil
+	return foundDep, nil
 }
 
 func (c *Context) addInterVariantDependency(origModule *moduleInfo, tag DependencyTag,
-	from, to Module) {
+	from, to Module) *moduleInfo {
 	if _, ok := tag.(BaseDependencyTag); ok {
 		panic("BaseDependencyTag is not allowed to be used directly!")
 	}
@@ -1779,6 +1779,7 @@ func (c *Context) addInterVariantDependency(origModule *moduleInfo, tag Dependen
 
 	fromInfo.newDirectDeps = append(fromInfo.newDirectDeps, depInfo{toInfo, tag})
 	atomic.AddUint32(&c.depsModified, 1)
+	return toInfo
 }
 
 // findBlueprintDescendants returns a map linking parent Blueprints files to child Blueprints files
