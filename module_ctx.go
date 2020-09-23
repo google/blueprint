@@ -725,6 +725,7 @@ type mutatorContext struct {
 	newVariations    modulesOrAliases // new variants of existing modules
 	newModules       []*moduleInfo    // brand new modules
 	defaultVariation *string
+	pauseCh          chan<- pauseSpec
 }
 
 type BaseMutatorContext interface {
@@ -775,10 +776,15 @@ type TopDownMutatorContext interface {
 type BottomUpMutatorContext interface {
 	BaseMutatorContext
 
-	// AddDependency adds a dependency to the given module.
-	// Does not affect the ordering of the current mutator pass, but will be ordered
-	// correctly for all future mutator passes.
-	AddDependency(module Module, tag DependencyTag, name ...string)
+	// AddDependency adds a dependency to the given module.  It returns a slice of modules for each
+	// dependency (some entries may be nil).  Does not affect the ordering of the current mutator
+	// pass, but will be ordered correctly for all future mutator passes.
+	//
+	// If the mutator is parallel (see MutatorHandle.Parallel), this method will pause until the
+	// new dependencies have had the current mutator called on them.  If the mutator is not
+	// parallel this method does not affect the ordering of the current mutator pass, but will
+	// be ordered correctly for all future mutator passes.
+	AddDependency(module Module, tag DependencyTag, name ...string) []Module
 
 	// AddReverseDependency adds a dependency from the destination to the given module.
 	// Does not affect the ordering of the current mutator pass, but will be ordered
@@ -818,19 +824,30 @@ type BottomUpMutatorContext interface {
 	SetDefaultDependencyVariation(*string)
 
 	// AddVariationDependencies adds deps as dependencies of the current module, but uses the variations
-	// argument to select which variant of the dependency to use.  A variant of the dependency must
-	// exist that matches the all of the non-local variations of the current module, plus the variations
-	// argument.
-	AddVariationDependencies([]Variation, DependencyTag, ...string)
+	// argument to select which variant of the dependency to use.  It returns a slice of modules for
+	// each dependency (some entries may be nil).  A variant of the dependency must exist that matches
+	// the all of the non-local variations of the current module, plus the variations argument.
+	//
+	// If the mutator is parallel (see MutatorHandle.Parallel), this method will pause until the
+	// new dependencies have had the current mutator called on them.  If the mutator is not
+	// parallel this method does not affect the ordering of the current mutator pass, but will
+	// be ordered correctly for all future mutator passes.
+	AddVariationDependencies([]Variation, DependencyTag, ...string) []Module
 
 	// AddFarVariationDependencies adds deps as dependencies of the current module, but uses the
-	// variations argument to select which variant of the dependency to use.  A variant of the
-	// dependency must exist that matches the variations argument, but may also have other variations.
+	// variations argument to select which variant of the dependency to use.  It returns a slice of
+	// modules for each dependency (some entries may be nil).  A variant of the dependency must
+	// exist that matches the variations argument, but may also have other variations.
 	// For any unspecified variation the first variant will be used.
 	//
 	// Unlike AddVariationDependencies, the variations of the current module are ignored - the
 	// dependency only needs to match the supplied variations.
-	AddFarVariationDependencies([]Variation, DependencyTag, ...string)
+	//
+	// If the mutator is parallel (see MutatorHandle.Parallel), this method will pause until the
+	// new dependencies have had the current mutator called on them.  If the mutator is not
+	// parallel this method does not affect the ordering of the current mutator pass, but will
+	// be ordered correctly for all future mutator passes.
+	AddFarVariationDependencies([]Variation, DependencyTag, ...string) []Module
 
 	// AddInterVariantDependency adds a dependency between two variants of the same module.  Variants are always
 	// ordered in the same orderas they were listed in CreateVariations, and AddInterVariantDependency does not change
@@ -1008,14 +1025,17 @@ func (mctx *mutatorContext) Module() Module {
 	return mctx.module.logicModule
 }
 
-func (mctx *mutatorContext) AddDependency(module Module, tag DependencyTag, deps ...string) {
+func (mctx *mutatorContext) AddDependency(module Module, tag DependencyTag, deps ...string) []Module {
+	depInfos := make([]Module, 0, len(deps))
 	for _, dep := range deps {
 		modInfo := mctx.context.moduleInfo[module]
-		errs := mctx.context.addDependency(modInfo, tag, dep)
+		depInfo, errs := mctx.context.addDependency(modInfo, tag, dep)
 		if len(errs) > 0 {
 			mctx.errs = append(mctx.errs, errs...)
 		}
+		depInfos = append(depInfos, maybeLogicModule(depInfo))
 	}
+	return depInfos
 }
 
 func (mctx *mutatorContext) AddReverseDependency(module Module, tag DependencyTag, destName string) {
@@ -1036,25 +1056,31 @@ func (mctx *mutatorContext) AddReverseDependency(module Module, tag DependencyTa
 }
 
 func (mctx *mutatorContext) AddVariationDependencies(variations []Variation, tag DependencyTag,
-	deps ...string) {
+	deps ...string) []Module {
 
+	depInfos := make([]Module, 0, len(deps))
 	for _, dep := range deps {
-		errs := mctx.context.addVariationDependency(mctx.module, variations, tag, dep, false)
+		depInfo, errs := mctx.context.addVariationDependency(mctx.module, variations, tag, dep, false)
 		if len(errs) > 0 {
 			mctx.errs = append(mctx.errs, errs...)
 		}
+		depInfos = append(depInfos, maybeLogicModule(depInfo))
 	}
+	return depInfos
 }
 
 func (mctx *mutatorContext) AddFarVariationDependencies(variations []Variation, tag DependencyTag,
-	deps ...string) {
+	deps ...string) []Module {
 
+	depInfos := make([]Module, 0, len(deps))
 	for _, dep := range deps {
-		errs := mctx.context.addVariationDependency(mctx.module, variations, tag, dep, true)
+		depInfo, errs := mctx.context.addVariationDependency(mctx.module, variations, tag, dep, true)
 		if len(errs) > 0 {
 			mctx.errs = append(mctx.errs, errs...)
 		}
+		depInfos = append(depInfos, maybeLogicModule(depInfo))
 	}
+	return depInfos
 }
 
 func (mctx *mutatorContext) AddInterVariantDependency(tag DependencyTag, from, to Module) {
@@ -1100,6 +1126,23 @@ func (mctx *mutatorContext) CreateModule(factory ModuleFactory, props ...interfa
 	mctx.newModules = append(mctx.newModules, module)
 
 	return module.logicModule
+}
+
+// pause waits until the given dependency has been visited by the mutator's parallelVisit call.
+// It returns true if the pause was supported, false if the pause was not supported and did not
+// occur, which will happen when the mutator is not parallelizable.
+func (mctx *mutatorContext) pause(dep *moduleInfo) bool {
+	if mctx.pauseCh != nil {
+		unpause := make(unpause)
+		mctx.pauseCh <- pauseSpec{
+			paused:  mctx.module,
+			until:   dep,
+			unpause: unpause,
+		}
+		<-unpause
+		return true
+	}
+	return false
 }
 
 // SimpleName is an embeddable object to implement the ModuleContext.Name method using a property
@@ -1257,4 +1300,12 @@ func CheckBlueprintSyntax(moduleFactories map[string]ModuleFactory, filename str
 	}
 
 	return errs
+}
+
+func maybeLogicModule(module *moduleInfo) Module {
+	if module != nil {
+		return module.logicModule
+	} else {
+		return nil
+	}
 }
