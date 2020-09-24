@@ -117,6 +117,19 @@ type Context struct {
 	srcDir         string
 	fs             pathtools.FileSystem
 	moduleListFile string
+
+	// Mutators indexed by the ID of the provider associated with them.  Not all mutators will
+	// have providers, and not all providers will have a mutator, or if they do the mutator may
+	// not be registered in this Context.
+	providerMutators []*mutatorInfo
+
+	// The currently running mutator
+	startedMutator *mutatorInfo
+	// True for any mutators that have already run over all modules
+	finishedMutators map[*mutatorInfo]bool
+
+	// Can be set by tests to avoid invalidating Module values after mutators.
+	skipCloneModulesAfterMutators bool
 }
 
 // An Error describes a problem that was encountered that is related to a
@@ -254,6 +267,14 @@ type moduleInfo struct {
 
 	// set during PrepareBuildActions
 	actionDefs localBuildActions
+
+	providers []interface{}
+
+	startedMutator  *mutatorInfo
+	finishedMutator *mutatorInfo
+
+	startedGenerateBuildActions  bool
+	finishedGenerateBuildActions bool
 }
 
 type variant struct {
@@ -363,6 +384,7 @@ func newContext() *Context {
 		moduleInfo:         make(map[Module]*moduleInfo),
 		globs:              make(map[string]GlobPath),
 		fs:                 pathtools.OsFs,
+		finishedMutators:   make(map[*mutatorInfo]bool),
 		ninjaBuildDir:      nil,
 		requiredNinjaMajor: 1,
 		requiredNinjaMinor: 7,
@@ -1330,10 +1352,11 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 
 		m := *origModule
 		newModule := &m
-		newModule.directDeps = append([]depInfo{}, origModule.directDeps...)
+		newModule.directDeps = append([]depInfo(nil), origModule.directDeps...)
 		newModule.logicModule = newLogicModule
 		newModule.variant = newVariant(origModule, mutatorName, variationName, local)
 		newModule.properties = newProperties
+		newModule.providers = append([]interface{}(nil), origModule.providers...)
 
 		newModules = append(newModules, newModule)
 
@@ -1518,6 +1541,8 @@ func (c *Context) ResolveDependencies(config interface{}) (deps []string, errs [
 
 func (c *Context) resolveDependencies(ctx context.Context, config interface{}) (deps []string, errs []error) {
 	pprof.Do(ctx, pprof.Labels("blueprint", "ResolveDependencies"), func(ctx context.Context) {
+		c.initProviders()
+
 		c.liveGlobals = newLiveTracker(config)
 
 		deps, errs = c.generateSingletonBuildActions(config, c.preSingletonInfo, c.liveGlobals)
@@ -1537,7 +1562,9 @@ func (c *Context) resolveDependencies(ctx context.Context, config interface{}) (
 		}
 		deps = append(deps, mutatorDeps...)
 
-		c.cloneModules()
+		if !c.skipCloneModulesAfterMutators {
+			c.cloneModules()
+		}
 
 		c.dependenciesReady = true
 	})
@@ -2419,6 +2446,8 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 			pauseCh: pause,
 		}
 
+		module.startedMutator = mutator
+
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -2433,6 +2462,8 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 			}()
 			direction.run(mutator, mctx)
 		}()
+
+		module.finishedMutator = mutator
 
 		if len(mctx.errs) > 0 {
 			errsCh <- mctx.errs
@@ -2482,6 +2513,8 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 		}
 	}()
 
+	c.startedMutator = mutator
+
 	var visitErrs []error
 	if mutator.parallel {
 		visitErrs = parallelVisit(c.modulesSorted, direction.orderer(), parallelVisitLimit, visit)
@@ -2492,6 +2525,8 @@ func (c *Context) runMutator(config interface{}, mutator *mutatorInfo,
 	if len(visitErrs) > 0 {
 		return nil, visitErrs
 	}
+
+	c.finishedMutators[mutator] = true
 
 	done <- true
 
@@ -2702,6 +2737,8 @@ func (c *Context) generateModuleBuildActions(config interface{},
 				handledMissingDeps: module.missingDeps == nil,
 			}
 
+			mctx.module.startedGenerateBuildActions = true
+
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
@@ -2716,6 +2753,8 @@ func (c *Context) generateModuleBuildActions(config interface{},
 				}()
 				mctx.module.logicModule.GenerateBuildActions(mctx)
 			}()
+
+			mctx.module.finishedGenerateBuildActions = true
 
 			if len(mctx.errs) > 0 {
 				errsCh <- mctx.errs
@@ -3285,6 +3324,25 @@ func (c *Context) ModuleSubDir(logicModule Module) string {
 func (c *Context) ModuleType(logicModule Module) string {
 	module := c.moduleInfo[logicModule]
 	return module.typeName
+}
+
+// ModuleProvider returns the value, if any, for the provider for a module.  If the value for the
+// provider was not set it returns the zero value of the type of the provider, which means the
+// return value can always be type-asserted to the type of the provider.  The return value should
+// always be considered read-only.  It panics if called before the appropriate mutator or
+// GenerateBuildActions pass for the provider on the module.  The value returned may be a deep
+// copy of the value originally passed to SetProvider.
+func (c *Context) ModuleProvider(logicModule Module, provider ProviderKey) interface{} {
+	module := c.moduleInfo[logicModule]
+	value, _ := c.provider(module, provider)
+	return value
+}
+
+// ModuleHasProvider returns true if the provider for the given module has been set.
+func (c *Context) ModuleHasProvider(logicModule Module, provider ProviderKey) bool {
+	module := c.moduleInfo[logicModule]
+	_, ok := c.provider(module, provider)
+	return ok
 }
 
 func (c *Context) BlueprintFile(logicModule Module) string {
