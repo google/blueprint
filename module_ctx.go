@@ -306,6 +306,31 @@ type BaseModuleContext interface {
 	// other words, it checks for the module AddReverseDependency would add a
 	// dependency on with the same argument.
 	OtherModuleReverseDependencyVariantExists(name string) bool
+
+	// OtherModuleProvider returns the value for a provider for the given module.  If the value is
+	// not set it returns the zero value of the type of the provider, so the return value can always
+	// be type asserted to the type of the provider.  The value returned may be a deep copy of the
+	// value originally passed to SetProvider.
+	OtherModuleProvider(m Module, provider ProviderKey) interface{}
+
+	// OtherModuleHasProvider returns true if the provider for the given module has been set.
+	OtherModuleHasProvider(m Module, provider ProviderKey) bool
+
+	// Provider returns the value for a provider for the current module.  If the value is
+	// not set it returns the zero value of the type of the provider, so the return value can always
+	// be type asserted to the type of the provider.  It panics if called before the appropriate
+	// mutator or GenerateBuildActions pass for the provider.  The value returned may be a deep
+	// copy of the value originally passed to SetProvider.
+	Provider(provider ProviderKey) interface{}
+
+	// HasProvider returns true if the provider for the current module has been set.
+	HasProvider(provider ProviderKey) bool
+
+	// SetProvider sets the value for a provider for the current module.  It panics if not called
+	// during the appropriate mutator or GenerateBuildActions pass for the provider, if the value
+	// is not of the appropriate type, or if the value has already been set.  The value should not
+	// be modified after being passed to SetProvider.
+	SetProvider(provider ProviderKey, value interface{})
 }
 
 type DynamicDependerModuleContext BottomUpMutatorContext
@@ -521,6 +546,32 @@ func (m *baseModuleContext) OtherModuleReverseDependencyVariantExists(name strin
 	}
 	found, _ := findVariant(m.module, possibleDeps, nil, false, true)
 	return found != nil
+}
+
+func (m *baseModuleContext) OtherModuleProvider(logicModule Module, provider ProviderKey) interface{} {
+	module := m.context.moduleInfo[logicModule]
+	value, _ := m.context.provider(module, provider)
+	return value
+}
+
+func (m *baseModuleContext) OtherModuleHasProvider(logicModule Module, provider ProviderKey) bool {
+	module := m.context.moduleInfo[logicModule]
+	_, ok := m.context.provider(module, provider)
+	return ok
+}
+
+func (m *baseModuleContext) Provider(provider ProviderKey) interface{} {
+	value, _ := m.context.provider(m.module, provider)
+	return value
+}
+
+func (m *baseModuleContext) HasProvider(provider ProviderKey) bool {
+	_, ok := m.context.provider(m.module, provider)
+	return ok
+}
+
+func (m *baseModuleContext) SetProvider(provider ProviderKey, value interface{}) {
+	m.context.setProvider(m.module, provider, value)
 }
 
 func (m *baseModuleContext) GetDirectDep(name string) (Module, DependencyTag) {
@@ -882,6 +933,14 @@ type BottomUpMutatorContext interface {
 	// be used to add dependencies on the toVariationName variant using the fromVariationName
 	// variant.
 	CreateAliasVariation(fromVariationName, toVariationName string)
+
+	// SetVariationProvider sets the value for a provider for the given newly created variant of
+	// the current module, i.e. one of the Modules returned by CreateVariations..  It panics if
+	// not called during the appropriate mutator or GenerateBuildActions pass for the provider,
+	// if the value is not of the appropriate type, or if the module is not a newly created
+	// variant of the current module.  The value should not be modified after being passed to
+	// SetVariationProvider.
+	SetVariationProvider(module Module, provider ProviderKey, value interface{})
 }
 
 // A Mutator function is called for each Module, and can use
@@ -923,6 +982,16 @@ func (mctx *mutatorContext) CreateVariations(variationNames ...string) []Module 
 
 func (mctx *mutatorContext) CreateLocalVariations(variationNames ...string) []Module {
 	return mctx.createVariations(variationNames, true)
+}
+
+func (mctx *mutatorContext) SetVariationProvider(module Module, provider ProviderKey, value interface{}) {
+	for _, variant := range mctx.newVariations {
+		if m := variant.module(); m != nil && m.logicModule == module {
+			mctx.context.setProvider(m, provider, value)
+			return
+		}
+	}
+	panic(fmt.Errorf("module %q is not a newly created variant of %q", module, mctx.module))
 }
 
 type pendingAlias struct {
