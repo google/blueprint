@@ -36,6 +36,32 @@ func barFactory() (blueprint.Module, []interface{}) {
 	return nil, []interface{}{&complexProps{}}
 }
 
+type structToNest struct {
+	E string
+}
+
+type StructToEmbed struct {
+	Nested_in_embedded structToNest
+
+	// F string
+	F string
+}
+
+type otherStructToNest struct {
+	G string
+}
+
+type OtherStructToEmbed struct {
+	Nested_in_other_embedded otherStructToNest
+
+	// F string
+	H string
+}
+
+type StructWithEmbedded struct {
+	StructToEmbed
+}
+
 // for bpdoc_test.go
 type complexProps struct {
 	A         string
@@ -45,6 +71,12 @@ type complexProps struct {
 		C         string
 		D_mutated string `blueprint:"mutated"`
 	}
+
+	Nested_struct structToNest
+
+	Struct_has_embed StructWithEmbedded
+
+	OtherStructToEmbed
 }
 
 // props docs.
