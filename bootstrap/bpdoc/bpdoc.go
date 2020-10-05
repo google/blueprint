@@ -161,10 +161,11 @@ func assembleModuleTypeInfo(r *Reader, name string, factory reflect.Value,
 				}
 				nestedName += proptools.PropertyNameForField(nested.Name)
 				nestedProp := ps.GetByName(nestedName)
-				if nestedProp == nil {
-					return nil, fmt.Errorf("could not find nested property %q", nestedName)
+				// Anonymous properties may have already been omitted, no need to ensure they are filtered later
+				if nestedProp != nil {
+					// Set property to anonymous to allow future filtering
+					nestedProp.SetAnonymous()
 				}
-				nestedProp.SetAnonymous()
 			}
 		}
 		mt.PropertyStructs = append(mt.PropertyStructs, ps)
