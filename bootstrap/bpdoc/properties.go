@@ -142,6 +142,10 @@ func (ps *PropertyStruct) GetByName(name string) *Property {
 	return getByName(name, "", &ps.Properties)
 }
 
+func (ps *PropertyStruct) Nest(nested *PropertyStruct) {
+	ps.Properties = append(ps.Properties, nested.Properties...)
+}
+
 func getByName(name string, prefix string, props *[]Property) *Property {
 	for i := range *props {
 		if prefix+(*props)[i].Name == name {
@@ -155,6 +159,10 @@ func getByName(name string, prefix string, props *[]Property) *Property {
 
 func (p *Property) Nest(nested *PropertyStruct) {
 	p.Properties = append(p.Properties, nested.Properties...)
+}
+
+func (p *Property) SetAnonymous() {
+	p.Anonymous = true
 }
 
 func newPropertyStruct(t *doc.Type) (*PropertyStruct, error) {
