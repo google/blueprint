@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"reflect"
 	"sort"
+	"strings"
 
 	"github.com/google/blueprint/proptools"
 )
@@ -58,6 +59,7 @@ type Property struct {
 	OtherTexts []template.HTML
 	Properties []Property
 	Default    string
+	Anonymous  bool
 }
 
 func AllPackages(pkgFiles map[string][]string, moduleTypeNameFactories map[string]reflect.Value,
@@ -75,6 +77,7 @@ func AllPackages(pkgFiles map[string][]string, moduleTypeNameFactories map[strin
 			return nil, err
 		}
 		// Some pruning work
+		removeAnonymousProperties(mtInfo)
 		removeEmptyPropertyStructs(mtInfo)
 		collapseDuplicatePropertyStructs(mtInfo)
 		collapseNestedPropertyStructs(mtInfo)
@@ -128,7 +131,9 @@ func assembleModuleTypeInfo(r *Reader, name string, factory reflect.Value,
 		}
 		ps.ExcludeByTag("blueprint", "mutated")
 
-		for nestedName, nestedValue := range nestedPropertyStructs(v) {
+		for _, nestedProperty := range nestedPropertyStructs(v) {
+			nestedName := nestedProperty.nestPoint
+			nestedValue := nestedProperty.value
 			nestedType := nestedValue.Type()
 
 			// Ignore property structs with unexported or unnamed types
@@ -140,12 +145,28 @@ func assembleModuleTypeInfo(r *Reader, name string, factory reflect.Value,
 				return nil, err
 			}
 			nested.ExcludeByTag("blueprint", "mutated")
-			nestPoint := ps.GetByName(nestedName)
-			if nestPoint == nil {
-				return nil, fmt.Errorf("nesting point %q not found", nestedName)
+			if nestedName == "" {
+				ps.Nest(nested)
+			} else {
+				nestPoint := ps.GetByName(nestedName)
+				if nestPoint == nil {
+					return nil, fmt.Errorf("nesting point %q not found", nestedName)
+				}
+				nestPoint.Nest(nested)
 			}
 
-			nestPoint.Nest(nested)
+			if nestedProperty.anonymous {
+				if nestedName != "" {
+					nestedName += "."
+				}
+				nestedName += proptools.PropertyNameForField(nested.Name)
+				nestedProp := ps.GetByName(nestedName)
+				// Anonymous properties may have already been omitted, no need to ensure they are filtered later
+				if nestedProp != nil {
+					// Set property to anonymous to allow future filtering
+					nestedProp.SetAnonymous()
+				}
+			}
 		}
 		mt.PropertyStructs = append(mt.PropertyStructs, ps)
 	}
@@ -153,10 +174,31 @@ func assembleModuleTypeInfo(r *Reader, name string, factory reflect.Value,
 	return mt, nil
 }
 
-func nestedPropertyStructs(s reflect.Value) map[string]reflect.Value {
-	ret := make(map[string]reflect.Value)
+type nestedProperty struct {
+	nestPoint string
+	value     reflect.Value
+	anonymous bool
+}
+
+func nestedPropertyStructs(s reflect.Value) []nestedProperty {
+	ret := make([]nestedProperty, 0)
 	var walk func(structValue reflect.Value, prefix string)
 	walk = func(structValue reflect.Value, prefix string) {
+		var nestStruct func(field reflect.StructField, value reflect.Value, fieldName string)
+		nestStruct = func(field reflect.StructField, value reflect.Value, fieldName string) {
+			nestPoint := prefix
+			if field.Anonymous {
+				nestPoint = strings.TrimSuffix(nestPoint, ".")
+			} else {
+				nestPoint = nestPoint + proptools.PropertyNameForField(fieldName)
+			}
+			ret = append(ret, nestedProperty{nestPoint: nestPoint, value: value, anonymous: field.Anonymous})
+			if nestPoint != "" {
+				nestPoint += "."
+			}
+			walk(value, nestPoint)
+		}
+
 		typ := structValue.Type()
 		for i := 0; i < structValue.NumField(); i++ {
 			field := typ.Field(i)
@@ -174,8 +216,9 @@ func nestedPropertyStructs(s reflect.Value) map[string]reflect.Value {
 			case reflect.Bool, reflect.String, reflect.Slice, reflect.Int, reflect.Uint:
 				// Nothing
 			case reflect.Struct:
-				walk(fieldValue, prefix+proptools.PropertyNameForField(field.Name)+".")
+				nestStruct(field, fieldValue, field.Name)
 			case reflect.Ptr, reflect.Interface:
+
 				if !fieldValue.IsNil() {
 					// We leave the pointer intact and zero out the struct that's
 					// pointed to.
@@ -188,9 +231,7 @@ func nestedPropertyStructs(s reflect.Value) map[string]reflect.Value {
 						elem = elem.Elem()
 					}
 					if elem.Kind() == reflect.Struct {
-						nestPoint := prefix + proptools.PropertyNameForField(field.Name)
-						ret[nestPoint] = elem
-						walk(elem, nestPoint+".")
+						nestStruct(field, elem, field.Name)
 					}
 				}
 			default:
@@ -211,6 +252,27 @@ func removeEmptyPropertyStructs(mt *ModuleType) {
 			mt.PropertyStructs = append(mt.PropertyStructs[:i], mt.PropertyStructs[i+1:]...)
 			i--
 		}
+	}
+}
+
+// Remove any property structs that are anonymous
+func removeAnonymousProperties(mt *ModuleType) {
+	var removeAnonymousProps func(props []Property) []Property
+	removeAnonymousProps = func(props []Property) []Property {
+		newProps := make([]Property, 0, len(props))
+		for _, p := range props {
+			if p.Anonymous {
+				continue
+			}
+			if len(p.Properties) > 0 {
+				p.Properties = removeAnonymousProps(p.Properties)
+			}
+			newProps = append(newProps, p)
+		}
+		return newProps
+	}
+	for _, ps := range mt.PropertyStructs {
+		ps.Properties = removeAnonymousProps(ps.Properties)
 	}
 }
 
