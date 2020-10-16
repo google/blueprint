@@ -6,6 +6,11 @@ import (
 	"testing"
 )
 
+type simpleProp struct {
+	name string
+	typ  string
+}
+
 type parentProps struct {
 	A string
 
@@ -61,28 +66,76 @@ func TestAllPackages(t *testing.T) {
 
 	pkg := packages[0]
 
-	expectedProps := map[string][]string{
-		"bar": []string{
-			"a",
-			"nested",
-			"nested.c",
-			"nested_struct",
-			"nested_struct.e",
-			"struct_has_embed",
-			"struct_has_embed.nested_in_embedded",
-			"struct_has_embed.nested_in_embedded.e",
-			"struct_has_embed.f",
-			"nested_in_other_embedded",
-			"nested_in_other_embedded.g",
-			"h",
+	expectedProps := map[string][]simpleProp{
+		"bar": []simpleProp{
+			simpleProp{
+				name: "a",
+				typ:  "string",
+			},
+			simpleProp{
+				name: "nested",
+				typ:  "",
+			},
+			simpleProp{
+				name: "nested.c",
+				typ:  "string",
+			},
+			simpleProp{
+				name: "nested_struct",
+				typ:  "structToNest",
+			},
+			simpleProp{
+				name: "nested_struct.e",
+				typ:  "string",
+			},
+			simpleProp{
+				name: "struct_has_embed",
+				typ:  "StructWithEmbedded",
+			},
+			simpleProp{
+				name: "struct_has_embed.nested_in_embedded",
+				typ:  "structToNest",
+			},
+			simpleProp{
+				name: "struct_has_embed.nested_in_embedded.e",
+				typ:  "string",
+			},
+			simpleProp{
+				name: "struct_has_embed.f",
+				typ:  "string",
+			},
+			simpleProp{
+				name: "list_of_ints",
+				typ:  "list of int",
+			},
+			simpleProp{
+				name: "list_of_nested",
+				typ:  "list of structToNest",
+			},
+			simpleProp{
+				name: "nested_in_other_embedded",
+				typ:  "otherStructToNest",
+			},
+			simpleProp{
+				name: "nested_in_other_embedded.g",
+				typ:  "string",
+			},
+			simpleProp{
+				name: "h",
+				typ:  "string",
+			},
 		},
-		"foo": []string{
-			"a",
+		"foo": []simpleProp{
+			simpleProp{
+				name: "a",
+				typ:  "string",
+			},
 		},
 	}
 
 	for _, m := range pkg.ModuleTypes {
-		foundProps := []string{}
+		foundProps := []simpleProp{}
+
 		for _, p := range m.PropertyStructs {
 			nestedProps, errs := findAllProperties("", p.Properties)
 			foundProps = append(foundProps, nestedProps...)
@@ -98,11 +151,15 @@ func TestAllPackages(t *testing.T) {
 	}
 }
 
-func findAllProperties(prefix string, properties []Property) ([]string, []error) {
-	foundProps := []string{}
+func findAllProperties(prefix string, properties []Property) ([]simpleProp, []error) {
+	foundProps := []simpleProp{}
 	errs := []error{}
 	for _, p := range properties {
-		foundProps = append(foundProps, prefix+p.Name)
+		prop := simpleProp{
+			name: prefix + p.Name,
+			typ:  p.Type,
+		}
+		foundProps = append(foundProps, prop)
 		if hasTag(p.Tag, "blueprint", "mutated") {
 			err := fmt.Errorf("Property %s has `blueprint:\"mutated\" tag but should have been excluded.", p.Name)
 			errs = append(errs, err)
