@@ -56,15 +56,16 @@ type PoolParams struct {
 // definition.
 type RuleParams struct {
 	// These fields correspond to a Ninja variable of the same name.
-	Command        string // The command that Ninja will run for the rule.
-	Depfile        string // The dependency file name.
-	Deps           Deps   // The format of the dependency file.
-	Description    string // The description that Ninja will print for the rule.
-	Generator      bool   // Whether the rule generates the Ninja manifest file.
-	Pool           Pool   // The Ninja pool to which the rule belongs.
-	Restat         bool   // Whether Ninja should re-stat the rule's outputs.
-	Rspfile        string // The response file.
-	RspfileContent string // The response file content.
+	Command        string   // The command that Ninja will run for the rule.
+	Depfile        string   // The dependency file name.
+	Deps           Deps     // The format of the dependency file.
+	Description    string   // The description that Ninja will print for the rule.
+	Generator      bool     // Whether the rule generates the Ninja manifest file.
+	Pool           Pool     // The Ninja pool to which the rule belongs.
+	Restat         bool     // Whether Ninja should re-stat the rule's outputs.
+	Rspfile        string   // The response file.
+	RspfileContent string   // The response file content.
+	SymlinkOutputs []string // The list of Outputs or ImplicitOutputs that are symlinks.
 
 	// These fields are used internally in Blueprint
 	CommandDeps      []string // Command-specific implicit dependencies to prepend to builds
@@ -84,6 +85,7 @@ type BuildParams struct {
 	Rule            Rule              // The rule to invoke.
 	Outputs         []string          // The list of explicit output targets.
 	ImplicitOutputs []string          // The list of implicit output targets.
+	SymlinkOutputs  []string          // The list of Outputs or ImplicitOutputs that are symlinks.
 	Inputs          []string          // The list of explicit input dependencies.
 	Implicits       []string          // The list of implicit input dependencies.
 	OrderOnly       []string          // The list of order-only dependencies.
@@ -203,6 +205,15 @@ func parseRuleParams(scope scope, params *RuleParams) (*ruleDef,
 				err)
 		}
 		r.Variables["rspfile_content"] = value
+	}
+
+	if len(params.SymlinkOutputs) > 0 {
+		value, err = parseNinjaString(scope, strings.Join(params.SymlinkOutputs, " "))
+		if err != nil {
+			return nil, fmt.Errorf("error parsing SymlinkOutputs param: %s",
+				err)
+		}
+		r.Variables["symlink_outputs"] = value
 	}
 
 	r.CommandDeps, err = parseNinjaStrings(scope, params.CommandDeps)
@@ -341,6 +352,12 @@ func parseBuildParams(scope scope, params *BuildParams) (*buildDef,
 			return nil, fmt.Errorf("error parsing Description param: %s", err)
 		}
 		setVariable("description", value)
+	}
+
+	if len(params.SymlinkOutputs) > 0 {
+		setVariable(
+			"symlink_outputs",
+			simpleNinjaString(strings.Join(params.SymlinkOutputs, " ")))
 	}
 
 	argNameScope := rule.scope()
