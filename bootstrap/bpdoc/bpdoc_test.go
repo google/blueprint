@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-type simpleProp struct {
+type propInfo struct {
 	name string
 	typ  string
 }
@@ -66,67 +66,67 @@ func TestAllPackages(t *testing.T) {
 
 	pkg := packages[0]
 
-	expectedProps := map[string][]simpleProp{
-		"bar": []simpleProp{
-			simpleProp{
+	expectedProps := map[string][]propInfo{
+		"bar": []propInfo{
+			propInfo{
 				name: "a",
 				typ:  "string",
 			},
-			simpleProp{
+			propInfo{
 				name: "nested",
 				typ:  "",
 			},
-			simpleProp{
+			propInfo{
 				name: "nested.c",
 				typ:  "string",
 			},
-			simpleProp{
+			propInfo{
 				name: "nested_struct",
 				typ:  "structToNest",
 			},
-			simpleProp{
+			propInfo{
 				name: "nested_struct.e",
 				typ:  "string",
 			},
-			simpleProp{
+			propInfo{
 				name: "struct_has_embed",
 				typ:  "StructWithEmbedded",
 			},
-			simpleProp{
+			propInfo{
 				name: "struct_has_embed.nested_in_embedded",
 				typ:  "structToNest",
 			},
-			simpleProp{
+			propInfo{
 				name: "struct_has_embed.nested_in_embedded.e",
 				typ:  "string",
 			},
-			simpleProp{
+			propInfo{
 				name: "struct_has_embed.f",
 				typ:  "string",
 			},
-			simpleProp{
+			propInfo{
 				name: "list_of_ints",
 				typ:  "list of int",
 			},
-			simpleProp{
+			propInfo{
 				name: "list_of_nested",
 				typ:  "list of structToNest",
 			},
-			simpleProp{
+			propInfo{
 				name: "nested_in_other_embedded",
 				typ:  "otherStructToNest",
 			},
-			simpleProp{
+			propInfo{
 				name: "nested_in_other_embedded.g",
 				typ:  "string",
 			},
-			simpleProp{
+			propInfo{
 				name: "h",
 				typ:  "string",
 			},
 		},
-		"foo": []simpleProp{
-			simpleProp{
+		"foo": []propInfo{
+			propInfo{
 				name: "a",
 				typ:  "string",
 			},
@@ -134,7 +134,7 @@ func TestAllPackages(t *testing.T) {
 	}
 
 	for _, m := range pkg.ModuleTypes {
-		foundProps := []simpleProp{}
+		foundProps := []propInfo{}
 
 		for _, p := range m.PropertyStructs {
 			nestedProps, errs := findAllProperties("", p.Properties)
@@ -151,11 +151,11 @@ func TestAllPackages(t *testing.T) {
 	}
 }
 
-func findAllProperties(prefix string, properties []Property) ([]simpleProp, []error) {
-	foundProps := []simpleProp{}
+func findAllProperties(prefix string, properties []Property) ([]propInfo, []error) {
+	foundProps := []propInfo{}
 	errs := []error{}
 	for _, p := range properties {
-		prop := simpleProp{
+		prop := propInfo{
 			name: prefix + p.Name,
 			typ:  p.Type,
 		}
