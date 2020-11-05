@@ -106,11 +106,11 @@ func TestAllPackages(t *testing.T) {
 			},
 			propInfo{
 				name: "list_of_ints",
-				typ:  "list of int",
+				typ:  "list of ints",
 			},
 			propInfo{
 				name: "list_of_nested",
-				typ:  "list of structToNest",
+				typ:  "list of structToNests",
 			},
 			propInfo{
 				name: "nested_in_other_embedded",

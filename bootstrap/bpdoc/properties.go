@@ -242,7 +242,7 @@ func getType(expr ast.Expr) (typ string, innerProps []Property, err error) {
 		if err != nil {
 			return "", nil, err
 		}
-		typ = "list of " + elt
+		typ = "list of " + elt + "s"
 	case *ast.InterfaceType:
 		typ = "interface"
 	case *ast.Ident:
