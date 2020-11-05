@@ -87,6 +87,7 @@ type StopBefore int
 
 const (
 	StopBeforePrepareBuildActions StopBefore = 1
+	StopBeforeWriteNinja          StopBefore = 2
 )
 
 type ConfigStopBefore interface {
