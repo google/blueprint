@@ -77,6 +77,10 @@ type complexProps struct {
 	Struct_has_embed StructWithEmbedded
 
 	OtherStructToEmbed
+
+	List_of_ints []int
+
+	List_of_nested []structToNest
 }
 
 // props docs.
