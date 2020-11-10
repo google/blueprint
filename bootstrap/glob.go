@@ -64,11 +64,9 @@ type GlobFileContext interface {
 
 // GlobFile creates a rule to write to fileListFile a list of the files that match the specified
 // pattern but do not match any of the patterns specified in excludes.  The file will include
-// appropriate dependencies written to depFile to regenerate the file if and only if the list of
-// matching files has changed.
-func GlobFile(ctx GlobFileContext, pattern string, excludes []string,
-	fileListFile, depFile string) {
-
+// appropriate dependencies to regenerate the file if and only if the list of matching files has
+// changed.
+func GlobFile(ctx GlobFileContext, pattern string, excludes []string, fileListFile string) {
 	ctx.Build(pctx, blueprint.BuildParams{
 		Rule:    GlobRule,
 		Outputs: []string{fileListFile},
@@ -127,8 +125,6 @@ func (s *globSingleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		fileListFile := filepath.Join(BuildDir, ".glob", g.Name)
 
 		if s.writeRule {
-			depFile := fileListFile + ".d"
-
 			// We need to write the file list here so that it has an older modified date
 			// than the build.ninja (otherwise we'd run the primary builder twice on
 			// every new glob)
@@ -142,7 +138,7 @@ func (s *globSingleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 				panic(fmt.Errorf("error writing %s: %s", fileListFile, err))
 			}
 
-			GlobFile(ctx, g.Pattern, g.Excludes, fileListFile, depFile)
+			GlobFile(ctx, g.Pattern, g.Excludes, fileListFile)
 		} else {
 			// Make build.ninja depend on the fileListFile
 			ctx.AddNinjaFileDeps(fileListFile)
