@@ -179,6 +179,12 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	}
 	deps = append(deps, extraDeps...)
 
+	if c, ok := config.(ConfigStopBefore); ok {
+		if c.StopBefore() == StopBeforeWriteNinja {
+			return
+		}
+	}
+
 	const outFilePermissions = 0666
 	var out io.Writer
 	var f *os.File
