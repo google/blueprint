@@ -457,7 +457,7 @@ func (d *baseModuleContext) Failed() bool {
 
 func (d *baseModuleContext) GlobWithDeps(pattern string,
 	excludes []string) ([]string, error) {
-	return d.context.glob(pattern, excludes)
+	return d.context.Glob(pattern, excludes)
 }
 
 func (d *baseModuleContext) Fs() pathtools.FileSystem {

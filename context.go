@@ -1155,7 +1155,7 @@ func (c *Context) findBuildBlueprints(dir string, build []string,
 		var matches []string
 		var err error
 
-		matches, err = c.glob(pattern, nil)
+		matches, err = c.Glob(pattern, nil)
 
 		if err != nil {
 			errs = append(errs, &BlueprintError{
@@ -1197,7 +1197,7 @@ func (c *Context) findSubdirBlueprints(dir string, subdirs []string, subdirsPos 
 		var matches []string
 		var err error
 
-		matches, err = c.glob(pattern, nil)
+		matches, err = c.Glob(pattern, nil)
 
 		if err != nil {
 			errs = append(errs, &BlueprintError{

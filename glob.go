@@ -46,7 +46,7 @@ func verifyGlob(fileName, pattern string, excludes []string, g GlobPath) {
 	}
 }
 
-func (c *Context) glob(pattern string, excludes []string) ([]string, error) {
+func (c *Context) Glob(pattern string, excludes []string) ([]string, error) {
 	fileName := globToFileName(pattern, excludes)
 
 	// Try to get existing glob from the stored results

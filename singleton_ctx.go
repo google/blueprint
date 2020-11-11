@@ -363,7 +363,7 @@ func (s *singletonContext) AddNinjaFileDeps(deps ...string) {
 
 func (s *singletonContext) GlobWithDeps(pattern string,
 	excludes []string) ([]string, error) {
-	return s.context.glob(pattern, excludes)
+	return s.context.Glob(pattern, excludes)
 }
 
 func (s *singletonContext) Fs() pathtools.FileSystem {

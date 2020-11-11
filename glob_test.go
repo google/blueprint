@@ -25,7 +25,7 @@ func TestGlobCache(t *testing.T) {
 	})
 
 	// Test a simple glob with no excludes
-	matches, err := ctx.glob("a/*", nil)
+	matches, err := ctx.Glob("a/*", nil)
 	if err != nil {
 		t.Error("unexpected error", err)
 	}
@@ -36,7 +36,7 @@ func TestGlobCache(t *testing.T) {
 	// Test the same glob with an empty excludes array to make sure
 	// excludes=nil does not conflict with excludes=[]string{} in the
 	// cache.
-	matches, err = ctx.glob("a/*", []string{})
+	matches, err = ctx.Glob("a/*", []string{})
 	if err != nil {
 		t.Error("unexpected error", err)
 	}
@@ -45,7 +45,7 @@ func TestGlobCache(t *testing.T) {
 	}
 
 	// Test the same glob with a different excludes array
-	matches, err = ctx.glob("a/*", []string{"a/b"})
+	matches, err = ctx.Glob("a/*", []string{"a/b"})
 	if err != nil {
 		t.Error("unexpected error", err)
 	}
