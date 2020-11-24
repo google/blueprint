@@ -17,13 +17,13 @@ jobs:
     steps:
 
     - name: Set up Go ${{ matrix.go }}
-      uses: actions/setup-go@v2.0.3
+      uses: actions/setup-go@v2
       with:
         go-version: ${{ matrix.go }}
       id: go
 
     - name: Check out code
-      uses: actions/checkout@v2.2.0
+      uses: actions/checkout@v2
 
     - name: Install ninja
       run: |
@@ -31,7 +31,7 @@ jobs:
         wget https://github.com/ninja-build/ninja/releases/download/v1.7.2/ninja-linux.zip
         unzip ninja-linux.zip
         rm ninja-linux.zip
-        echo "::add-path::${GITHUB_WORKSPACE}/ninja-bin"
+        echo "${GITHUB_WORKSPACE}/ninja-bin" >> $GITHUB_PATH
 
     - name: Run gofmt
       run: ./.gofmt.sh
