@@ -110,6 +110,8 @@ type Context struct {
 
 	// set lazily by sortedModuleGroups
 	cachedSortedModuleGroups []*moduleGroup
+	// cache deps modified to determine whether cachedSortedModuleGroups needs to be recalculated
+	cachedDepsModified bool
 
 	globs    map[string]GlobPath
 	globLock sync.Mutex
@@ -1549,9 +1551,6 @@ func (c *Context) resolveDependencies(ctx context.Context, config interface{}) (
 		if len(errs) > 0 {
 			return
 		}
-		// if any presingletons visited all modules, the cache would be populated by only modules that exist pre-mutators.
-		// we clear the cache so that future calls to visit all modules will be accurate
-		c.clearSortedModuleGroupsCache()
 
 		errs = c.updateDependencies()
 		if len(errs) > 0 {
@@ -2168,6 +2167,7 @@ func cycleError(cycle []*moduleInfo) (errs []error) {
 // it encounters dependency cycles.  This should called after resolveDependencies,
 // as well as after any mutator pass has called addDependency
 func (c *Context) updateDependencies() (errs []error) {
+	c.cachedDepsModified = true
 	visited := make(map[*moduleInfo]bool)  // modules that were already checked
 	checking := make(map[*moduleInfo]bool) // modules actively being checked
 
@@ -3017,12 +3017,8 @@ func (c *Context) moduleGroupFromName(name string, namespace Namespace) *moduleG
 	return nil
 }
 
-func (c *Context) clearSortedModuleGroupsCache() {
-	c.cachedSortedModuleGroups = nil
-}
-
 func (c *Context) sortedModuleGroups() []*moduleGroup {
-	if c.cachedSortedModuleGroups == nil {
+	if c.cachedSortedModuleGroups == nil || c.cachedDepsModified {
 		unwrap := func(wrappers []ModuleGroup) []*moduleGroup {
 			result := make([]*moduleGroup, 0, len(wrappers))
 			for _, group := range wrappers {
@@ -3032,6 +3028,7 @@ func (c *Context) sortedModuleGroups() []*moduleGroup {
 		}
 
 		c.cachedSortedModuleGroups = unwrap(c.nameInterface.AllModules())
+		c.cachedDepsModified = false
 	}
 
 	return c.cachedSortedModuleGroups
