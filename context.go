@@ -1549,6 +1549,9 @@ func (c *Context) resolveDependencies(ctx context.Context, config interface{}) (
 		if len(errs) > 0 {
 			return
 		}
+		// if any presingletons visited all modules, the cache would be populated by only modules that exist pre-mutators.
+		// we clear the cache so that future calls to visit all modules will be accurate
+		c.clearSortedModuleGroupsCache()
 
 		errs = c.updateDependencies()
 		if len(errs) > 0 {
@@ -3012,6 +3015,10 @@ func (c *Context) moduleGroupFromName(name string, namespace Namespace) *moduleG
 		return group.moduleGroup
 	}
 	return nil
+}
+
+func (c *Context) clearSortedModuleGroupsCache() {
+	c.cachedSortedModuleGroups = nil
 }
 
 func (c *Context) sortedModuleGroups() []*moduleGroup {
