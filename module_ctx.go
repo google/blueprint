@@ -1166,8 +1166,11 @@ func (mctx *mutatorContext) ReplaceDependenciesIf(name string, predicate Replace
 	target := mctx.context.moduleMatchingVariant(mctx.module, name)
 
 	if target == nil {
-		panic(fmt.Errorf("ReplaceDependencies could not find identical variant %q for module %q",
-			mctx.module.variant.name, name))
+		panic(fmt.Errorf("ReplaceDependencies could not find identical variant {%s} for module %s\n"+
+			"available variants:\n  %s",
+			mctx.context.prettyPrintVariant(mctx.module.variant.variations),
+			name,
+			mctx.context.prettyPrintGroupVariants(mctx.context.moduleGroupFromName(name, mctx.module.namespace()))))
 	}
 
 	mctx.replace = append(mctx.replace, replace{target, mctx.module, predicate})

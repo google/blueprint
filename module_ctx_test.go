@@ -191,7 +191,7 @@ func TestAliasVariation(t *testing.T) {
 
 		runWithFailures(ctx, `dependency "bar" of "foo" missing variant:`+"\n  \n"+
 			"available variants:"+
-			"\n  1:a, 2:a\n  1:a, 2:b\n  1:b, 2:a\n  1:b, 2:b")
+			"\n  1:a,2:a\n  1:a,2:b\n  1:b,2:a\n  1:b,2:b")
 	})
 }
 
@@ -298,7 +298,7 @@ func TestCreateAliasVariations(t *testing.T) {
 
 		runWithFailures(ctx, `dependency "bar" of "foo" missing variant:`+"\n  1:d\n"+
 			"available variants:"+
-			"\n  1:a, 2:a\n  1:a, 2:b\n  1:b, 2:a\n  1:b, 2:b")
+			"\n  1:a,2:a\n  1:a,2:b\n  1:b,2:a\n  1:b,2:b")
 	})
 }
 
