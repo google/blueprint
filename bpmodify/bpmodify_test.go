@@ -206,6 +206,48 @@ var testCases = []struct {
 		"",
 		"dep3,dep4",
 	},
+	{
+		`
+		cc_foo {
+			name: "foo",
+			versions: ["1", "2"],
+		}
+		`,
+		`
+		cc_foo {
+			name: "foo",
+			versions: [
+				"1",
+				"2",
+				"10",
+			],
+		}
+		`,
+		"versions",
+		"10",
+		"",
+	},
+	{
+		`
+		cc_foo {
+			name: "foo",
+			deps: ["bar-v1-bar", "bar-v2-bar"],
+		}
+		`,
+		`
+		cc_foo {
+			name: "foo",
+			deps: [
+				"bar-v1-bar",
+				"bar-v2-bar",
+				"bar-v10-bar",
+			],
+		}
+		`,
+		"deps",
+		"bar-v10-bar",
+		"",
+	},
 }
 
 func simplifyModuleDefinition(def string) string {

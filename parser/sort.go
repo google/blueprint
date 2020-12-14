@@ -15,9 +15,72 @@
 package parser
 
 import (
+	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 	"text/scanner"
 )
+
+func numericStringLess(a, b string) bool {
+	byteIndex := 0
+	// Start with a byte comparison to find where the strings differ
+	for ; byteIndex < len(a) && byteIndex < len(b); byteIndex++ {
+		if a[byteIndex] != b[byteIndex] {
+			break
+		}
+	}
+
+	if byteIndex == len(a) && byteIndex != len(b) {
+		// Reached the end of a.  a is a prefix of b.
+		return true
+	} else if byteIndex == len(b) {
+		// Reached the end of b.  b is a prefix of a or b is equal to a.
+		return false
+	}
+
+	// Save the first differing bytes in case we have to fall back to a byte comparison.
+	aDifferingByte := a[byteIndex]
+	bDifferingByte := b[byteIndex]
+
+	// Save the differing suffixes of the strings.  This may be invalid utf8 if the first
+	// rune was cut, but that's fine because are only looking for the bytes '0'-'9', which
+	// can only occur as single-byte runes in utf8.
+	aDifference := a[byteIndex:]
+	bDifference := b[byteIndex:]
+
+	isNumeric := func(r rune) bool { return r >= '0' && r <= '9' }
+	isNotNumeric := func(r rune) bool { return !isNumeric(r) }
+
+	// If the first runes are both numbers do a numeric comparison.
+	if isNumeric(rune(aDifferingByte)) && isNumeric(rune(bDifferingByte)) {
+		// Find the first non-number in each, using the full length if there isn't one.
+		endANumbers := strings.IndexFunc(aDifference, isNotNumeric)
+		endBNumbers := strings.IndexFunc(bDifference, isNotNumeric)
+		if endANumbers == -1 {
+			endANumbers = len(aDifference)
+		}
+		if endBNumbers == -1 {
+			endBNumbers = len(bDifference)
+		}
+		// Convert each to an int.
+		aNumber, err := strconv.Atoi(aDifference[:endANumbers])
+		if err != nil {
+			panic(fmt.Errorf("failed to convert %q from %q to number: %w",
+				aDifference[:endANumbers], a, err))
+		}
+		bNumber, err := strconv.Atoi(bDifference[:endBNumbers])
+		if err != nil {
+			panic(fmt.Errorf("failed to convert %q from %q to number: %w",
+				bDifference[:endBNumbers], b, err))
+		}
+		// Do a numeric comparison.
+		return aNumber < bNumber
+	}
+
+	// At least one is not a number, do a byte comparison.
+	return aDifferingByte < bDifferingByte
+}
 
 func SortLists(file *File) {
 	for _, def := range file.Defs {
@@ -97,7 +160,7 @@ func sortSubList(values []Expression, nextPos scanner.Position, file *File) {
 	if !isListOfPrimitives(values) {
 		return
 	}
-	l := make(elemList, len(values))
+	l := make([]elem, len(values))
 	for i, v := range values {
 		s, ok := v.(*String)
 		if !ok {
@@ -110,7 +173,9 @@ func sortSubList(values []Expression, nextPos scanner.Position, file *File) {
 		l[i] = elem{s.Value, i, v.Pos(), n}
 	}
 
-	sort.Sort(l)
+	sort.SliceStable(l, func(i, j int) bool {
+		return numericStringLess(l[i].s, l[j].s)
+	})
 
 	copyValues := append([]Expression{}, values...)
 	copyComments := make([]*CommentGroup, len(file.Comments))
@@ -150,7 +215,7 @@ func subListIsSorted(values []Expression) bool {
 		if !ok {
 			panic("list contains non-string element")
 		}
-		if prev > s.Value {
+		if prev != "" && numericStringLess(s.Value, prev) {
 			return false
 		}
 		prev = s.Value
@@ -164,20 +229,6 @@ type elem struct {
 	i       int
 	pos     scanner.Position
 	nextPos scanner.Position
-}
-
-type elemList []elem
-
-func (l elemList) Len() int {
-	return len(l)
-}
-
-func (l elemList) Swap(i, j int) {
-	l[i], l[j] = l[j], l[i]
-}
-
-func (l elemList) Less(i, j int) bool {
-	return l[i].s < l[j].s
 }
 
 type commentsByOffset []*CommentGroup
