@@ -71,16 +71,17 @@ type Context struct {
 	context.Context
 
 	// set at instantiation
-	moduleFactories     map[string]ModuleFactory
-	nameInterface       NameInterface
-	moduleGroups        []*moduleGroup
-	moduleInfo          map[Module]*moduleInfo
-	modulesSorted       []*moduleInfo
-	preSingletonInfo    []*singletonInfo
-	singletonInfo       []*singletonInfo
-	mutatorInfo         []*mutatorInfo
-	earlyMutatorInfo    []*mutatorInfo
-	variantMutatorNames []string
+	moduleFactories          map[string]ModuleFactory
+	nameInterface            NameInterface
+	moduleGroups             []*moduleGroup
+	moduleInfo               map[Module]*moduleInfo
+	modulesSorted            []*moduleInfo
+	preSingletonInfo         []*singletonInfo
+	postMutatorSingletonInfo []*singletonInfo
+	singletonInfo            []*singletonInfo
+	mutatorInfo              []*mutatorInfo
+	earlyMutatorInfo         []*mutatorInfo
+	variantMutatorNames      []string
 
 	depsModified uint32 // positive if a mutator modified the dependencies
 
@@ -500,6 +501,20 @@ func (c *Context) RegisterSingletonType(name string, factory SingletonFactory) {
 	}
 
 	c.singletonInfo = append(c.singletonInfo, &singletonInfo{
+		factory:   factory,
+		singleton: factory(),
+		name:      name,
+	})
+}
+
+func (c *Context) RegisterPostMutatorSingletonType(name string, factory SingletonFactory) {
+	for _, s := range c.postMutatorSingletonInfo {
+		if s.name == name {
+			panic(errors.New("singleton name is already registered"))
+		}
+	}
+
+	c.postMutatorSingletonInfo = append(c.postMutatorSingletonInfo, &singletonInfo{
 		factory:   factory,
 		singleton: factory(),
 		name:      name,
@@ -1547,6 +1562,7 @@ func (c *Context) resolveDependencies(ctx context.Context, config interface{}) (
 
 		c.liveGlobals = newLiveTracker(config)
 
+		// Generate build actions from all PreSingletons.
 		deps, errs = c.generateSingletonBuildActions(config, c.preSingletonInfo, c.liveGlobals)
 		if len(errs) > 0 {
 			return
@@ -1557,6 +1573,7 @@ func (c *Context) resolveDependencies(ctx context.Context, config interface{}) (
 			return
 		}
 
+		// Run all mutators.
 		var mutatorDeps []string
 		mutatorDeps, errs = c.runMutators(ctx, config)
 		if len(errs) > 0 {
@@ -1566,6 +1583,12 @@ func (c *Context) resolveDependencies(ctx context.Context, config interface{}) (
 
 		if !c.skipCloneModulesAfterMutators {
 			c.cloneModules()
+		}
+
+		// Generate build actions from all post-mutator Singletons.
+		deps, errs = c.generateSingletonBuildActions(config, c.postMutatorSingletonInfo, c.liveGlobals)
+		if len(errs) > 0 {
+			return
 		}
 
 		c.dependenciesReady = true
