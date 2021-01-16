@@ -280,6 +280,14 @@ func (ctx *unpackContext) unpackToStruct(namePrefix string, structValue reflect.
 		}
 
 		if isStruct(fieldValue.Type()) {
+			if property.Value.Eval().Type() != parser.MapType {
+				ctx.addError(&UnpackError{
+					fmt.Errorf("can't assign %s value to map property %q",
+						property.Value.Type(), property.Name),
+					property.Value.Pos(),
+				})
+				continue
+			}
 			ctx.unpackToStruct(propertyName, fieldValue)
 			if len(ctx.errs) >= maxUnpackErrors {
 				return

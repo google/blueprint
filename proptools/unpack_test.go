@@ -894,6 +894,74 @@ func TestUnpackErrors(t *testing.T) {
 				`<input>:4:13: <-- previous definition here`,
 			},
 		},
+		{
+			name: "wrong type",
+			input: `
+				m {
+					int: "foo",
+				}
+			`,
+			output: []interface{}{
+				&struct {
+					Int *int64
+				}{},
+			},
+			errors: []string{
+				`<input>:3:11: can't assign string value to int64 property "int"`,
+			},
+		},
+		{
+			name: "wrong type for map",
+			input: `
+				m {
+					map: "foo",
+				}
+			`,
+			output: []interface{}{
+				&struct {
+					Map struct {
+						S string
+					}
+				}{},
+			},
+			errors: []string{
+				`<input>:3:11: can't assign string value to map property "map"`,
+			},
+		},
+		{
+			name: "wrong type for list",
+			input: `
+				m {
+					list: "foo",
+				}
+			`,
+			output: []interface{}{
+				&struct {
+					List []string
+				}{},
+			},
+			errors: []string{
+				`<input>:3:12: can't assign string value to list property "list"`,
+			},
+		},
+		{
+			name: "wrong type for list of maps",
+			input: `
+				m {
+					map_list: "foo",
+				}
+			`,
+			output: []interface{}{
+				&struct {
+					Map_list []struct {
+						S string
+					}
+				}{},
+			},
+			errors: []string{
+				`<input>:3:16: can't assign string value to list property "map_list"`,
+			},
+		},
 	}
 
 	for _, testCase := range testCases {
