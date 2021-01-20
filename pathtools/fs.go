@@ -553,7 +553,7 @@ func listDirsRecursiveRelative(fs FileSystem, name string, follow ShouldFollowSy
 				continue
 			}
 		}
-		if info.Mode()&os.ModeDir != 0 {
+		if info.IsDir() {
 			dirs = append(dirs, f)
 			subDirs, err := listDirsRecursiveRelative(fs, f, follow, depth)
 			if err != nil {
