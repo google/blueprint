@@ -86,7 +86,7 @@ func startGlob(fs FileSystem, pattern string, excludes []string,
 			return nil, nil, err
 		}
 
-		if info.Mode()&os.ModeDir != 0 {
+		if info.IsDir() {
 			matches[i] = match + "/"
 		}
 	}
