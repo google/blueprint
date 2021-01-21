@@ -76,24 +76,18 @@ func startGlob(fs FileSystem, pattern string, excludes []string,
 	}
 
 	for i, match := range matches {
-		isSymlink, err := fs.IsSymlink(match)
+		var info os.FileInfo
+		if follow == DontFollowSymlinks {
+			info, err = fs.Lstat(match)
+		} else {
+			info, err = fs.Stat(match)
+		}
 		if err != nil {
 			return nil, nil, err
 		}
-		if !(isSymlink && follow == DontFollowSymlinks) {
-			isDir, err := fs.IsDir(match)
-			if os.IsNotExist(err) {
-				if isSymlink {
-					return nil, nil, fmt.Errorf("%s: dangling symlink", match)
-				}
-			}
-			if err != nil {
-				return nil, nil, fmt.Errorf("%s: %s", match, err.Error())
-			}
 
-			if isDir {
-				matches[i] = match + "/"
-			}
+		if info.IsDir() {
+			matches[i] = match + "/"
 		}
 	}
 
