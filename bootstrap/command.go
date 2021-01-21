@@ -201,7 +201,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		if err != nil {
 			fatalf("error opening Ninja file: %s", err)
 		}
-		buf = bufio.NewWriter(f)
+		buf = bufio.NewWriterSize(f, 16*1024*1024)
 		out = buf
 	} else {
 		out = ioutil.Discard.(io.StringWriter)
