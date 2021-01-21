@@ -3489,7 +3489,7 @@ func (c *Context) SingletonName(singleton Singleton) string {
 // WriteBuildFile writes the Ninja manifeset text for the generated build
 // actions to w.  If this is called before PrepareBuildActions successfully
 // completes then ErrBuildActionsNotReady is returned.
-func (c *Context) WriteBuildFile(w io.Writer) error {
+func (c *Context) WriteBuildFile(w io.StringWriter) error {
 	var err error
 	pprof.Do(c.Context, pprof.Labels("blueprint", "WriteBuildFile"), func(ctx context.Context) {
 		if !c.buildActionsReady {

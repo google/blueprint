@@ -186,7 +186,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	}
 
 	const outFilePermissions = 0666
-	var out io.Writer
+	var out io.StringWriter
 	var f *os.File
 	var buf *bufio.Writer
 
@@ -204,7 +204,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		buf = bufio.NewWriter(f)
 		out = buf
 	} else {
-		out = ioutil.Discard
+		out = ioutil.Discard.(io.StringWriter)
 	}
 
 	if globFile != "" {

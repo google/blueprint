@@ -15,7 +15,6 @@
 package blueprint
 
 import (
-	"fmt"
 	"io"
 	"strings"
 	"unicode"
@@ -29,13 +28,18 @@ const (
 
 var indentString = strings.Repeat(" ", indentWidth*maxIndentDepth)
 
+type StringWriterWriter interface {
+	io.StringWriter
+	io.Writer
+}
+
 type ninjaWriter struct {
-	writer io.Writer
+	writer io.StringWriter
 
 	justDidBlankLine bool // true if the last operation was a BlankLine
 }
 
-func newNinjaWriter(writer io.Writer) *ninjaWriter {
+func newNinjaWriter(writer io.StringWriter) *ninjaWriter {
 	return &ninjaWriter{
 		writer: writer,
 	}
@@ -72,7 +76,7 @@ func (n *ninjaWriter) Comment(comment string) error {
 
 		if writeLine {
 			line = strings.TrimSpace("# "+line) + "\n"
-			_, err := io.WriteString(n.writer, line)
+			_, err := n.writer.WriteString(line)
 			if err != nil {
 				return err
 			}
@@ -82,7 +86,15 @@ func (n *ninjaWriter) Comment(comment string) error {
 
 	if lineStart != len(comment) {
 		line := strings.TrimSpace(comment[lineStart:])
-		_, err := fmt.Fprintf(n.writer, "# %s\n", line)
+		_, err := n.writer.WriteString("# ")
+		if err != nil {
+			return err
+		}
+		_, err = n.writer.WriteString(line)
+		if err != nil {
+			return err
+		}
+		_, err = n.writer.WriteString("\n")
 		if err != nil {
 			return err
 		}
@@ -93,14 +105,12 @@ func (n *ninjaWriter) Comment(comment string) error {
 
 func (n *ninjaWriter) Pool(name string) error {
 	n.justDidBlankLine = false
-	_, err := fmt.Fprintf(n.writer, "pool %s\n", name)
-	return err
+	return n.writeStatement("pool", name)
 }
 
 func (n *ninjaWriter) Rule(name string) error {
 	n.justDidBlankLine = false
-	_, err := fmt.Fprintf(n.writer, "rule %s\n", name)
-	return err
+	return n.writeStatement("rule", name)
 }
 
 func (n *ninjaWriter) Build(comment string, rule string, outputs, implicitOuts,
@@ -174,14 +184,48 @@ func (n *ninjaWriter) Build(comment string, rule string, outputs, implicitOuts,
 
 func (n *ninjaWriter) Assign(name, value string) error {
 	n.justDidBlankLine = false
-	_, err := fmt.Fprintf(n.writer, "%s = %s\n", name, value)
-	return err
+	_, err := n.writer.WriteString(name)
+	if err != nil {
+		return err
+	}
+	_, err = n.writer.WriteString(" = ")
+	if err != nil {
+		return err
+	}
+	_, err = n.writer.WriteString(value)
+	if err != nil {
+		return err
+	}
+	_, err = n.writer.WriteString("\n")
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (n *ninjaWriter) ScopedAssign(name, value string) error {
 	n.justDidBlankLine = false
-	_, err := fmt.Fprintf(n.writer, "%s%s = %s\n", indentString[:indentWidth], name, value)
-	return err
+	_, err := n.writer.WriteString(indentString[:indentWidth])
+	if err != nil {
+		return err
+	}
+	_, err = n.writer.WriteString(name)
+	if err != nil {
+		return err
+	}
+	_, err = n.writer.WriteString(" = ")
+	if err != nil {
+		return err
+	}
+	_, err = n.writer.WriteString(value)
+	if err != nil {
+		return err
+	}
+	_, err = n.writer.WriteString("\n")
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (n *ninjaWriter) Default(targets ...string) error {
@@ -206,17 +250,32 @@ func (n *ninjaWriter) Default(targets ...string) error {
 
 func (n *ninjaWriter) Subninja(file string) error {
 	n.justDidBlankLine = false
-	_, err := fmt.Fprintf(n.writer, "subninja %s\n", file)
-	return err
+	return n.writeStatement("subninja", file)
 }
 
 func (n *ninjaWriter) BlankLine() (err error) {
 	// We don't output multiple blank lines in a row.
 	if !n.justDidBlankLine {
 		n.justDidBlankLine = true
-		_, err = io.WriteString(n.writer, "\n")
+		_, err = n.writer.WriteString("\n")
 	}
 	return err
+}
+
+func (n *ninjaWriter) writeStatement(directive, name string) error {
+	_, err := n.writer.WriteString(directive + " ")
+	if err != nil {
+		return err
+	}
+	_, err = n.writer.WriteString(name)
+	if err != nil {
+		return err
+	}
+	_, err = n.writer.WriteString("\n")
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 type ninjaWriterWithWrap struct {
@@ -237,25 +296,25 @@ func (n *ninjaWriterWithWrap) writeString(s string, space bool) {
 	}
 
 	if n.writtenLen+len(s)+spaceLen > n.maxLineLen {
-		_, n.err = io.WriteString(n.writer, " $\n")
+		_, n.err = n.writer.WriteString(" $\n")
 		if n.err != nil {
 			return
 		}
-		_, n.err = io.WriteString(n.writer, indentString[:indentWidth*2])
+		_, n.err = n.writer.WriteString(indentString[:indentWidth*2])
 		if n.err != nil {
 			return
 		}
 		n.writtenLen = indentWidth * 2
 		s = strings.TrimLeftFunc(s, unicode.IsSpace)
 	} else if space {
-		_, n.err = io.WriteString(n.writer, " ")
+		_, n.err = n.writer.WriteString(" ")
 		if n.err != nil {
 			return
 		}
 		n.writtenLen++
 	}
 
-	_, n.err = io.WriteString(n.writer, s)
+	_, n.err = n.writer.WriteString(s)
 	n.writtenLen += len(s)
 }
 
@@ -271,6 +330,6 @@ func (n *ninjaWriterWithWrap) Flush() error {
 	if n.err != nil {
 		return n.err
 	}
-	_, err := io.WriteString(n.writer, "\n")
+	_, err := n.writer.WriteString("\n")
 	return err
 }
