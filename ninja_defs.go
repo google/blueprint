@@ -410,25 +410,25 @@ func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*packageContext]string)
 		return err
 	}
 
-	args := make(map[string]string)
-
-	for argVar, value := range b.Args {
-		args[argVar.fullName(pkgNames)] = value.Value(pkgNames)
-	}
-
 	err = writeVariables(nw, b.Variables, pkgNames)
 	if err != nil {
 		return err
 	}
 
-	var keys []string
-	for k := range args {
-		keys = append(keys, k)
+	type nameValuePair struct {
+		name, value string
 	}
-	sort.Strings(keys)
 
-	for _, name := range keys {
-		err = nw.ScopedAssign(name, args[name])
+	args := make([]nameValuePair, 0, len(b.Args))
+
+	for argVar, value := range b.Args {
+		fullName := argVar.fullName(pkgNames)
+		args = append(args, nameValuePair{fullName, value.Value(pkgNames)})
+	}
+	sort.Slice(args, func(i, j int) bool { return args[i].name < args[j].name })
+
+	for _, pair := range args {
+		err = nw.ScopedAssign(pair.name, pair.value)
 		if err != nil {
 			return err
 		}
