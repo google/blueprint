@@ -392,20 +392,20 @@ func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*packageContext]string)
 	var (
 		comment       = b.Comment
 		rule          = b.Rule.fullName(pkgNames)
-		outputs       = valueList(b.Outputs, pkgNames, outputEscaper)
-		implicitOuts  = valueList(b.ImplicitOutputs, pkgNames, outputEscaper)
-		explicitDeps  = valueList(b.Inputs, pkgNames, inputEscaper)
-		implicitDeps  = valueList(b.Implicits, pkgNames, inputEscaper)
-		orderOnlyDeps = valueList(b.OrderOnly, pkgNames, inputEscaper)
-		validations   = valueList(b.Validations, pkgNames, inputEscaper)
+		outputs       = b.Outputs
+		implicitOuts  = b.ImplicitOutputs
+		explicitDeps  = b.Inputs
+		implicitDeps  = b.Implicits
+		orderOnlyDeps = b.OrderOnly
+		validations   = b.Validations
 	)
 
 	if b.RuleDef != nil {
-		implicitDeps = append(valueList(b.RuleDef.CommandDeps, pkgNames, inputEscaper), implicitDeps...)
-		orderOnlyDeps = append(valueList(b.RuleDef.CommandOrderOnly, pkgNames, inputEscaper), orderOnlyDeps...)
+		implicitDeps = append(b.RuleDef.CommandDeps, implicitDeps...)
+		orderOnlyDeps = append(b.RuleDef.CommandOrderOnly, orderOnlyDeps...)
 	}
 
-	err := nw.Build(comment, rule, outputs, implicitOuts, explicitDeps, implicitDeps, orderOnlyDeps, validations)
+	err := nw.Build(comment, rule, outputs, implicitOuts, explicitDeps, implicitDeps, orderOnlyDeps, validations, pkgNames)
 	if err != nil {
 		return err
 	}
@@ -435,23 +435,13 @@ func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*packageContext]string)
 	}
 
 	if !b.Optional {
-		err = nw.Default(outputs...)
+		err = nw.Default(pkgNames, outputs...)
 		if err != nil {
 			return err
 		}
 	}
 
 	return nw.BlankLine()
-}
-
-func valueList(list []ninjaString, pkgNames map[*packageContext]string,
-	escaper *strings.Replacer) []string {
-
-	result := make([]string, len(list))
-	for i, ninjaStr := range list {
-		result[i] = ninjaStr.ValueWithEscaper(pkgNames, escaper)
-	}
-	return result
 }
 
 func writeVariables(nw *ninjaWriter, variables map[string]ninjaString,
