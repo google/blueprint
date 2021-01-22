@@ -57,7 +57,8 @@ func (c *Context) glob(pattern string, excludes []string) ([]string, error) {
 	if exists {
 		// Glob has already been done, double check it is identical
 		verifyGlob(fileName, pattern, excludes, g)
-		return g.Files, nil
+		// Return a copy so that modifications don't affect the cached value.
+		return append([]string(nil), g.Files...), nil
 	}
 
 	// Get a globbed file list
@@ -76,10 +77,12 @@ func (c *Context) glob(pattern string, excludes []string) ([]string, error) {
 	// Getting the list raced with another goroutine, throw away the results and use theirs
 	if exists {
 		verifyGlob(fileName, pattern, excludes, g)
-		return g.Files, nil
+		// Return a copy so that modifications don't affect the cached value.
+		return append([]string(nil), g.Files...), nil
 	}
 
-	return files, nil
+	// Return a copy so that modifications don't affect the cached value.
+	return append([]string(nil), files...), nil
 }
 
 func (c *Context) Globs() []GlobPath {
