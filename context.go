@@ -2309,6 +2309,8 @@ func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs [
 
 		deps = append(deps, depsPackages...)
 
+		c.memoizeFullNames(c.liveGlobals, pkgNames)
+
 		// This will panic if it finds a problem since it's a programming error.
 		c.checkForVariableReferenceCycles(c.liveGlobals.variables, pkgNames)
 
@@ -3173,6 +3175,21 @@ func (c *Context) makeUniquePackageNames(
 	return pkgNames, deps
 }
 
+// memoizeFullNames stores the full name of each live global variable, rule and pool since each is
+// guaranteed to be used at least twice, once in the definition and once for each usage, and many
+// are used much more than once.
+func (c *Context) memoizeFullNames(liveGlobals *liveTracker, pkgNames map[*packageContext]string) {
+	for v := range liveGlobals.variables {
+		v.memoizeFullName(pkgNames)
+	}
+	for r := range liveGlobals.rules {
+		r.memoizeFullName(pkgNames)
+	}
+	for p := range liveGlobals.pools {
+		p.memoizeFullName(pkgNames)
+	}
+}
+
 func (c *Context) checkForVariableReferenceCycles(
 	variables map[Variable]ninjaString, pkgNames map[*packageContext]string) {
 
@@ -3489,7 +3506,7 @@ func (c *Context) SingletonName(singleton Singleton) string {
 // WriteBuildFile writes the Ninja manifeset text for the generated build
 // actions to w.  If this is called before PrepareBuildActions successfully
 // completes then ErrBuildActionsNotReady is returned.
-func (c *Context) WriteBuildFile(w io.Writer) error {
+func (c *Context) WriteBuildFile(w io.StringWriter) error {
 	var err error
 	pprof.Do(c.Context, pprof.Labels("blueprint", "WriteBuildFile"), func(ctx context.Context) {
 		if !c.buildActionsReady {

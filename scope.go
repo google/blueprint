@@ -28,6 +28,7 @@ type Variable interface {
 	packageContext() *packageContext
 	name() string                                        // "foo"
 	fullName(pkgNames map[*packageContext]string) string // "pkg.foo" or "path.to.pkg.foo"
+	memoizeFullName(pkgNames map[*packageContext]string) // precompute fullName if desired
 	value(config interface{}) (ninjaString, error)
 	String() string
 }
@@ -38,6 +39,7 @@ type Pool interface {
 	packageContext() *packageContext
 	name() string                                        // "foo"
 	fullName(pkgNames map[*packageContext]string) string // "pkg.foo" or "path.to.pkg.foo"
+	memoizeFullName(pkgNames map[*packageContext]string) // precompute fullName if desired
 	def(config interface{}) (*poolDef, error)
 	String() string
 }
@@ -48,6 +50,7 @@ type Rule interface {
 	packageContext() *packageContext
 	name() string                                        // "foo"
 	fullName(pkgNames map[*packageContext]string) string // "pkg.foo" or "path.to.pkg.foo"
+	memoizeFullName(pkgNames map[*packageContext]string) // precompute fullName if desired
 	def(config interface{}) (*ruleDef, error)
 	scope() *basicScope
 	isArg(argName string) bool
@@ -294,9 +297,9 @@ func (s *localScope) AddLocalVariable(name, value string) (*localVariable,
 	}
 
 	v := &localVariable{
-		namePrefix: s.namePrefix,
-		name_:      name,
-		value_:     ninjaValue,
+		fullName_: s.namePrefix + name,
+		name_:     name,
+		value_:    ninjaValue,
 	}
 
 	err = s.scope.AddVariable(v)
@@ -333,11 +336,11 @@ func (s *localScope) AddLocalRule(name string, params *RuleParams,
 	}
 
 	r := &localRule{
-		namePrefix: s.namePrefix,
-		name_:      name,
-		def_:       def,
-		argNames:   argNamesSet,
-		scope_:     ruleScope,
+		fullName_: s.namePrefix + name,
+		name_:     name,
+		def_:      def,
+		argNames:  argNamesSet,
+		scope_:    ruleScope,
 	}
 
 	err = s.scope.AddRule(r)
@@ -349,9 +352,9 @@ func (s *localScope) AddLocalRule(name string, params *RuleParams,
 }
 
 type localVariable struct {
-	namePrefix string
-	name_      string
-	value_     ninjaString
+	fullName_ string
+	name_     string
+	value_    ninjaString
 }
 
 func (l *localVariable) packageContext() *packageContext {
@@ -363,7 +366,11 @@ func (l *localVariable) name() string {
 }
 
 func (l *localVariable) fullName(pkgNames map[*packageContext]string) string {
-	return l.namePrefix + l.name_
+	return l.fullName_
+}
+
+func (l *localVariable) memoizeFullName(pkgNames map[*packageContext]string) {
+	// Nothing to do, full name is known at initialization.
 }
 
 func (l *localVariable) value(interface{}) (ninjaString, error) {
@@ -371,15 +378,15 @@ func (l *localVariable) value(interface{}) (ninjaString, error) {
 }
 
 func (l *localVariable) String() string {
-	return "<local var>:" + l.namePrefix + l.name_
+	return "<local var>:" + l.fullName_
 }
 
 type localRule struct {
-	namePrefix string
-	name_      string
-	def_       *ruleDef
-	argNames   map[string]bool
-	scope_     *basicScope
+	fullName_ string
+	name_     string
+	def_      *ruleDef
+	argNames  map[string]bool
+	scope_    *basicScope
 }
 
 func (l *localRule) packageContext() *packageContext {
@@ -391,7 +398,11 @@ func (l *localRule) name() string {
 }
 
 func (l *localRule) fullName(pkgNames map[*packageContext]string) string {
-	return l.namePrefix + l.name_
+	return l.fullName_
+}
+
+func (l *localRule) memoizeFullName(pkgNames map[*packageContext]string) {
+	// Nothing to do, full name is known at initialization.
 }
 
 func (l *localRule) def(interface{}) (*ruleDef, error) {
@@ -407,5 +418,5 @@ func (r *localRule) isArg(argName string) bool {
 }
 
 func (r *localRule) String() string {
-	return "<local rule>:" + r.namePrefix + r.name_
+	return "<local rule>:" + r.fullName_
 }

@@ -392,28 +392,22 @@ func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*packageContext]string)
 	var (
 		comment       = b.Comment
 		rule          = b.Rule.fullName(pkgNames)
-		outputs       = valueList(b.Outputs, pkgNames, outputEscaper)
-		implicitOuts  = valueList(b.ImplicitOutputs, pkgNames, outputEscaper)
-		explicitDeps  = valueList(b.Inputs, pkgNames, inputEscaper)
-		implicitDeps  = valueList(b.Implicits, pkgNames, inputEscaper)
-		orderOnlyDeps = valueList(b.OrderOnly, pkgNames, inputEscaper)
-		validations   = valueList(b.Validations, pkgNames, inputEscaper)
+		outputs       = b.Outputs
+		implicitOuts  = b.ImplicitOutputs
+		explicitDeps  = b.Inputs
+		implicitDeps  = b.Implicits
+		orderOnlyDeps = b.OrderOnly
+		validations   = b.Validations
 	)
 
 	if b.RuleDef != nil {
-		implicitDeps = append(valueList(b.RuleDef.CommandDeps, pkgNames, inputEscaper), implicitDeps...)
-		orderOnlyDeps = append(valueList(b.RuleDef.CommandOrderOnly, pkgNames, inputEscaper), orderOnlyDeps...)
+		implicitDeps = append(b.RuleDef.CommandDeps, implicitDeps...)
+		orderOnlyDeps = append(b.RuleDef.CommandOrderOnly, orderOnlyDeps...)
 	}
 
-	err := nw.Build(comment, rule, outputs, implicitOuts, explicitDeps, implicitDeps, orderOnlyDeps, validations)
+	err := nw.Build(comment, rule, outputs, implicitOuts, explicitDeps, implicitDeps, orderOnlyDeps, validations, pkgNames)
 	if err != nil {
 		return err
-	}
-
-	args := make(map[string]string)
-
-	for argVar, value := range b.Args {
-		args[argVar.fullName(pkgNames)] = value.Value(pkgNames)
 	}
 
 	err = writeVariables(nw, b.Variables, pkgNames)
@@ -421,37 +415,33 @@ func (b *buildDef) WriteTo(nw *ninjaWriter, pkgNames map[*packageContext]string)
 		return err
 	}
 
-	var keys []string
-	for k := range args {
-		keys = append(keys, k)
+	type nameValuePair struct {
+		name, value string
 	}
-	sort.Strings(keys)
 
-	for _, name := range keys {
-		err = nw.ScopedAssign(name, args[name])
+	args := make([]nameValuePair, 0, len(b.Args))
+
+	for argVar, value := range b.Args {
+		fullName := argVar.fullName(pkgNames)
+		args = append(args, nameValuePair{fullName, value.Value(pkgNames)})
+	}
+	sort.Slice(args, func(i, j int) bool { return args[i].name < args[j].name })
+
+	for _, pair := range args {
+		err = nw.ScopedAssign(pair.name, pair.value)
 		if err != nil {
 			return err
 		}
 	}
 
 	if !b.Optional {
-		err = nw.Default(outputs...)
+		err = nw.Default(pkgNames, outputs...)
 		if err != nil {
 			return err
 		}
 	}
 
 	return nw.BlankLine()
-}
-
-func valueList(list []ninjaString, pkgNames map[*packageContext]string,
-	escaper *strings.Replacer) []string {
-
-	result := make([]string, len(list))
-	for i, ninjaStr := range list {
-		result[i] = ninjaStr.ValueWithEscaper(pkgNames, escaper)
-	}
-	return result
 }
 
 func writeVariables(nw *ninjaWriter, variables map[string]ninjaString,

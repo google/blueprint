@@ -186,7 +186,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	}
 
 	const outFilePermissions = 0666
-	var out io.Writer
+	var out io.StringWriter
 	var f *os.File
 	var buf *bufio.Writer
 
@@ -201,10 +201,10 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		if err != nil {
 			fatalf("error opening Ninja file: %s", err)
 		}
-		buf = bufio.NewWriter(f)
+		buf = bufio.NewWriterSize(f, 16*1024*1024)
 		out = buf
 	} else {
-		out = ioutil.Discard
+		out = ioutil.Discard.(io.StringWriter)
 	}
 
 	if globFile != "" {
