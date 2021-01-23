@@ -16,6 +16,7 @@ package blueprint
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -49,14 +50,26 @@ var ninjaWriterTestCases = []struct {
 	},
 	{
 		input: func(w *ninjaWriter) {
-			ck(w.Build("foo comment", "foo", []string{"o1", "o2"}, []string{"io1", "io2"},
-				[]string{"e1", "e2"}, []string{"i1", "i2"}, []string{"oo1", "oo2"}, []string{"v1", "v2"}))
+			ck(w.Build("foo comment", "foo", testNinjaStrings("o1", "o2"),
+				testNinjaStrings("io1", "io2"), testNinjaStrings("e1", "e2"),
+				testNinjaStrings("i1", "i2"), testNinjaStrings("oo1", "oo2"),
+				testNinjaStrings("v1", "v2"), nil))
 		},
 		output: "# foo comment\nbuild o1 o2 | io1 io2: foo e1 e2 | i1 i2 || oo1 oo2 |@ v1 v2\n",
 	},
 	{
 		input: func(w *ninjaWriter) {
-			ck(w.Default("foo"))
+			ck(w.Build("foo comment", "foo",
+				testNinjaStrings(strings.Repeat("o", lineWidth)),
+				nil,
+				testNinjaStrings(strings.Repeat("i", lineWidth)),
+				nil, nil, nil, nil))
+		},
+		output: "# foo comment\nbuild $\n        " + strings.Repeat("o", lineWidth) + ": foo $\n        " + strings.Repeat("i", lineWidth) + "\n",
+	},
+	{
+		input: func(w *ninjaWriter) {
+			ck(w.Default(nil, testNinjaStrings("foo")...))
 		},
 		output: "default foo\n",
 	},
@@ -94,7 +107,8 @@ var ninjaWriterTestCases = []struct {
 			ck(w.ScopedAssign("command", "echo out: $out in: $in _arg: $_arg"))
 			ck(w.ScopedAssign("pool", "p"))
 			ck(w.BlankLine())
-			ck(w.Build("r comment", "r", []string{"foo.o"}, nil, []string{"foo.in"}, nil, nil, nil))
+			ck(w.Build("r comment", "r", testNinjaStrings("foo.o"),
+				nil, testNinjaStrings("foo.in"), nil, nil, nil, nil))
 			ck(w.ScopedAssign("_arg", "arg value"))
 		},
 		output: `pool p
@@ -123,4 +137,9 @@ func TestNinjaWriter(t *testing.T) {
 			t.Errorf("       got: %q", buf.String())
 		}
 	}
+}
+
+func testNinjaStrings(s ...string) []ninjaString {
+	ret, _ := parseNinjaStrings(nil, s)
+	return ret
 }
