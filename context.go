@@ -1355,6 +1355,8 @@ func (c *Context) createVariations(origModule *moduleInfo, mutatorName string,
 		m := *origModule
 		newModule := &m
 		newModule.directDeps = append([]depInfo(nil), origModule.directDeps...)
+		newModule.reverseDeps = nil
+		newModule.forwardDeps = nil
 		newModule.logicModule = newLogicModule
 		newModule.variant = newVariant(origModule, mutatorName, variationName, local)
 		newModule.properties = newProperties
@@ -2180,7 +2182,9 @@ func (c *Context) updateDependencies() (errs []error) {
 		checking[module] = true
 		defer delete(checking, module)
 
-		deps := make(map[*moduleInfo]bool)
+		// Reset the forward and reverse deps without reducing their capacity to avoid reallocation.
+		module.reverseDeps = module.reverseDeps[:0]
+		module.forwardDeps = module.forwardDeps[:0]
 
 		// Add an implicit dependency ordering on all earlier modules in the same module group
 		for _, dep := range module.group.modules {
@@ -2188,18 +2192,22 @@ func (c *Context) updateDependencies() (errs []error) {
 				break
 			}
 			if depModule := dep.module(); depModule != nil {
-				deps[depModule] = true
+				module.forwardDeps = append(module.forwardDeps, depModule)
 			}
 		}
 
+	outer:
 		for _, dep := range module.directDeps {
-			deps[dep.module] = true
+			// use a loop to check for duplicates, average number of directDeps measured to be 9.5.
+			for _, exists := range module.forwardDeps {
+				if dep.module == exists {
+					continue outer
+				}
+			}
+			module.forwardDeps = append(module.forwardDeps, dep.module)
 		}
 
-		module.reverseDeps = []*moduleInfo{}
-		module.forwardDeps = []*moduleInfo{}
-
-		for dep := range deps {
+		for _, dep := range module.forwardDeps {
 			if checking[dep] {
 				// This is a cycle.
 				return []*moduleInfo{dep, module}
@@ -2225,7 +2233,6 @@ func (c *Context) updateDependencies() (errs []error) {
 				}
 			}
 
-			module.forwardDeps = append(module.forwardDeps, dep)
 			dep.reverseDeps = append(dep.reverseDeps, module)
 		}
 
