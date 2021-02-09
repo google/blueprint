@@ -2074,23 +2074,14 @@ func parallelVisit(modules []*moduleInfo, order visitOrderer, limit int,
 		}
 
 		if len(pauseMap) > 0 {
-			// Probably a deadlock due to a newly added dependency cycle.
-			// Start from a semi-random module being paused for and perform a depth-first
-			// search for the module it is paused on, ignoring modules that are marked as
-			// done.  Note this traverses from modules to the modules that would have been
-			// unblocked when that module finished.
-			var start, end *moduleInfo
-			for _, pauseSpecs := range pauseMap {
-				for _, pauseSpec := range pauseSpecs {
-					if start == nil || start.String() > pauseSpec.paused.String() {
-						start = pauseSpec.paused
-						end = pauseSpec.until
-					}
-				}
-			}
+			// Probably a deadlock due to a newly added dependency cycle. Start from each module in
+			// the order of the input modules list and perform a depth-first search for the module
+			// it is paused on, ignoring modules that are marked as done.  Note this traverses from
+			// modules to the modules that would have been unblocked when that module finished, i.e
+			// the reverse of the visitOrderer.
 
-			var check func(group *moduleInfo) []*moduleInfo
-			check = func(module *moduleInfo) []*moduleInfo {
+			var check func(module, end *moduleInfo) []*moduleInfo
+			check = func(module, end *moduleInfo) []*moduleInfo {
 				if module.waitingCount == -1 {
 					// This module was finished, it can't be part of a loop.
 					return nil
@@ -2101,13 +2092,13 @@ func parallelVisit(modules []*moduleInfo, order visitOrderer, limit int,
 				}
 
 				for _, dep := range order.propagate(module) {
-					cycle := check(dep)
+					cycle := check(dep, end)
 					if cycle != nil {
 						return append([]*moduleInfo{module}, cycle...)
 					}
 				}
 				for _, depPauseSpec := range pauseMap[module] {
-					cycle := check(depPauseSpec.paused)
+					cycle := check(depPauseSpec.paused, end)
 					if cycle != nil {
 						return append([]*moduleInfo{module}, cycle...)
 					}
@@ -2116,9 +2107,14 @@ func parallelVisit(modules []*moduleInfo, order visitOrderer, limit int,
 				return nil
 			}
 
-			cycle := check(start)
-			if cycle != nil {
-				return cycleError(cycle)
+			// Iterate over the modules list instead of pauseMap to provide deterministic ordering.
+			for _, module := range modules {
+				for _, pauseSpec := range pauseMap[module] {
+					cycle := check(pauseSpec.paused, pauseSpec.until)
+					if len(cycle) > 0 {
+						return cycleError(cycle)
+					}
+				}
 			}
 		}
 
