@@ -19,16 +19,16 @@ import (
 	"testing"
 )
 
-func TestHasTag(t *testing.T) {
-	type testType struct {
-		NoTag       string
-		EmptyTag    string ``
-		OtherTag    string `foo:"bar"`
-		MatchingTag string `name:"value"`
-		ExtraValues string `name:"foo,value,bar"`
-		ExtraTags   string `foo:"bar" name:"value"`
-	}
+type testType struct {
+	NoTag       string
+	EmptyTag    string ``
+	OtherTag    string `foo:"bar"`
+	MatchingTag string `name:"value"`
+	ExtraValues string `name:"foo,value,bar"`
+	ExtraTags   string `foo:"bar" name:"value"`
+}
 
+func TestHasTag(t *testing.T) {
 	tests := []struct {
 		field string
 		want  bool
@@ -63,6 +63,39 @@ func TestHasTag(t *testing.T) {
 			field, _ := reflect.TypeOf(testType{}).FieldByName(test.field)
 			if got := HasTag(field, "name", "value"); got != test.want {
 				t.Errorf(`HasTag(%q, "name", "value") = %v, want %v`, field.Tag, got, test.want)
+			}
+		})
+	}
+}
+
+func BenchmarkHasTag(b *testing.B) {
+	tests := []struct {
+		field string
+	}{
+		{
+			field: "NoTag",
+		},
+		{
+			field: "EmptyTag",
+		},
+		{
+			field: "OtherTag",
+		},
+		{
+			field: "MatchingTag",
+		},
+		{
+			field: "ExtraValues",
+		},
+		{
+			field: "ExtraTags",
+		},
+	}
+	for _, test := range tests {
+		b.Run(test.field, func(b *testing.B) {
+			field, _ := reflect.TypeOf(testType{}).FieldByName(test.field)
+			for i := 0; i < b.N; i++ {
+				HasTag(field, "name", "value")
 			}
 		})
 	}
