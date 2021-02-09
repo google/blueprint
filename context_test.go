@@ -840,38 +840,31 @@ func Test_findVariant(t *testing.T) {
 }
 
 func Test_parallelVisit(t *testing.T) {
-	moduleA := &moduleInfo{
-		group: &moduleGroup{
-			name: "A",
-		},
-	}
-	moduleB := &moduleInfo{
-		group: &moduleGroup{
-			name: "B",
-		},
-	}
-	moduleC := &moduleInfo{
-		group: &moduleGroup{
-			name: "C",
-		},
-	}
-	moduleD := &moduleInfo{
-		group: &moduleGroup{
-			name: "D",
-		},
-	}
-	moduleA.group.modules = modulesOrAliases{moduleA}
-	moduleB.group.modules = modulesOrAliases{moduleB}
-	moduleC.group.modules = modulesOrAliases{moduleC}
-	moduleD.group.modules = modulesOrAliases{moduleD}
-
 	addDep := func(from, to *moduleInfo) {
 		from.directDeps = append(from.directDeps, depInfo{to, nil})
 		from.forwardDeps = append(from.forwardDeps, to)
 		to.reverseDeps = append(to.reverseDeps, from)
 	}
 
-	// A depends on B, B depends on C.  Nothing depends on D, and D doesn't depend on anything.
+	create := func(name string) *moduleInfo {
+		m := &moduleInfo{
+			group: &moduleGroup{
+				name: name,
+			},
+		}
+		m.group.modules = modulesOrAliases{m}
+		return m
+	}
+	moduleA := create("A")
+	moduleB := create("B")
+	moduleC := create("C")
+	moduleD := create("D")
+	moduleE := create("E")
+	moduleF := create("F")
+	moduleG := create("G")
+
+	// A depends on B, B depends on C.  Nothing depends on D through G, and they don't depend on
+	// anything.
 	addDep(moduleA, moduleB)
 	addDep(moduleB, moduleC)
 
@@ -1037,8 +1030,45 @@ func Test_parallelVisit(t *testing.T) {
 			})
 		want := []string{
 			`encountered dependency cycle`,
-			`"C" depends on "D"`,
 			`"D" depends on "C"`,
+			`"C" depends on "D"`,
+		}
+		for i := range want {
+			if len(errs) <= i {
+				t.Errorf("missing error %s", want[i])
+			} else if !strings.Contains(errs[i].Error(), want[i]) {
+				t.Errorf("expected error %s, got %s", want[i], errs[i])
+			}
+		}
+		if len(errs) > len(want) {
+			for _, err := range errs[len(want):] {
+				t.Errorf("unexpected error %s", err.Error())
+			}
+		}
+	})
+	t.Run("pause cycle with deps", func(t *testing.T) {
+		pauseDeps := map[*moduleInfo]*moduleInfo{
+			// F and G form a pause cycle
+			moduleF: moduleG,
+			moduleG: moduleF,
+			// D depends on E which depends on the pause cycle, making E the first alphabetical
+			// entry in pauseMap, which is not part of the cycle.
+			moduleD: moduleE,
+			moduleE: moduleF,
+		}
+		errs := parallelVisit([]*moduleInfo{moduleD, moduleE, moduleF, moduleG}, bottomUpVisitorImpl{}, 4,
+			func(module *moduleInfo, pause chan<- pauseSpec) bool {
+				if dep, ok := pauseDeps[module]; ok {
+					unpause := make(chan struct{})
+					pause <- pauseSpec{module, dep, unpause}
+					<-unpause
+				}
+				return false
+			})
+		want := []string{
+			`encountered dependency cycle`,
+			`"G" depends on "F"`,
+			`"F" depends on "G"`,
 		}
 		for i := range want {
 			if len(errs) <= i {

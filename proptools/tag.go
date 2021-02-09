@@ -23,10 +23,17 @@ import (
 // HasTag returns true if a StructField has a tag in the form `name:"foo,value"`.
 func HasTag(field reflect.StructField, name, value string) bool {
 	tag := field.Tag.Get(name)
-	for _, entry := range strings.Split(tag, ",") {
-		if entry == value {
+	for len(tag) > 0 {
+		idx := strings.Index(tag, ",")
+
+		if idx < 0 {
+			return tag == value
+		}
+		if tag[:idx] == value {
 			return true
 		}
+
+		tag = tag[idx+1:]
 	}
 
 	return false
