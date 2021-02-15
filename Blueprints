@@ -70,6 +70,7 @@ bootstrap_go_package {
     testSrcs: [
         "pathtools/fs_test.go",
         "pathtools/glob_test.go",
+        "pathtools/lists_test.go",
     ],
 }
 
