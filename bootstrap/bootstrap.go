@@ -125,7 +125,10 @@ var (
 
 	generateBuildNinja = pctx.StaticRule("build.ninja",
 		blueprint.RuleParams{
-			Command:     "$builder $extra -b $buildDir -n $ninjaBuildDir -d $out.d -globFile $globFile -o $out $in",
+			// TODO: it's kinda ugly that some parameters are computed from
+			// environment variables and some from Ninja parameters, but it's probably
+			// better to not to touch that while Blueprint and Soong are separate
+			Command:     "cd $$(dirname $builder) && BUILDER=$$PWD/$$(basename $builder) && cd / && env -i $$BUILDER $extra --top \"$$TOP\" --out \"$$SOONG_OUTDIR\" -b $buildDir -n $ninjaBuildDir -d $out.d -globFile $globFile -o $out $in",
 			CommandDeps: []string{"$builder"},
 			Description: "$builder $out",
 			Deps:        blueprint.DepsGCC,
@@ -730,7 +733,6 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	// Get the filename of the top-level Blueprints file to pass to minibp.
 	topLevelBlueprints := filepath.Join("$srcDir",
 		filepath.Base(s.config.topLevelBlueprintsFile))
-
 	ctx.SetNinjaBuildDir(pctx, "${ninjaBuildDir}")
 
 	if s.config.stage == StagePrimary {
