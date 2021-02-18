@@ -141,7 +141,7 @@ func main() {
 		if err := processReader("<standard input>", os.Stdin, os.Stdout); err != nil {
 			report(err)
 		}
-		return
+		os.Exit(exitCode)
 	}
 
 	for i := 0; i < flag.NArg(); i++ {
