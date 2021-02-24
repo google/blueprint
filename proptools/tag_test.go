@@ -156,6 +156,31 @@ func TestPropertyIndexesWithTag(t *testing.T) {
 			want: [][]int{{0, 0}},
 		},
 		{
+			name: "slice of struct",
+			ps: &struct {
+				Other int
+				Foo   []struct {
+					Other int
+					Bar   string `name:"value"`
+				}
+			}{},
+			want: [][]int{{1, 1}},
+		},
+		{
+			name: "slice^2 of struct",
+			ps: &struct {
+				Other int
+				Foo   []struct {
+					Other int
+					Bar   []struct {
+						Other int
+						Baz   string `name:"value"`
+					}
+				}
+			}{},
+			want: [][]int{{1, 1, 1}},
+		},
+		{
 			name: "nil",
 			ps: (*struct {
 				Foo string `name:"value"`
