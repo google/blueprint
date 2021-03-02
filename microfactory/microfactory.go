@@ -397,6 +397,7 @@ func (p *GoPackage) Compile(config *Config, outDir string) error {
 	fmt.Fprintln(hash, runtime.GOOS, runtime.GOARCH, goVersion)
 
 	cmd := exec.Command(filepath.Join(goToolDir, "compile"),
+		"-N", "-l", // Disable optimization and inlining so that debugging works better
 		"-o", p.output,
 		"-p", p.Name,
 		"-complete", "-pack", "-nolocalimports")
