@@ -56,30 +56,44 @@ func ShellEscapeList(slice []string) []string {
 
 }
 
-// ShellEscapeList takes string that may contain characters that are meaningful to bash and
+func shellUnsafeChar(r rune) bool {
+	switch {
+	case 'A' <= r && r <= 'Z',
+		'a' <= r && r <= 'z',
+		'0' <= r && r <= '9',
+		r == '_',
+		r == '+',
+		r == '-',
+		r == '=',
+		r == '.',
+		r == ',',
+		r == '/':
+		return false
+	default:
+		return true
+	}
+}
+
+// ShellEscape takes string that may contain characters that are meaningful to bash and
 // escapes it if necessary by wrapping it in single quotes, and replacing internal single quotes with
 // '\'' (one single quote to end the quoting, a shell-escaped single quote to insert a real single
 // quote, and then a single quote to restarting quoting.
 func ShellEscape(s string) string {
-	shellUnsafeChar := func(r rune) bool {
-		switch {
-		case 'A' <= r && r <= 'Z',
-			'a' <= r && r <= 'z',
-			'0' <= r && r <= '9',
-			r == '_',
-			r == '+',
-			r == '-',
-			r == '=',
-			r == '.',
-			r == ',',
-			r == '/',
-			r == ' ':
-			return false
-		default:
-			return true
-		}
+	shellUnsafeCharNotSpace := func(r rune) bool {
+		return r != ' ' && shellUnsafeChar(r)
 	}
 
+	if strings.IndexFunc(s, shellUnsafeCharNotSpace) == -1 {
+		// No escaping necessary
+		return s
+	}
+
+	return `'` + singleQuoteReplacer.Replace(s) + `'`
+}
+
+// ShellEscapeIncludingSpaces escapes the input `s` in a similar way to ShellEscape except that
+// this treats spaces as meaningful characters.
+func ShellEscapeIncludingSpaces(s string) string {
 	if strings.IndexFunc(s, shellUnsafeChar) == -1 {
 		// No escaping necessary
 		return s
