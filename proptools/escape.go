@@ -56,7 +56,7 @@ func ShellEscapeList(slice []string) []string {
 
 }
 
-// ShellEscapeList takes string that may contain characters that are meaningful to bash and
+// ShellEscape takes string that may contain characters that are meaningful to bash and
 // escapes it if necessary by wrapping it in single quotes, and replacing internal single quotes with
 // '\'' (one single quote to end the quoting, a shell-escaped single quote to insert a real single
 // quote, and then a single quote to restarting quoting.
@@ -74,6 +74,36 @@ func ShellEscape(s string) string {
 			r == ',',
 			r == '/',
 			r == ' ':
+			return false
+		default:
+			return true
+		}
+	}
+
+	if strings.IndexFunc(s, shellUnsafeChar) == -1 {
+		// No escaping necessary
+		return s
+	}
+
+	return `'` + singleQuoteReplacer.Replace(s) + `'`
+}
+
+// ShellArgEscape takes string that is supposed to be a single argument that may contain characters
+// that are meaningful to bash and escapes it if necessary by wrapping it in single quotes, and
+// replacing internal single quotes with '\'' (one single quote to end the quoting, a shell-escaped
+// single quote to insert a real single quote, and then a single quote to restarting quoting.
+func ShellArgEscape(s string) string {
+	shellUnsafeChar := func(r rune) bool {
+		switch {
+		case 'A' <= r && r <= 'Z',
+			'a' <= r && r <= 'z',
+			'0' <= r && r <= '9',
+			r == '_',
+			r == '+',
+			r == '=',
+			r == '.',
+			r == ',',
+			r == '/':
 			return false
 		default:
 			return true

@@ -91,6 +91,41 @@ var shellEscapeTestCase = []escapeTestCase{
 	},
 }
 
+var shellArgEscapeTestCase = []escapeTestCase{
+	{
+		name: "no escaping",
+		in:   `test`,
+		out:  `test`,
+	},
+	{
+		name: "spacing",
+		in:   `arg1 arg2`,
+		out:  `'arg1 arg2'`,
+	},
+	{
+		name: "single quote",
+		in:   `'arg'`,
+		out:  `''\''arg'\'''`,
+	},
+	{
+		name: "flag-arg",
+		in:   `-e xx`,
+		out:  `'-e xx'`,
+	},
+
+	{
+		name: "flag-arg with single quotes",
+		in:   `-e 'xx'`,
+		out:  `'-e '\''xx'\'''`,
+	},
+
+	{
+		name: "flag-arg with double quotes",
+		in:   `-e "xx"`,
+		out:  `'-e "xx"'`,
+	},
+}
+
 func TestNinjaEscaping(t *testing.T) {
 	for _, testCase := range ninjaEscapeTestCase {
 		got := NinjaEscape(testCase.in)
@@ -109,12 +144,37 @@ func TestShellEscaping(t *testing.T) {
 	}
 }
 
+func TestShellArgEscaping(t *testing.T) {
+	for _, testCase := range shellArgEscapeTestCase {
+		got := ShellArgEscape(testCase.in)
+		if got != testCase.out {
+			t.Errorf("%s: expected `%s` got `%s`", testCase.name, testCase.out, got)
+		}
+	}
+}
+
 func TestExternalShellEscaping(t *testing.T) {
 	if testing.Short() {
 		return
 	}
 	for _, testCase := range shellEscapeTestCase {
 		cmd := "echo -n " + ShellEscape(testCase.in)
+		got, err := exec.Command("/bin/sh", "-c", cmd).Output()
+		if err != nil {
+			t.Error(err)
+		}
+		if string(got) != testCase.in {
+			t.Errorf("%s: expected `%s` got `%s`", testCase.name, testCase.in, got)
+		}
+	}
+}
+
+func TestExternalShellArgEscaping(t *testing.T) {
+	if testing.Short() {
+		return
+	}
+	for _, testCase := range shellArgEscapeTestCase {
+		cmd := "echo -n " + ShellArgEscape(testCase.in)
 		got, err := exec.Command("/bin/sh", "-c", cmd).Output()
 		if err != nil {
 			t.Error(err)
