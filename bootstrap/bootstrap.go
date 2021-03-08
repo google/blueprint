@@ -437,10 +437,8 @@ func (g *goBinary) GenerateBuildActions(ctx blueprint.ModuleContext) {
 
 	if g.properties.Tool_dir {
 		g.installPath = filepath.Join(toolDir(ctx.Config()), name)
-	} else if g.config.stage == StageMain {
-		g.installPath = filepath.Join(mainDir, "bin", name)
 	} else {
-		g.installPath = filepath.Join(bootstrapDir, "bin", name)
+		g.installPath = filepath.Join(stageDir(g.config), "bin", name)
 	}
 
 	ctx.VisitDepsDepthFirstIf(isGoPluginFor(name),
