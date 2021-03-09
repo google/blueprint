@@ -47,6 +47,7 @@ bootstrap_go_package {
         "parser/modify_test.go",
         "parser/parser_test.go",
         "parser/printer_test.go",
+	"parser/sort_test.go",
     ],
 }
 
