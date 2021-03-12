@@ -15,7 +15,7 @@ import (
 
 // ModuleTypeDocs returns a list of bpdoc.ModuleType objects that contain information relevant
 // to generating documentation for module types supported by the primary builder.
-func ModuleTypeDocs(ctx *blueprint.Context, factories map[string]reflect.Value) ([]*bpdoc.Package, error) {
+func ModuleTypeDocs(ctx *blueprint.Context, config interface{}, factories map[string]reflect.Value) ([]*bpdoc.Package, error) {
 	// Find the module that's marked as the "primary builder", which means it's
 	// creating the binary that we'll use to generate the non-bootstrap
 	// build.ninja file.
@@ -55,7 +55,7 @@ func ModuleTypeDocs(ctx *blueprint.Context, factories map[string]reflect.Value) 
 		switch m := module.(type) {
 		case (*goPackage):
 			pkgFiles[m.properties.PkgPath] = pathtools.PrefixPaths(m.properties.Srcs,
-				filepath.Join(SrcDir, ctx.ModuleDir(m)))
+				filepath.Join(config.(BootstrapConfig).SrcDir(), ctx.ModuleDir(m)))
 		default:
 			panic(fmt.Errorf("unknown dependency type %T", module))
 		}
@@ -75,8 +75,8 @@ func ModuleTypeDocs(ctx *blueprint.Context, factories map[string]reflect.Value) 
 	return bpdoc.AllPackages(pkgFiles, mergedFactories, ctx.ModuleTypePropertyStructs())
 }
 
-func writeDocs(ctx *blueprint.Context, filename string) error {
-	moduleTypeList, err := ModuleTypeDocs(ctx, nil)
+func writeDocs(ctx *blueprint.Context, config interface{}, filename string) error {
+	moduleTypeList, err := ModuleTypeDocs(ctx, config, nil)
 	if err != nil {
 		return err
 	}

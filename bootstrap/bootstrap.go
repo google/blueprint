@@ -163,7 +163,7 @@ var (
 		"depfile")
 
 	_ = pctx.VariableFunc("BinDir", func(config interface{}) (string, error) {
-		return bootstrapBinDir(), nil
+		return bootstrapBinDir(config), nil
 	})
 
 	_ = pctx.VariableFunc("ToolDir", func(config interface{}) (string, error) {
@@ -186,15 +186,15 @@ type GoBinaryTool interface {
 	isGoBinary()
 }
 
-func bootstrapBinDir() string {
-	return filepath.Join(BuildDir, bootstrapSubDir, "bin")
+func bootstrapBinDir(config interface{}) string {
+	return filepath.Join(config.(BootstrapConfig).BuildDir(), bootstrapSubDir, "bin")
 }
 
 func toolDir(config interface{}) string {
 	if c, ok := config.(ConfigBlueprintToolLocation); ok {
 		return filepath.Join(c.BlueprintToolLocation())
 	}
-	return filepath.Join(BuildDir, "bin")
+	return filepath.Join(config.(BootstrapConfig).BuildDir(), "bin")
 }
 
 func pluginDeps(ctx blueprint.BottomUpMutatorContext) {

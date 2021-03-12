@@ -31,8 +31,8 @@ const logFileName = ".ninja_log"
 // removeAbandonedFilesUnder removes any files that appear in the Ninja log, and
 // are prefixed with one of the `under` entries, but that are not currently
 // build targets, or in `exempt`
-func removeAbandonedFilesUnder(ctx *blueprint.Context, config *Config,
-	srcDir string, under, exempt []string) error {
+func removeAbandonedFilesUnder(ctx *blueprint.Context,
+	srcDir, buildDir string, under, exempt []string) error {
 
 	if len(under) == 0 {
 		return nil
@@ -50,7 +50,7 @@ func removeAbandonedFilesUnder(ctx *blueprint.Context, config *Config,
 
 	replacer := strings.NewReplacer(
 		"@@SrcDir@@", srcDir,
-		"@@BuildDir@@", BuildDir)
+		"@@BuildDir@@", buildDir)
 	ninjaBuildDir = replacer.Replace(ninjaBuildDir)
 	targets := make(map[string]bool)
 	for target := range targetRules {

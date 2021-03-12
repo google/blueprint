@@ -43,11 +43,12 @@ var (
 	useValidations bool
 	noGC           bool
 	emptyNinjaFile bool
+	absSrcDir      string
+
 	BuildDir       string
 	ModuleListFile string
 	NinjaBuildDir  string
 	SrcDir         string
-	absSrcDir      string
 )
 
 func init() {
@@ -121,7 +122,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	}
 
 	stage := StageMain
-	if c, ok := config.(ConfigInterface); ok {
+	if c, ok := config.(interface{ GeneratingPrimaryBuilder() bool }); ok {
 		if c.GeneratingPrimaryBuilder() {
 			stage = StagePrimary
 		}
@@ -160,7 +161,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	deps = append(deps, extraDeps...)
 
 	if docFile != "" {
-		err := writeDocs(ctx, absolutePath(docFile))
+		err := writeDocs(ctx, config, absolutePath(docFile))
 		if err != nil {
 			fatalErrors([]error{err})
 		}
@@ -208,7 +209,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	}
 
 	if globFile != "" {
-		buffer, errs := generateGlobNinjaFile(ctx.Globs)
+		buffer, errs := generateGlobNinjaFile(config, ctx.Globs)
 		if len(errs) > 0 {
 			fatalErrors(errs)
 		}
@@ -247,7 +248,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 
 	if c, ok := config.(ConfigRemoveAbandonedFilesUnder); ok {
 		under, except := c.RemoveAbandonedFilesUnder()
-		err := removeAbandonedFilesUnder(ctx, bootstrapConfig, SrcDir, under, except)
+		err := removeAbandonedFilesUnder(ctx, SrcDir, BuildDir, under, except)
 		if err != nil {
 			fatalf("error removing abandoned files: %s", err)
 		}

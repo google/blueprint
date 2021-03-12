@@ -61,11 +61,16 @@ var (
 	})
 )
 
-type ConfigInterface interface {
-	// GeneratingPrimaryBuilder should return true if this build invocation is
-	// creating a .bootstrap/build.ninja file to be used to build the
-	// primary builder
-	GeneratingPrimaryBuilder() bool
+type BootstrapConfig interface {
+	// The top-level directory of the source tree
+	SrcDir() string
+
+	// The directory where files emitted during bootstrapping are located.
+	// Usually NinjaBuildDir() + "/soong".
+	BuildDir() string
+
+	// The output directory for the build.
+	NinjaBuildDir() string
 }
 
 type ConfigRemoveAbandonedFilesUnder interface {
