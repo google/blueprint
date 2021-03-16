@@ -32,21 +32,22 @@ import (
 )
 
 type Args struct {
-	OutFile        string
-	GlobFile       string
-	DepFile        string
-	DocFile        string
-	Cpuprofile     string
-	Memprofile     string
-	TraceFile      string
-	RunGoTests     bool
-	UseValidations bool
-	NoGC           bool
-	EmptyNinjaFile bool
-	BuildDir       string
-	ModuleListFile string
-	NinjaBuildDir  string
-	TopFile        string
+	OutFile                  string
+	GlobFile                 string
+	DepFile                  string
+	DocFile                  string
+	Cpuprofile               string
+	Memprofile               string
+	TraceFile                string
+	RunGoTests               bool
+	UseValidations           bool
+	NoGC                     bool
+	EmptyNinjaFile           bool
+	BuildDir                 string
+	ModuleListFile           string
+	NinjaBuildDir            string
+	TopFile                  string
+	GeneratingPrimaryBuilder bool
 }
 
 var (
@@ -85,7 +86,7 @@ func init() {
 	flag.BoolVar(&cmdline.EmptyNinjaFile, "empty-ninja-file", false, "write out a 0-byte ninja file")
 }
 
-func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...string) {
+func Main(ctx *blueprint.Context, config interface{}, generatingPrimaryBuilder bool, extraNinjaFileDeps ...string) {
 	if !flag.Parsed() {
 		flag.Parse()
 	}
@@ -95,6 +96,7 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	}
 
 	cmdline.TopFile = flag.Arg(0)
+	cmdline.GeneratingPrimaryBuilder = generatingPrimaryBuilder
 	RunBlueprint(cmdline, ctx, config, extraNinjaFileDeps...)
 }
 
@@ -143,10 +145,8 @@ func RunBlueprint(args Args, ctx *blueprint.Context, config interface{}, extraNi
 	buildDir := args.BuildDir
 
 	stage := StageMain
-	if c, ok := config.(interface{ GeneratingPrimaryBuilder() bool }); ok {
-		if c.GeneratingPrimaryBuilder() {
-			stage = StagePrimary
-		}
+	if args.GeneratingPrimaryBuilder {
+		stage = StagePrimary
 	}
 
 	bootstrapConfig := &Config{
