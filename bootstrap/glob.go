@@ -122,7 +122,7 @@ func globSingletonFactory(ctx *blueprint.Context) func() blueprint.Singleton {
 
 func (s *globSingleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 	for _, g := range s.globLister() {
-		fileListFile := filepath.Join(BuildDir, ".glob", g.Name)
+		fileListFile := filepath.Join(ctx.Config().(BootstrapConfig).BuildDir(), ".glob", g.Name)
 
 		if s.writeRule {
 			// We need to write the file list here so that it has an older modified date

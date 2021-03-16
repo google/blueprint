@@ -15,6 +15,7 @@
 package bootstrap
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -23,25 +24,30 @@ import (
 	"github.com/google/blueprint"
 )
 
-func bootstrapVariable(name string, value func() string) blueprint.Variable {
+func bootstrapVariable(name string, value func(BootstrapConfig) string) blueprint.Variable {
 	return pctx.VariableFunc(name, func(config interface{}) (string, error) {
-		return value(), nil
+		c, ok := config.(BootstrapConfig)
+		if !ok {
+			panic(fmt.Sprintf("Bootstrap rules were passed a configuration that does not include theirs, config=%q",
+				config))
+		}
+		return value(c), nil
 	})
 }
 
 var (
 	// These variables are the only configuration needed by the bootstrap
 	// modules.
-	srcDir = bootstrapVariable("srcDir", func() string {
-		return SrcDir
+	srcDirVariable = bootstrapVariable("srcDir", func(c BootstrapConfig) string {
+		return c.SrcDir()
 	})
-	buildDir = bootstrapVariable("buildDir", func() string {
-		return BuildDir
+	buildDirVariable = bootstrapVariable("buildDir", func(c BootstrapConfig) string {
+		return c.BuildDir()
 	})
-	ninjaBuildDir = bootstrapVariable("ninjaBuildDir", func() string {
-		return NinjaBuildDir
+	ninjaBuildDirVariable = bootstrapVariable("ninjaBuildDir", func(c BootstrapConfig) string {
+		return c.NinjaBuildDir()
 	})
-	goRoot = bootstrapVariable("goRoot", func() string {
+	goRootVariable = bootstrapVariable("goRoot", func(c BootstrapConfig) string {
 		goroot := runtime.GOROOT()
 		// Prefer to omit absolute paths from the ninja file
 		if cwd, err := os.Getwd(); err == nil {
@@ -53,10 +59,10 @@ var (
 		}
 		return goroot
 	})
-	compileCmd = bootstrapVariable("compileCmd", func() string {
+	compileCmdVariable = bootstrapVariable("compileCmd", func(c BootstrapConfig) string {
 		return "$goRoot/pkg/tool/" + runtime.GOOS + "_" + runtime.GOARCH + "/compile"
 	})
-	linkCmd = bootstrapVariable("linkCmd", func() string {
+	linkCmdVariable = bootstrapVariable("linkCmd", func(c BootstrapConfig) string {
 		return "$goRoot/pkg/tool/" + runtime.GOOS + "_" + runtime.GOARCH + "/link"
 	})
 )
@@ -78,7 +84,7 @@ type ConfigRemoveAbandonedFilesUnder interface {
 	// - a slice of path prefixes that will be cleaned of files that are no
 	//   longer active targets, but are listed in the .ninja_log.
 	// - a slice of paths that are exempt from cleaning
-	RemoveAbandonedFilesUnder() (under, except []string)
+	RemoveAbandonedFilesUnder(buildDir string) (under, except []string)
 }
 
 type ConfigBlueprintToolLocation interface {

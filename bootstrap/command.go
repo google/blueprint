@@ -31,41 +31,58 @@ import (
 	"github.com/google/blueprint/deptools"
 )
 
-var (
-	outFile        string
-	globFile       string
-	depFile        string
-	docFile        string
-	cpuprofile     string
-	memprofile     string
-	traceFile      string
-	runGoTests     bool
-	useValidations bool
-	noGC           bool
-	emptyNinjaFile bool
-	absSrcDir      string
-
+type Args struct {
+	OutFile        string
+	GlobFile       string
+	DepFile        string
+	DocFile        string
+	Cpuprofile     string
+	Memprofile     string
+	TraceFile      string
+	RunGoTests     bool
+	UseValidations bool
+	NoGC           bool
+	EmptyNinjaFile bool
 	BuildDir       string
 	ModuleListFile string
 	NinjaBuildDir  string
-	SrcDir         string
+	TopFile        string
+}
+
+var (
+	cmdline   Args
+	absSrcDir string
 )
 
+// Returns the build dir as parsed from the command line. This is necessary
+// because even though these flags are defined here, soong_build accesses them.
+// The plan is to move these flags to soong_build.
+func CmdlineBuildDir() string {
+	return cmdline.BuildDir
+}
+
+// Returns the module list file as parsed from the command line. This is necessary
+// because even though these flags are defined here, soong_build accesses them.
+// The plan is to move these flags to soong_build.
+func CmdlineModuleListFile() string {
+	return cmdline.ModuleListFile
+}
+
 func init() {
-	flag.StringVar(&outFile, "o", "build.ninja", "the Ninja file to output")
-	flag.StringVar(&globFile, "globFile", "build-globs.ninja", "the Ninja file of globs to output")
-	flag.StringVar(&BuildDir, "b", ".", "the build output directory")
-	flag.StringVar(&NinjaBuildDir, "n", "", "the ninja builddir directory")
-	flag.StringVar(&depFile, "d", "", "the dependency file to output")
-	flag.StringVar(&docFile, "docs", "", "build documentation file to output")
-	flag.StringVar(&cpuprofile, "cpuprofile", "", "write cpu profile to file")
-	flag.StringVar(&traceFile, "trace", "", "write trace to file")
-	flag.StringVar(&memprofile, "memprofile", "", "write memory profile to file")
-	flag.BoolVar(&noGC, "nogc", false, "turn off GC for debugging")
-	flag.BoolVar(&runGoTests, "t", false, "build and run go tests during bootstrap")
-	flag.BoolVar(&useValidations, "use-validations", false, "use validations to depend on go tests")
-	flag.StringVar(&ModuleListFile, "l", "", "file that lists filepaths to parse")
-	flag.BoolVar(&emptyNinjaFile, "empty-ninja-file", false, "write out a 0-byte ninja file")
+	flag.StringVar(&cmdline.OutFile, "o", "build.ninja", "the Ninja file to output")
+	flag.StringVar(&cmdline.GlobFile, "globFile", "build-globs.ninja", "the Ninja file of globs to output")
+	flag.StringVar(&cmdline.BuildDir, "b", ".", "the build output directory")
+	flag.StringVar(&cmdline.NinjaBuildDir, "n", "", "the ninja builddir directory")
+	flag.StringVar(&cmdline.DepFile, "d", "", "the dependency file to output")
+	flag.StringVar(&cmdline.DocFile, "docs", "", "build documentation file to output")
+	flag.StringVar(&cmdline.Cpuprofile, "cpuprofile", "", "write cpu profile to file")
+	flag.StringVar(&cmdline.TraceFile, "trace", "", "write trace to file")
+	flag.StringVar(&cmdline.Memprofile, "memprofile", "", "write memory profile to file")
+	flag.BoolVar(&cmdline.NoGC, "nogc", false, "turn off GC for debugging")
+	flag.BoolVar(&cmdline.RunGoTests, "t", false, "build and run go tests during bootstrap")
+	flag.BoolVar(&cmdline.UseValidations, "use-validations", false, "use validations to depend on go tests")
+	flag.StringVar(&cmdline.ModuleListFile, "l", "", "file that lists filepaths to parse")
+	flag.BoolVar(&cmdline.EmptyNinjaFile, "empty-ninja-file", false, "write out a 0-byte ninja file")
 }
 
 func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...string) {
@@ -73,16 +90,25 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		flag.Parse()
 	}
 
+	if flag.NArg() != 1 {
+		fatalf("no Blueprints file specified")
+	}
+
+	cmdline.TopFile = flag.Arg(0)
+	RunBlueprint(cmdline, ctx, config, extraNinjaFileDeps...)
+}
+
+func RunBlueprint(args Args, ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...string) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	if noGC {
+	if args.NoGC {
 		debug.SetGCPercent(-1)
 	}
 
 	absSrcDir = ctx.SrcDir()
 
-	if cpuprofile != "" {
-		f, err := os.Create(absolutePath(cpuprofile))
+	if args.Cpuprofile != "" {
+		f, err := os.Create(absolutePath(args.Cpuprofile))
 		if err != nil {
 			fatalf("error opening cpuprofile: %s", err)
 		}
@@ -91,8 +117,8 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		defer pprof.StopCPUProfile()
 	}
 
-	if traceFile != "" {
-		f, err := os.Create(absolutePath(traceFile))
+	if args.TraceFile != "" {
+		f, err := os.Create(absolutePath(args.TraceFile))
 		if err != nil {
 			fatalf("error opening trace: %s", err)
 		}
@@ -101,25 +127,20 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		defer trace.Stop()
 	}
 
-	if flag.NArg() != 1 {
-		fatalf("no Blueprints file specified")
-	}
+	srcDir := filepath.Dir(args.TopFile)
 
-	SrcDir = filepath.Dir(flag.Arg(0))
-	if ModuleListFile != "" {
-		ctx.SetModuleListFile(ModuleListFile)
-		extraNinjaFileDeps = append(extraNinjaFileDeps, ModuleListFile)
+	if args.ModuleListFile != "" {
+		ctx.SetModuleListFile(args.ModuleListFile)
+		extraNinjaFileDeps = append(extraNinjaFileDeps, args.ModuleListFile)
 	} else {
 		fatalf("-l <moduleListFile> is required and must be nonempty")
 	}
-	filesToParse, err := ctx.ListModulePaths(SrcDir)
+	filesToParse, err := ctx.ListModulePaths(srcDir)
 	if err != nil {
 		fatalf("could not enumerate files: %v\n", err.Error())
 	}
 
-	if NinjaBuildDir == "" {
-		NinjaBuildDir = BuildDir
-	}
+	buildDir := args.BuildDir
 
 	stage := StageMain
 	if c, ok := config.(interface{ GeneratingPrimaryBuilder() bool }); ok {
@@ -131,11 +152,11 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	bootstrapConfig := &Config{
 		stage: stage,
 
-		topLevelBlueprintsFile: flag.Arg(0),
-		emptyNinjaFile:         emptyNinjaFile,
-		runGoTests:             runGoTests,
-		useValidations:         useValidations,
-		moduleListFile:         ModuleListFile,
+		topLevelBlueprintsFile: args.TopFile,
+		emptyNinjaFile:         args.EmptyNinjaFile,
+		runGoTests:             args.RunGoTests,
+		useValidations:         args.UseValidations,
+		moduleListFile:         args.ModuleListFile,
 	}
 
 	ctx.RegisterBottomUpMutator("bootstrap_plugin_deps", pluginDeps)
@@ -160,8 +181,8 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	}
 	deps = append(deps, extraDeps...)
 
-	if docFile != "" {
-		err := writeDocs(ctx, config, absolutePath(docFile))
+	if args.DocFile != "" {
+		err := writeDocs(ctx, config, absolutePath(args.DocFile))
 		if err != nil {
 			fatalErrors([]error{err})
 		}
@@ -191,14 +212,14 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	var f *os.File
 	var buf *bufio.Writer
 
-	if emptyNinjaFile {
-		if err := ioutil.WriteFile(absolutePath(outFile), []byte(nil), outFilePermissions); err != nil {
+	if args.EmptyNinjaFile {
+		if err := ioutil.WriteFile(absolutePath(args.OutFile), []byte(nil), outFilePermissions); err != nil {
 			fatalf("error writing empty Ninja file: %s", err)
 		}
 	}
 
-	if stage != StageMain || !emptyNinjaFile {
-		f, err = os.OpenFile(absolutePath(outFile), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, outFilePermissions)
+	if stage != StageMain || !args.EmptyNinjaFile {
+		f, err = os.OpenFile(absolutePath(args.OutFile), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, outFilePermissions)
 		if err != nil {
 			fatalf("error opening Ninja file: %s", err)
 		}
@@ -208,20 +229,20 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 		out = ioutil.Discard.(io.StringWriter)
 	}
 
-	if globFile != "" {
+	if args.GlobFile != "" {
 		buffer, errs := generateGlobNinjaFile(config, ctx.Globs)
 		if len(errs) > 0 {
 			fatalErrors(errs)
 		}
 
-		err = ioutil.WriteFile(absolutePath(globFile), buffer, outFilePermissions)
+		err = ioutil.WriteFile(absolutePath(args.GlobFile), buffer, outFilePermissions)
 		if err != nil {
-			fatalf("error writing %s: %s", globFile, err)
+			fatalf("error writing %s: %s", args.GlobFile, err)
 		}
 	}
 
-	if depFile != "" {
-		err := deptools.WriteDepFile(absolutePath(depFile), outFile, deps)
+	if args.DepFile != "" {
+		err := deptools.WriteDepFile(absolutePath(args.DepFile), args.OutFile, deps)
 		if err != nil {
 			fatalf("error writing depfile: %s", err)
 		}
@@ -247,15 +268,15 @@ func Main(ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...stri
 	}
 
 	if c, ok := config.(ConfigRemoveAbandonedFilesUnder); ok {
-		under, except := c.RemoveAbandonedFilesUnder()
-		err := removeAbandonedFilesUnder(ctx, SrcDir, BuildDir, under, except)
+		under, except := c.RemoveAbandonedFilesUnder(buildDir)
+		err := removeAbandonedFilesUnder(ctx, srcDir, buildDir, under, except)
 		if err != nil {
 			fatalf("error removing abandoned files: %s", err)
 		}
 	}
 
-	if memprofile != "" {
-		f, err := os.Create(absolutePath(memprofile))
+	if args.Memprofile != "" {
+		f, err := os.Create(absolutePath(args.Memprofile))
 		if err != nil {
 			fatalf("error opening memprofile: %s", err)
 		}

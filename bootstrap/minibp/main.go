@@ -30,29 +30,22 @@ func init() {
 }
 
 type Config struct {
-	buildDir      string
-	ninjaBuildDir string
+	generatingPrimaryBuilder bool
 }
 
 func (c Config) GeneratingPrimaryBuilder() bool {
-	return true
+	return c.generatingPrimaryBuilder
 }
 
 func (c Config) SrcDir() string {
-	return "."
+	return bootstrap.CmdlineBuildDir()
 }
 
-func (c Config) BuildDir() string {
-	return c.buildDir
-}
-
-func (c Config) NinjaBuildDir() string {
-	return c.ninjaBuildDir
-}
-
-func (c Config) RemoveAbandonedFilesUnder() (under, exempt []string) {
-	under = []string{filepath.Join(bootstrap.BuildDir, ".bootstrap")}
-	exempt = []string{filepath.Join(bootstrap.BuildDir, ".bootstrap", "build.ninja")}
+func (c Config) RemoveAbandonedFilesUnder(buildDir string) (under, exempt []string) {
+	if c.generatingPrimaryBuilder {
+		under = []string{filepath.Join(buildDir, ".bootstrap")}
+		exempt = []string{filepath.Join(buildDir, ".bootstrap", "build.ninja")}
+	}
 	return
 }
 
@@ -65,8 +58,7 @@ func main() {
 	}
 
 	config := Config{
-		buildDir:      bootstrap.BuildDir,
-		ninjaBuildDir: bootstrap.NinjaBuildDir,
+		generatingPrimaryBuilder: !runAsPrimaryBuilder,
 	}
 
 	bootstrap.Main(ctx, config)
