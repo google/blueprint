@@ -65,6 +65,13 @@ var (
 	linkCmdVariable = bootstrapVariable("linkCmd", func(c BootstrapConfig) string {
 		return "$goRoot/pkg/tool/" + runtime.GOOS + "_" + runtime.GOARCH + "/link"
 	})
+	debugFlagsVariable = bootstrapVariable("debugFlags", func(c BootstrapConfig) string {
+		if c.DebugCompilation() {
+			return "-N -l"
+		} else {
+			return ""
+		}
+	})
 )
 
 type BootstrapConfig interface {
@@ -77,6 +84,9 @@ type BootstrapConfig interface {
 
 	// The output directory for the build.
 	NinjaBuildDir() string
+
+	// Whether to compile Go code in such a way that it can be debugged
+	DebugCompilation() bool
 }
 
 type ConfigRemoveAbandonedFilesUnder interface {
