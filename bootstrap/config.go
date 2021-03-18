@@ -67,6 +67,7 @@ var (
 	})
 	debugFlagsVariable = bootstrapVariable("debugFlags", func(c BootstrapConfig) string {
 		if c.DebugCompilation() {
+			// -N: disable optimizations, -l: disable inlining
 			return "-N -l"
 		} else {
 			return ""
