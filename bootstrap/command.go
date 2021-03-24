@@ -55,6 +55,10 @@ var (
 	absSrcDir string
 )
 
+func CmdlineOutFile() string {
+	return cmdline.OutFile
+}
+
 // Returns the build dir as parsed from the command line. This is necessary
 // because even though these flags are defined here, soong_build accesses them.
 // The plan is to move these flags to soong_build.
