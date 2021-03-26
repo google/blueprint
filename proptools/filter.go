@@ -173,7 +173,13 @@ func filterPropertyStruct(prop reflect.Type, prefix string, maxNameSize int,
 		return nil, true
 	}
 
-	if !filtered {
+	// If the predicate selected all fields in the structure then it is generally better to reuse the
+	// original type as it avoids the footprint of creating another type. Also, if the original type
+	// is a named type then it will reduce the size of any structs the caller may create that include
+	// fields of this type. However, the original type should only be reused if it does not exceed
+	// maxNameSize. That is, of course, more likely for an anonymous type than a named one but this
+	// treats them the same.
+	if !filtered && (maxNameSize < 0 || len(prop.String()) < maxNameSize) {
 		if ptr {
 			return []reflect.Type{reflect.PtrTo(prop)}, false
 		}

@@ -240,6 +240,12 @@ func TestFilterPropertyStruct(t *testing.T) {
 }
 
 func TestFilterPropertyStructSharded(t *testing.T) {
+	type KeepAllWithAReallyLongNameThatExceedsTheMaxNameSize struct {
+		A *string `keep:"true"`
+		B *string `keep:"true"`
+		C *string `keep:"true"`
+	}
+
 	tests := []struct {
 		name        string
 		maxNameSize int
@@ -262,6 +268,44 @@ func TestFilterPropertyStructSharded(t *testing.T) {
 				}{},
 				&struct {
 					B *string
+				}{},
+			},
+			filtered: true,
+		},
+		{
+			name:        "anonymous where all match but still needs sharding",
+			maxNameSize: 20,
+			in: &struct {
+				A *string `keep:"true"`
+				B *string `keep:"true"`
+				C *string `keep:"true"`
+			}{},
+			out: []interface{}{
+				&struct {
+					A *string
+				}{},
+				&struct {
+					B *string
+				}{},
+				&struct {
+					C *string
+				}{},
+			},
+			filtered: true,
+		},
+		{
+			name:        "named where all match but still needs sharding",
+			maxNameSize: 20,
+			in:          &KeepAllWithAReallyLongNameThatExceedsTheMaxNameSize{},
+			out: []interface{}{
+				&struct {
+					A *string
+				}{},
+				&struct {
+					B *string
+				}{},
+				&struct {
+					C *string
 				}{},
 			},
 			filtered: true,
