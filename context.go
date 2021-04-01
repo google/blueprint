@@ -17,6 +17,7 @@ package blueprint
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -2254,6 +2255,64 @@ func (c *Context) updateDependencies() (errs []error) {
 	return
 }
 
+type jsonVariationMap map[string]string
+
+type jsonModuleName struct {
+	Name                 string
+	Variations           jsonVariationMap
+	DependencyVariations jsonVariationMap
+}
+
+type jsonDep struct {
+	jsonModuleName
+	Tag string
+}
+
+type jsonModule struct {
+	jsonModuleName
+	Deps      []jsonDep
+	Type      string
+	Blueprint string
+}
+
+func toJsonVariationMap(vm variationMap) jsonVariationMap {
+	return jsonVariationMap(vm)
+}
+
+func jsonModuleNameFromModuleInfo(m *moduleInfo) *jsonModuleName {
+	return &jsonModuleName{
+		Name:                 m.Name(),
+		Variations:           toJsonVariationMap(m.variant.variations),
+		DependencyVariations: toJsonVariationMap(m.variant.dependencyVariations),
+	}
+}
+
+func jsonModuleFromModuleInfo(m *moduleInfo) *jsonModule {
+	return &jsonModule{
+		jsonModuleName: *jsonModuleNameFromModuleInfo(m),
+		Deps:           make([]jsonDep, 0),
+		Type:           m.typeName,
+		Blueprint:      m.relBlueprintsFile,
+	}
+}
+
+func (c *Context) PrintJSONGraph(w io.Writer) {
+	modules := make([]*jsonModule, 0)
+	for _, m := range c.modulesSorted {
+		jm := jsonModuleFromModuleInfo(m)
+		for _, d := range m.directDeps {
+			jm.Deps = append(jm.Deps, jsonDep{
+				jsonModuleName: *jsonModuleNameFromModuleInfo(d.module),
+				Tag:            fmt.Sprintf("%T %+v", d.tag, d.tag),
+			})
+		}
+
+		modules = append(modules, jm)
+	}
+
+	json.NewEncoder(w).Encode(modules)
+}
+
 // PrepareBuildActions generates an internal representation of all the build
 // actions that need to be performed.  This process involves invoking the
 // GenerateBuildActions method on each of the Module objects created during the
@@ -2272,6 +2331,7 @@ func (c *Context) updateDependencies() (errs []error) {
 // by the modules and singletons via the ModuleContext.AddNinjaFileDeps(),
 // SingletonContext.AddNinjaFileDeps(), and PackageContext.AddNinjaFileDeps()
 // methods.
+
 func (c *Context) PrepareBuildActions(config interface{}) (deps []string, errs []error) {
 	pprof.Do(c.Context, pprof.Labels("blueprint", "PrepareBuildActions"), func(ctx context.Context) {
 		c.buildActionsReady = false
