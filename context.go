@@ -114,7 +114,7 @@ type Context struct {
 	// cache deps modified to determine whether cachedSortedModuleGroups needs to be recalculated
 	cachedDepsModified bool
 
-	globs    map[string]GlobPath
+	globs    map[globKey]pathtools.GlobResult
 	globLock sync.Mutex
 
 	srcDir         string
@@ -385,7 +385,7 @@ func newContext() *Context {
 		moduleFactories:    make(map[string]ModuleFactory),
 		nameInterface:      NewSimpleNameInterface(),
 		moduleInfo:         make(map[Module]*moduleInfo),
-		globs:              make(map[string]GlobPath),
+		globs:              make(map[globKey]pathtools.GlobResult),
 		fs:                 pathtools.OsFs,
 		finishedMutators:   make(map[*mutatorInfo]bool),
 		ninjaBuildDir:      nil,

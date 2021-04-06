@@ -15,21 +15,20 @@
 package pathtools
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/google/blueprint/deptools"
 )
 
 // BPGlobArgumentVersion is used to abort argument parsing early when the bpglob argument format
 // has changed but soong_build hasn't had a chance to rerun yet to update build-globs.ninja.
 // Increment it manually when changing the bpglob argument format.  It is located here because
 // pathtools is the only package that is shared between bpglob and bootstrap.
-const BPGlobArgumentVersion = 1
+const BPGlobArgumentVersion = 2
 
 var GlobMultipleRecursiveErr = errors.New("pattern contains multiple '**'")
 var GlobLastRecursiveErr = errors.New("pattern has '**' as last path element")
@@ -52,6 +51,31 @@ type GlobResult struct {
 // FileList returns the list of files matched by a glob for writing to an output file.
 func (result GlobResult) FileList() []byte {
 	return []byte(strings.Join(result.Matches, "\n") + "\n")
+}
+
+// MultipleGlobResults is a list of GlobResult structs.
+type MultipleGlobResults []GlobResult
+
+// FileList returns the list of files matched by a list of multiple globs for writing to an output file.
+func (results MultipleGlobResults) FileList() []byte {
+	multipleMatches := make([][]string, len(results))
+	for i, result := range results {
+		multipleMatches[i] = result.Matches
+	}
+	buf, err := json.Marshal(multipleMatches)
+	if err != nil {
+		panic(fmt.Errorf("failed to marshal glob results to json: %w", err))
+	}
+	return buf
+}
+
+// Deps returns the deps from all of the GlobResults.
+func (results MultipleGlobResults) Deps() []string {
+	var deps []string
+	for _, result := range results {
+		deps = append(deps, result.Deps...)
+	}
+	return deps
 }
 
 // Glob returns the list of files and directories that match the given pattern
@@ -342,32 +366,6 @@ func HasGlob(in []string) bool {
 	}
 
 	return false
-}
-
-// GlobWithDepFile finds all files and directories that match glob.  Directories
-// will have a trailing '/'.  It compares the list of matches against the
-// contents of fileListFile, and rewrites fileListFile if it has changed.  It
-// also writes all of the the directories it traversed as dependencies on
-// fileListFile to depFile.
-//
-// The format of glob is either path/*.ext for a single directory glob, or
-// path/**/*.ext for a recursive glob.
-//
-// Returns a list of file paths, and an error.
-//
-// In general ModuleContext.GlobWithDeps or SingletonContext.GlobWithDeps
-// should be used instead, as they will automatically set up dependencies
-// to rerun the primary builder when the list of matching files changes.
-func GlobWithDepFile(glob, fileListFile, depFile string, excludes []string) ([]string, error) {
-	result, err := Glob(glob, excludes, FollowSymlinks)
-	if err != nil {
-		return nil, err
-	}
-
-	WriteFileIfChanged(fileListFile, result.FileList(), 0666)
-	deptools.WriteDepFile(depFile, fileListFile, result.Deps)
-
-	return result.Matches, nil
 }
 
 // WriteFileIfChanged wraps ioutil.WriteFile, but only writes the file if
