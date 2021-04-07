@@ -723,7 +723,7 @@ func TestGlobDontFollowDanglingSymlinks(t *testing.T) {
 
 func testGlob(t *testing.T, fs FileSystem, testCase globTestCase, follow ShouldFollowSymlinks) {
 	t.Helper()
-	matches, deps, err := fs.Glob(testCase.pattern, testCase.excludes, follow)
+	result, err := fs.Glob(testCase.pattern, testCase.excludes, follow)
 	if err != testCase.err {
 		if err == nil {
 			t.Fatalf("missing error: %s", testCase.err)
@@ -733,22 +733,22 @@ func testGlob(t *testing.T, fs FileSystem, testCase globTestCase, follow ShouldF
 		return
 	}
 
-	if !reflect.DeepEqual(matches, testCase.matches) {
+	if !reflect.DeepEqual(result.Matches, testCase.matches) {
 		t.Errorf("incorrect matches list:")
 		t.Errorf(" pattern: %q", testCase.pattern)
 		if testCase.excludes != nil {
 			t.Errorf("excludes: %q", testCase.excludes)
 		}
-		t.Errorf("     got: %#v", matches)
+		t.Errorf("     got: %#v", result.Matches)
 		t.Errorf("expected: %#v", testCase.matches)
 	}
-	if !reflect.DeepEqual(deps, testCase.deps) {
+	if !reflect.DeepEqual(result.Deps, testCase.deps) {
 		t.Errorf("incorrect deps list:")
 		t.Errorf(" pattern: %q", testCase.pattern)
 		if testCase.excludes != nil {
 			t.Errorf("excludes: %q", testCase.excludes)
 		}
-		t.Errorf("     got: %#v", deps)
+		t.Errorf("     got: %#v", result.Deps)
 		t.Errorf("expected: %#v", testCase.deps)
 	}
 }
@@ -904,14 +904,14 @@ func TestMatch(t *testing.T) {
 
 			mock := MockFs(mockFiles)
 
-			matches, _, err := mock.Glob(test.pattern, nil, DontFollowSymlinks)
-			t.Log(test.name, test.pattern, matches)
+			result, err := mock.Glob(test.pattern, nil, DontFollowSymlinks)
+			t.Log(test.name, test.pattern, result.Matches)
 			if err != nil {
 				t.Fatal(err)
 			}
 
 			match := false
-			for _, x := range matches {
+			for _, x := range result.Matches {
 				if x == test.name {
 					match = true
 				}

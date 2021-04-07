@@ -29,6 +29,25 @@ var GlobMultipleRecursiveErr = errors.New("pattern contains multiple '**'")
 var GlobLastRecursiveErr = errors.New("pattern has '**' as last path element")
 var GlobInvalidRecursiveErr = errors.New("pattern contains other characters between '**' and path separator")
 
+// GlobResult is a container holding the results of a call to Glob.
+type GlobResult struct {
+	// Pattern is the pattern that was passed to Glob.
+	Pattern string
+	// Excludes is the list of excludes that were passed to Glob.
+	Excludes []string
+
+	// Matches is the list of files or directories that matched the pattern but not the excludes.
+	Matches []string
+
+	// Deps is the list of files or directories that must be depended on to regenerate the glob.
+	Deps []string
+}
+
+// FileList returns the list of files matched by a glob for writing to an output file.
+func (result GlobResult) FileList() []byte {
+	return []byte(strings.Join(result.Matches, "\n") + "\n")
+}
+
 // Glob returns the list of files and directories that match the given pattern
 // but do not match the given exclude patterns, along with the list of
 // directories and other dependencies that were searched to construct the file
@@ -40,26 +59,26 @@ var GlobInvalidRecursiveErr = errors.New("pattern contains other characters betw
 // In general ModuleContext.GlobWithDeps or SingletonContext.GlobWithDeps
 // should be used instead, as they will automatically set up dependencies
 // to rerun the primary builder when the list of matching files changes.
-func Glob(pattern string, excludes []string, follow ShouldFollowSymlinks) (matches, deps []string, err error) {
+func Glob(pattern string, excludes []string, follow ShouldFollowSymlinks) (GlobResult, error) {
 	return startGlob(OsFs, pattern, excludes, follow)
 }
 
 func startGlob(fs FileSystem, pattern string, excludes []string,
-	follow ShouldFollowSymlinks) (matches, deps []string, err error) {
+	follow ShouldFollowSymlinks) (GlobResult, error) {
 
 	if filepath.Base(pattern) == "**" {
-		return nil, nil, GlobLastRecursiveErr
-	} else {
-		matches, deps, err = glob(fs, pattern, false, follow)
+		return GlobResult{}, GlobLastRecursiveErr
 	}
 
+	matches, deps, err := glob(fs, pattern, false, follow)
+
 	if err != nil {
-		return nil, nil, err
+		return GlobResult{}, err
 	}
 
 	matches, err = filterExcludes(matches, excludes)
 	if err != nil {
-		return nil, nil, err
+		return GlobResult{}, err
 	}
 
 	// If the pattern has wildcards, we added dependencies on the
@@ -83,7 +102,7 @@ func startGlob(fs FileSystem, pattern string, excludes []string,
 			info, err = fs.Stat(match)
 		}
 		if err != nil {
-			return nil, nil, err
+			return GlobResult{}, err
 		}
 
 		if info.IsDir() {
@@ -91,7 +110,12 @@ func startGlob(fs FileSystem, pattern string, excludes []string,
 		}
 	}
 
-	return matches, deps, nil
+	return GlobResult{
+		Pattern:  pattern,
+		Excludes: excludes,
+		Matches:  matches,
+		Deps:     deps,
+	}, nil
 }
 
 // glob is a recursive helper function to handle globbing each level of the pattern individually,
@@ -328,18 +352,16 @@ func HasGlob(in []string) bool {
 // In general ModuleContext.GlobWithDeps or SingletonContext.GlobWithDeps
 // should be used instead, as they will automatically set up dependencies
 // to rerun the primary builder when the list of matching files changes.
-func GlobWithDepFile(glob, fileListFile, depFile string, excludes []string) (files []string, err error) {
-	files, deps, err := Glob(glob, excludes, FollowSymlinks)
+func GlobWithDepFile(glob, fileListFile, depFile string, excludes []string) ([]string, error) {
+	result, err := Glob(glob, excludes, FollowSymlinks)
 	if err != nil {
 		return nil, err
 	}
 
-	fileList := strings.Join(files, "\n") + "\n"
+	WriteFileIfChanged(fileListFile, result.FileList(), 0666)
+	deptools.WriteDepFile(depFile, fileListFile, result.Deps)
 
-	WriteFileIfChanged(fileListFile, []byte(fileList), 0666)
-	deptools.WriteDepFile(depFile, fileListFile, deps)
-
-	return
+	return result.Matches, nil
 }
 
 // WriteFileIfChanged wraps ioutil.WriteFile, but only writes the file if
