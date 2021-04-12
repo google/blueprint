@@ -123,13 +123,20 @@ const (
 	StageMain
 )
 
+type PrimaryBuilderInvocation struct {
+	Inputs  []string
+	Outputs []string
+	Args    []string
+}
+
 type Config struct {
 	stage Stage
 
 	topLevelBlueprintsFile string
+	globFile               string
 
-	emptyNinjaFile bool
 	runGoTests     bool
 	useValidations bool
-	moduleListFile string
+
+	primaryBuilderInvocations []PrimaryBuilderInvocation
 }

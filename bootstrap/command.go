@@ -38,6 +38,8 @@ type Args struct {
 	DocFile                  string
 	Cpuprofile               string
 	Memprofile               string
+	DelveListen              string
+	DelvePath                string
 	TraceFile                string
 	RunGoTests               bool
 	UseValidations           bool
@@ -104,6 +106,46 @@ func Main(ctx *blueprint.Context, config interface{}, generatingPrimaryBuilder b
 	RunBlueprint(cmdline, ctx, config, extraNinjaFileDeps...)
 }
 
+func primaryBuilderExtraFlags(args Args, globFile, mainNinjaFile string) []string {
+	result := make([]string, 0)
+
+	if args.RunGoTests {
+		result = append(result, "-t")
+	}
+
+	result = append(result, "-l", args.ModuleListFile)
+	result = append(result, "-globFile", globFile)
+	result = append(result, "-o", mainNinjaFile)
+
+	if args.EmptyNinjaFile {
+		result = append(result, "--empty-ninja-file")
+	}
+
+	if args.DelveListen != "" {
+		result = append(result, "--delve_listen", args.DelveListen)
+	}
+
+	if args.DelvePath != "" {
+		result = append(result, "--delve_path", args.DelvePath)
+	}
+
+	result = append(result, args.TopFile)
+	return result
+}
+
+func writeEmptyGlobFile(path string) {
+	err := os.MkdirAll(filepath.Dir(path), 0777)
+	if err != nil {
+		fatalf("Failed to create parent directories of empty ninja glob file '%s': %s", path, err)
+	}
+
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		err = ioutil.WriteFile(path, nil, 0666)
+		if err != nil {
+			fatalf("Failed to create empty ninja glob file '%s': %s", path, err)
+		}
+	}
+}
 func RunBlueprint(args Args, ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...string) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
@@ -153,14 +195,25 @@ func RunBlueprint(args Args, ctx *blueprint.Context, config interface{}, extraNi
 		stage = StagePrimary
 	}
 
+	primaryBuilderNinjaGlobFile := absolutePath(filepath.Join(args.BuildDir, bootstrapSubDir, "build-globs.ninja"))
+	mainNinjaFile := filepath.Join("$buildDir", "build.ninja")
+
+	writeEmptyGlobFile(primaryBuilderNinjaGlobFile)
+
 	bootstrapConfig := &Config{
 		stage: stage,
 
 		topLevelBlueprintsFile: args.TopFile,
-		emptyNinjaFile:         args.EmptyNinjaFile,
+		globFile:               primaryBuilderNinjaGlobFile,
 		runGoTests:             args.RunGoTests,
 		useValidations:         args.UseValidations,
-		moduleListFile:         args.ModuleListFile,
+		primaryBuilderInvocations: []PrimaryBuilderInvocation{
+			{
+				Inputs:  []string{args.TopFile},
+				Outputs: []string{mainNinjaFile},
+				Args:    primaryBuilderExtraFlags(args, primaryBuilderNinjaGlobFile, mainNinjaFile),
+			},
+		},
 	}
 
 	ctx.RegisterBottomUpMutator("bootstrap_plugin_deps", pluginDeps)
@@ -171,7 +224,7 @@ func RunBlueprint(args Args, ctx *blueprint.Context, config interface{}, extraNi
 
 	ctx.RegisterSingletonType("glob", globSingletonFactory(ctx))
 
-	deps, errs := ctx.ParseFileList(filepath.Dir(bootstrapConfig.topLevelBlueprintsFile), filesToParse, config)
+	deps, errs := ctx.ParseFileList(filepath.Dir(args.TopFile), filesToParse, config)
 	if len(errs) > 0 {
 		fatalErrors(errs)
 	}
