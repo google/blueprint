@@ -45,7 +45,8 @@ var (
 	// and writes it to $out if it has changed, and writes the directories to $out.d
 	GlobRule = pctx.StaticRule("GlobRule",
 		blueprint.RuleParams{
-			Command:     fmt.Sprintf(`%s -o $out $excludes "$glob"`, globCmd),
+			Command: fmt.Sprintf(`%s -o $out -v %d $excludes "$glob"`,
+				globCmd, pathtools.BPGlobArgumentVersion),
 			CommandDeps: []string{globCmd},
 			Description: "glob $glob",
 

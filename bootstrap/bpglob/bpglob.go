@@ -19,23 +19,75 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/google/blueprint/pathtools"
 )
 
 var (
-	out = flag.String("o", "", "file to write list of files that match glob")
+	// flagSet is a flag.FlagSet with flag.ContinueOnError so that we can handle the versionMismatchError
+	// error from versionArg.
+	flagSet = flag.NewFlagSet("bpglob", flag.ContinueOnError)
 
-	excludes multiArg
+	out = flagSet.String("o", "", "file to write list of files that match glob")
+
+	excludes     multiArg
+	versionMatch versionArg
 )
 
 func init() {
-	flag.Var(&excludes, "e", "pattern to exclude from results")
+	flagSet.Var(&versionMatch, "v", "version number the command line was generated for")
+	flagSet.Var(&excludes, "e", "pattern to exclude from results")
+}
+
+// bpglob is executed through the rules in build-globs.ninja to determine whether soong_build
+// needs to rerun.  That means when the arguments accepted by bpglob change it will be called
+// with the old arguments, then soong_build will rerun and update build-globs.ninja with the new
+// arguments.
+//
+// To avoid having to maintain backwards compatibility with old arguments across the transition,
+// a version argument is used to detect the transition in order to stop parsing arguments, touch the
+// output file and exit immediately.  Aborting parsing arguments is necessary to handle parsing
+// errors that would be fatal, for example the removal of a flag.  The version number in
+// pathtools.BPGlobArgumentVersion should be manually incremented when the bpglob argument format
+// changes.
+//
+// If the version argument is not passed then a version mismatch is assumed.
+
+// versionArg checks the argument against pathtools.BPGlobArgumentVersion, returning a
+// versionMismatchError error if it does not match.
+type versionArg bool
+
+var versionMismatchError = errors.New("version mismatch")
+
+func (v *versionArg) String() string { return "" }
+
+func (v *versionArg) Set(s string) error {
+	vers, err := strconv.Atoi(s)
+	if err != nil {
+		return fmt.Errorf("error parsing version argument: %w", err)
+	}
+
+	// Force the -o argument to come before the -v argument so that the output file can be
+	// updated on error.
+	if *out == "" {
+		return fmt.Errorf("-o argument must be passed before -v")
+	}
+
+	if vers != pathtools.BPGlobArgumentVersion {
+		return versionMismatchError
+	}
+
+	*v = true
+
+	return nil
 }
 
 type multiArg []string
@@ -54,34 +106,64 @@ func (m *multiArg) Get() interface{} {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: bpglob -o out glob")
-	flag.PrintDefaults()
+	fmt.Fprintln(os.Stderr, "usage: bpglob -o out -v version [-e excludes ...] glob")
+	flagSet.PrintDefaults()
 	os.Exit(2)
 }
 
 func main() {
-	flag.Parse()
+	// Save the command line flag error output to a buffer, the flag package unconditionally
+	// writes an error message to the output on error, and we want to hide the error for the
+	// version mismatch case.
+	flagErrorBuffer := &bytes.Buffer{}
+	flagSet.SetOutput(flagErrorBuffer)
+
+	err := flagSet.Parse(os.Args[1:])
+
+	if !versionMatch {
+		// A version mismatch error occurs when the arguments written into build-globs.ninja
+		// don't match the format expected by the bpglob binary.  This happens during the
+		// first incremental build after bpglob is changed.  Handle this case by aborting
+		// argument parsing and updating the output file with something that will always cause
+		// the primary builder to rerun.
+		// This can happen when there is no -v argument or if the -v argument doesn't match
+		// pathtools.BPGlobArgumentVersion.
+		writeErrorOutput(*out, versionMismatchError)
+		os.Exit(0)
+	}
+
+	if err != nil {
+		os.Stderr.Write(flagErrorBuffer.Bytes())
+		fmt.Fprintln(os.Stderr, "error:", err.Error())
+		usage()
+	}
 
 	if *out == "" {
 		fmt.Fprintln(os.Stderr, "error: -o is required")
 		usage()
 	}
 
-	if flag.NArg() != 1 {
+	if flagSet.NArg() != 1 {
 		usage()
 	}
 
-	_, err := pathtools.GlobWithDepFile(flag.Arg(0), *out, *out+".d", excludes)
+	_, err = pathtools.GlobWithDepFile(flagSet.Arg(0), *out, *out+".d", excludes)
 	if err != nil {
 		// Globs here were already run in the primary builder without error.  The only errors here should be if the glob
 		// pattern was made invalid by a change in the pathtools glob implementation, in which case the primary builder
 		// needs to be rerun anyways.  Update the output file with something that will always cause the primary builder
 		// to rerun.
-		s := fmt.Sprintf("%s: error: %s\n", time.Now().Format(time.StampNano), err.Error())
-		err := ioutil.WriteFile(*out, []byte(s), 0666)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %s\n", err.Error())
-			os.Exit(1)
-		}
+		writeErrorOutput(*out, err)
+	}
+}
+
+// writeErrorOutput writes an error to the output file with a timestamp to ensure that it is
+// considered dirty by ninja.
+func writeErrorOutput(path string, globErr error) {
+	s := fmt.Sprintf("%s: error: %s\n", time.Now().Format(time.StampNano), globErr.Error())
+	err := ioutil.WriteFile(path, []byte(s), 0666)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %s\n", err.Error())
+		os.Exit(1)
 	}
 }
