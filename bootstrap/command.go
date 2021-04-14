@@ -50,6 +50,8 @@ type Args struct {
 	NinjaBuildDir            string
 	TopFile                  string
 	GeneratingPrimaryBuilder bool
+
+	PrimaryBuilderInvocations []PrimaryBuilderInvocation
 }
 
 var (
@@ -106,7 +108,7 @@ func Main(ctx *blueprint.Context, config interface{}, generatingPrimaryBuilder b
 	RunBlueprint(cmdline, ctx, config, extraNinjaFileDeps...)
 }
 
-func primaryBuilderExtraFlags(args Args, globFile, mainNinjaFile string) []string {
+func PrimaryBuilderExtraFlags(args Args, globFile, mainNinjaFile string) []string {
 	result := make([]string, 0)
 
 	if args.RunGoTests {
@@ -129,7 +131,6 @@ func primaryBuilderExtraFlags(args Args, globFile, mainNinjaFile string) []strin
 		result = append(result, "--delve_path", args.DelvePath)
 	}
 
-	result = append(result, args.TopFile)
 	return result
 }
 
@@ -200,20 +201,29 @@ func RunBlueprint(args Args, ctx *blueprint.Context, config interface{}, extraNi
 
 	writeEmptyGlobFile(primaryBuilderNinjaGlobFile)
 
+	var invocations []PrimaryBuilderInvocation
+
+	if args.PrimaryBuilderInvocations != nil {
+		invocations = args.PrimaryBuilderInvocations
+	} else {
+		primaryBuilderArgs := PrimaryBuilderExtraFlags(args, primaryBuilderNinjaGlobFile, mainNinjaFile)
+		primaryBuilderArgs = append(primaryBuilderArgs, args.TopFile)
+
+		invocations = []PrimaryBuilderInvocation{{
+			Inputs:  []string{args.TopFile},
+			Outputs: []string{mainNinjaFile},
+			Args:    primaryBuilderArgs,
+		}}
+	}
+
 	bootstrapConfig := &Config{
 		stage: stage,
 
-		topLevelBlueprintsFile: args.TopFile,
-		globFile:               primaryBuilderNinjaGlobFile,
-		runGoTests:             args.RunGoTests,
-		useValidations:         args.UseValidations,
-		primaryBuilderInvocations: []PrimaryBuilderInvocation{
-			{
-				Inputs:  []string{args.TopFile},
-				Outputs: []string{mainNinjaFile},
-				Args:    primaryBuilderExtraFlags(args, primaryBuilderNinjaGlobFile, mainNinjaFile),
-			},
-		},
+		topLevelBlueprintsFile:    args.TopFile,
+		globFile:                  primaryBuilderNinjaGlobFile,
+		runGoTests:                args.RunGoTests,
+		useValidations:            args.UseValidations,
+		primaryBuilderInvocations: invocations,
 	}
 
 	ctx.RegisterBottomUpMutator("bootstrap_plugin_deps", pluginDeps)

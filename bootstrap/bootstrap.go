@@ -764,8 +764,8 @@ func (s *singleton) GenerateBuildActions(ctx blueprint.SingletonContext) {
 		docsFile := filepath.Join(docsDir, primaryBuilderName+".html")
 		bigbpDocs := ctx.Rule(pctx, "bigbpDocs",
 			blueprint.RuleParams{
-				Command: fmt.Sprintf("%s %s -b $buildDir --docs $out %s", primaryBuilderFile,
-					primaryBuilderExtraFlags, s.config.topLevelBlueprintsFile),
+				Command: fmt.Sprintf("%s -b $buildDir --docs $out %s", primaryBuilderFile,
+					s.config.topLevelBlueprintsFile),
 				CommandDeps: []string{primaryBuilderFile},
 				Description: fmt.Sprintf("%s docs $out", primaryBuilderName),
 			})
