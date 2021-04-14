@@ -32,7 +32,7 @@ type Config struct {
 }
 
 func (c Config) SrcDir() string {
-	return bootstrap.CmdlineBuildDir()
+	return bootstrap.CmdlineArgs.BuildDir
 }
 
 func (c Config) RemoveAbandonedFilesUnder(buildDir string) (under, exempt []string) {

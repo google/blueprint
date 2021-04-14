@@ -17,6 +17,7 @@ package blueprint
 import (
 	"crypto/md5"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -26,6 +27,10 @@ import (
 type GlobPath struct {
 	pathtools.GlobResult
 	Name string
+}
+
+func (g *GlobPath) FileListFile(buildDir string) string {
+	return filepath.Join(buildDir, ".glob", g.Name)
 }
 
 func verifyGlob(fileName, pattern string, excludes []string, g GlobPath) {
