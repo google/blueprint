@@ -76,7 +76,7 @@ func init() {
 	flag.BoolVar(&CmdlineArgs.EmptyNinjaFile, "empty-ninja-file", false, "write out a 0-byte ninja file")
 }
 
-func Main(ctx *blueprint.Context, config interface{}, generatingPrimaryBuilder bool, extraNinjaFileDeps ...string) {
+func Main(ctx *blueprint.Context, config interface{}, generatingPrimaryBuilder bool) {
 	if !flag.Parsed() {
 		flag.Parse()
 	}
@@ -87,8 +87,8 @@ func Main(ctx *blueprint.Context, config interface{}, generatingPrimaryBuilder b
 
 	CmdlineArgs.TopFile = flag.Arg(0)
 	CmdlineArgs.GeneratingPrimaryBuilder = generatingPrimaryBuilder
-	deps := RunBlueprint(CmdlineArgs, ctx, config, extraNinjaFileDeps...)
-	err := deptools.WriteDepFile(CmdlineArgs.DepFile, CmdlineArgs.OutFile, deps)
+	ninjaDeps := RunBlueprint(CmdlineArgs, ctx, config)
+	err := deptools.WriteDepFile(CmdlineArgs.DepFile, CmdlineArgs.OutFile, ninjaDeps)
 	if err != nil {
 		fatalf("Cannot write depfile '%s': %s", CmdlineArgs.DepFile, err)
 	}
@@ -133,7 +133,11 @@ func writeEmptyGlobFile(path string) {
 		}
 	}
 }
-func RunBlueprint(args Args, ctx *blueprint.Context, config interface{}, extraNinjaFileDeps ...string) []string {
+
+// Returns the list of dependencies the emitted Ninja files has. These can be
+// written to the .d file for the output so that it is correctly rebuilt when
+// needed in case Blueprint is itself invoked from Ninja
+func RunBlueprint(args Args, ctx *blueprint.Context, config interface{}) []string {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	if args.NoGC {
@@ -164,9 +168,11 @@ func RunBlueprint(args Args, ctx *blueprint.Context, config interface{}, extraNi
 
 	srcDir := filepath.Dir(args.TopFile)
 
+	ninjaDeps := make([]string, 0)
+
 	if args.ModuleListFile != "" {
 		ctx.SetModuleListFile(args.ModuleListFile)
-		extraNinjaFileDeps = append(extraNinjaFileDeps, args.ModuleListFile)
+		ninjaDeps = append(ninjaDeps, args.ModuleListFile)
 	} else {
 		fatalf("-l <moduleListFile> is required and must be nonempty")
 	}
@@ -220,19 +226,19 @@ func RunBlueprint(args Args, ctx *blueprint.Context, config interface{}, extraNi
 
 	ctx.RegisterSingletonType("glob", globSingletonFactory(ctx))
 
-	deps, errs := ctx.ParseFileList(filepath.Dir(args.TopFile), filesToParse, config)
+	blueprintFiles, errs := ctx.ParseFileList(filepath.Dir(args.TopFile), filesToParse, config)
 	if len(errs) > 0 {
 		fatalErrors(errs)
 	}
 
 	// Add extra ninja file dependencies
-	deps = append(deps, extraNinjaFileDeps...)
+	ninjaDeps = append(ninjaDeps, blueprintFiles...)
 
 	extraDeps, errs := ctx.ResolveDependencies(config)
 	if len(errs) > 0 {
 		fatalErrors(errs)
 	}
-	deps = append(deps, extraDeps...)
+	ninjaDeps = append(ninjaDeps, extraDeps...)
 
 	if args.DocFile != "" {
 		err := writeDocs(ctx, config, absolutePath(args.DocFile))
@@ -244,7 +250,7 @@ func RunBlueprint(args Args, ctx *blueprint.Context, config interface{}, extraNi
 
 	if c, ok := config.(ConfigStopBefore); ok {
 		if c.StopBefore() == StopBeforePrepareBuildActions {
-			return deps
+			return ninjaDeps
 		}
 	}
 
@@ -252,11 +258,11 @@ func RunBlueprint(args Args, ctx *blueprint.Context, config interface{}, extraNi
 	if len(errs) > 0 {
 		fatalErrors(errs)
 	}
-	deps = append(deps, extraDeps...)
+	ninjaDeps = append(ninjaDeps, extraDeps...)
 
 	if c, ok := config.(ConfigStopBefore); ok {
 		if c.StopBefore() == StopBeforeWriteNinja {
-			return deps
+			return ninjaDeps
 		}
 	}
 
@@ -330,7 +336,7 @@ func RunBlueprint(args Args, ctx *blueprint.Context, config interface{}, extraNi
 		pprof.WriteHeapProfile(f)
 	}
 
-	return deps
+	return ninjaDeps
 }
 
 func fatalf(format string, args ...interface{}) {
