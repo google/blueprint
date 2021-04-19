@@ -175,7 +175,7 @@ func RunBlueprint(args Args, ctx *blueprint.Context, config interface{}, extraNi
 		fatalf("could not enumerate files: %v\n", err.Error())
 	}
 
-	buildDir := args.BuildDir
+	buildDir := config.(BootstrapConfig).BuildDir()
 
 	stage := StageMain
 	if args.GeneratingPrimaryBuilder {
