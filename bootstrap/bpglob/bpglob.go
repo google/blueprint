@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/blueprint/deptools"
 	"github.com/google/blueprint/pathtools"
 )
 
@@ -38,13 +39,14 @@ var (
 
 	out = flagSet.String("o", "", "file to write list of files that match glob")
 
-	excludes     multiArg
 	versionMatch versionArg
+	globs        []globArg
 )
 
 func init() {
 	flagSet.Var(&versionMatch, "v", "version number the command line was generated for")
-	flagSet.Var(&excludes, "e", "pattern to exclude from results")
+	flagSet.Var((*patternsArgs)(&globs), "p", "pattern to include in results")
+	flagSet.Var((*excludeArgs)(&globs), "e", "pattern to exclude from results from the most recent pattern")
 }
 
 // bpglob is executed through the rules in build-globs.ninja to determine whether soong_build
@@ -90,23 +92,42 @@ func (v *versionArg) Set(s string) error {
 	return nil
 }
 
-type multiArg []string
-
-func (m *multiArg) String() string {
-	return `""`
+// A glob arg holds a single -p argument with zero or more following -e arguments.
+type globArg struct {
+	pattern  string
+	excludes []string
 }
 
-func (m *multiArg) Set(s string) error {
-	*m = append(*m, s)
+// patternsArgs implements flag.Value to handle -p arguments by adding a new globArg to the list.
+type patternsArgs []globArg
+
+func (p *patternsArgs) String() string { return `""` }
+
+func (p *patternsArgs) Set(s string) error {
+	globs = append(globs, globArg{
+		pattern: s,
+	})
 	return nil
 }
 
-func (m *multiArg) Get() interface{} {
-	return m
+// excludeArgs implements flag.Value to handle -e arguments by adding to the last globArg in the
+// list.
+type excludeArgs []globArg
+
+func (e *excludeArgs) String() string { return `""` }
+
+func (e *excludeArgs) Set(s string) error {
+	if len(*e) == 0 {
+		return fmt.Errorf("-p argument is required before the first -e argument")
+	}
+
+	glob := &(*e)[len(*e)-1]
+	glob.excludes = append(glob.excludes, s)
+	return nil
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: bpglob -o out -v version [-e excludes ...] glob")
+	fmt.Fprintln(os.Stderr, "usage: bpglob -o out -v version -p glob [-e excludes ...] [-p glob ...]")
 	flagSet.PrintDefaults()
 	os.Exit(2)
 }
@@ -143,11 +164,11 @@ func main() {
 		usage()
 	}
 
-	if flagSet.NArg() != 1 {
+	if flagSet.NArg() > 0 {
 		usage()
 	}
 
-	_, err = pathtools.GlobWithDepFile(flagSet.Arg(0), *out, *out+".d", excludes)
+	err = globsWithDepFile(*out, *out+".d", globs)
 	if err != nil {
 		// Globs here were already run in the primary builder without error.  The only errors here should be if the glob
 		// pattern was made invalid by a change in the pathtools glob implementation, in which case the primary builder
@@ -166,4 +187,38 @@ func writeErrorOutput(path string, globErr error) {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err.Error())
 		os.Exit(1)
 	}
+}
+
+// globsWithDepFile finds all files and directories that match glob.  Directories
+// will have a trailing '/'.  It compares the list of matches against the
+// contents of fileListFile, and rewrites fileListFile if it has changed.  It
+// also writes all of the directories it traversed as dependencies on fileListFile
+// to depFile.
+//
+// The format of glob is either path/*.ext for a single directory glob, or
+// path/**/*.ext for a recursive glob.
+func globsWithDepFile(fileListFile, depFile string, globs []globArg) error {
+	var results pathtools.MultipleGlobResults
+	for _, glob := range globs {
+		result, err := pathtools.Glob(glob.pattern, glob.excludes, pathtools.FollowSymlinks)
+		if err != nil {
+			return err
+		}
+		results = append(results, result)
+	}
+
+	// Only write the output file if it has changed.
+	err := pathtools.WriteFileIfChanged(fileListFile, results.FileList(), 0666)
+	if err != nil {
+		return fmt.Errorf("failed to write file list to %q: %w", fileListFile, err)
+	}
+
+	// The depfile can be written unconditionally as its timestamp doesn't affect ninja's restat
+	// feature.
+	err = deptools.WriteDepFile(depFile, fileListFile, results.Deps())
+	if err != nil {
+		return fmt.Errorf("failed to write dep file to %q: %w", depFile, err)
+	}
+
+	return nil
 }

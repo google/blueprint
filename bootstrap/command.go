@@ -224,7 +224,7 @@ func RunBlueprint(args Args, ctx *blueprint.Context, config interface{}) []strin
 	ctx.RegisterModuleType("blueprint_go_binary", newGoBinaryModuleFactory(bootstrapConfig, true))
 	ctx.RegisterSingletonType("bootstrap", newSingletonFactory(bootstrapConfig))
 
-	ctx.RegisterSingletonType("glob", globSingletonFactory(ctx))
+	ctx.RegisterSingletonType("glob", globSingletonFactory(bootstrapConfig, ctx))
 
 	blueprintFiles, errs := ctx.ParseFileList(filepath.Dir(args.TopFile), filesToParse, config)
 	if len(errs) > 0 {
@@ -289,7 +289,7 @@ func RunBlueprint(args Args, ctx *blueprint.Context, config interface{}) []strin
 	}
 
 	if args.GlobFile != "" {
-		buffer, errs := generateGlobNinjaFile(config, ctx.Globs)
+		buffer, errs := generateGlobNinjaFile(bootstrapConfig, config, ctx.Globs)
 		if len(errs) > 0 {
 			fatalErrors(errs)
 		}
