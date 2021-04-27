@@ -2081,6 +2081,11 @@ func parallelVisit(modules []*moduleInfo, order visitOrderer, limit int,
 			// modules to the modules that would have been unblocked when that module finished, i.e
 			// the reverse of the visitOrderer.
 
+			// In order to reduce duplicated work, once a module has been checked and determined
+			// not to be part of a cycle add it and everything that depends on it to the checked
+			// map.
+			checked := make(map[*moduleInfo]struct{})
+
 			var check func(module, end *moduleInfo) []*moduleInfo
 			check = func(module, end *moduleInfo) []*moduleInfo {
 				if module.waitingCount == -1 {
@@ -2090,6 +2095,10 @@ func parallelVisit(modules []*moduleInfo, order visitOrderer, limit int,
 				if module == end {
 					// This module is the end of the loop, start rolling up the cycle.
 					return []*moduleInfo{module}
+				}
+
+				if _, alreadyChecked := checked[module]; alreadyChecked {
+					return nil
 				}
 
 				for _, dep := range order.propagate(module) {
@@ -2105,6 +2114,7 @@ func parallelVisit(modules []*moduleInfo, order visitOrderer, limit int,
 					}
 				}
 
+				checked[module] = struct{}{}
 				return nil
 			}
 
