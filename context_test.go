@@ -994,9 +994,9 @@ func Test_parallelVisit(t *testing.T) {
 			})
 		want := []string{
 			`encountered dependency cycle`,
-			`"C" depends on "A"`,
-			`"A" depends on "B"`,
-			`"B" depends on "C"`,
+			`module "C" depends on module "A"`,
+			`module "A" depends on module "B"`,
+			`module "B" depends on module "C"`,
 		}
 		for i := range want {
 			if len(errs) <= i {
@@ -1030,8 +1030,8 @@ func Test_parallelVisit(t *testing.T) {
 			})
 		want := []string{
 			`encountered dependency cycle`,
-			`"D" depends on "C"`,
-			`"C" depends on "D"`,
+			`module "D" depends on module "C"`,
+			`module "C" depends on module "D"`,
 		}
 		for i := range want {
 			if len(errs) <= i {
@@ -1067,8 +1067,8 @@ func Test_parallelVisit(t *testing.T) {
 			})
 		want := []string{
 			`encountered dependency cycle`,
-			`"G" depends on "F"`,
-			`"F" depends on "G"`,
+			`module "G" depends on module "F"`,
+			`module "F" depends on module "G"`,
 		}
 		for i := range want {
 			if len(errs) <= i {

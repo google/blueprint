@@ -2158,9 +2158,8 @@ func cycleError(cycle []*moduleInfo) (errs []error) {
 	for i := len(cycle) - 1; i >= 0; i-- {
 		nextModule := cycle[i]
 		errs = append(errs, &BlueprintError{
-			Err: fmt.Errorf("    %q depends on %q",
-				curModule.Name(),
-				nextModule.Name()),
+			Err: fmt.Errorf("    %s depends on %s",
+				curModule, nextModule),
 			Pos: curModule.pos,
 		})
 		curModule = nextModule
