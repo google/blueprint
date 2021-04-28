@@ -1102,9 +1102,11 @@ func (mctx *mutatorContext) AddDependency(module Module, tag DependencyTag, deps
 		if len(errs) > 0 {
 			mctx.errs = append(mctx.errs, errs...)
 		}
-		if mctx.pause(depInfo) {
-			depInfos = append(depInfos, maybeLogicModule(depInfo))
+		if !mctx.pause(depInfo) {
+			// Pausing not supported by this mutator, new dependencies can't be returned.
+			depInfo = nil
 		}
+		depInfos = append(depInfos, maybeLogicModule(depInfo))
 	}
 	return depInfos
 }
@@ -1135,9 +1137,11 @@ func (mctx *mutatorContext) AddVariationDependencies(variations []Variation, tag
 		if len(errs) > 0 {
 			mctx.errs = append(mctx.errs, errs...)
 		}
-		if mctx.pause(depInfo) {
-			depInfos = append(depInfos, maybeLogicModule(depInfo))
+		if !mctx.pause(depInfo) {
+			// Pausing not supported by this mutator, new dependencies can't be returned.
+			depInfo = nil
 		}
+		depInfos = append(depInfos, maybeLogicModule(depInfo))
 	}
 	return depInfos
 }
@@ -1151,9 +1155,11 @@ func (mctx *mutatorContext) AddFarVariationDependencies(variations []Variation, 
 		if len(errs) > 0 {
 			mctx.errs = append(mctx.errs, errs...)
 		}
-		if mctx.pause(depInfo) {
-			depInfos = append(depInfos, maybeLogicModule(depInfo))
+		if !mctx.pause(depInfo) {
+			// Pausing not supported by this mutator, new dependencies can't be returned.
+			depInfo = nil
 		}
+		depInfos = append(depInfos, maybeLogicModule(depInfo))
 	}
 	return depInfos
 }

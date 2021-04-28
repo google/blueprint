@@ -68,6 +68,15 @@ func addVariantDepsMutator(variants []Variation, tag DependencyTag, from, to str
 	}
 }
 
+func addVariantDepsResultMutator(variants []Variation, tag DependencyTag, from, to string, results map[string][]Module) func(ctx BottomUpMutatorContext) {
+	return func(ctx BottomUpMutatorContext) {
+		if ctx.ModuleName() == from {
+			ret := ctx.AddVariationDependencies(variants, tag, to)
+			results[ctx.ModuleName()] = ret
+		}
+	}
+}
+
 func TestAliasVariation(t *testing.T) {
 	runWithFailures := func(ctx *Context, expectedErr string) {
 		t.Helper()
@@ -314,6 +323,141 @@ func expectedErrors(t *testing.T, errs []error, expectedMessages ...string) {
 			}
 		}
 	}
+}
+
+func TestAddVariationDependencies(t *testing.T) {
+	runWithFailures := func(ctx *Context, expectedErr string) {
+		t.Helper()
+		bp := `
+			test {
+				name: "foo",
+			}
+
+			test {
+				name: "bar",
+			}
+		`
+
+		mockFS := map[string][]byte{
+			"Blueprints": []byte(bp),
+		}
+
+		ctx.MockFileSystem(mockFS)
+
+		_, errs := ctx.ParseFileList(".", []string{"Blueprints"}, nil)
+		if len(errs) > 0 {
+			t.Errorf("unexpected parse errors:")
+			for _, err := range errs {
+				t.Errorf("  %s", err)
+			}
+		}
+
+		_, errs = ctx.ResolveDependencies(nil)
+		if len(errs) > 0 {
+			if expectedErr == "" {
+				t.Errorf("unexpected dep errors:")
+				for _, err := range errs {
+					t.Errorf("  %s", err)
+				}
+			} else {
+				for _, err := range errs {
+					if strings.Contains(err.Error(), expectedErr) {
+						continue
+					} else {
+						t.Errorf("unexpected dep error: %s", err)
+					}
+				}
+			}
+		} else if expectedErr != "" {
+			t.Errorf("missing dep error: %s", expectedErr)
+		}
+	}
+
+	run := func(ctx *Context) {
+		t.Helper()
+		runWithFailures(ctx, "")
+	}
+
+	t.Run("parallel", func(t *testing.T) {
+		ctx := NewContext()
+		ctx.RegisterModuleType("test", newModuleCtxTestModule)
+		results := make(map[string][]Module)
+		depsMutator := addVariantDepsResultMutator(nil, nil, "foo", "bar", results)
+		ctx.RegisterBottomUpMutator("deps", depsMutator).Parallel()
+
+		run(ctx)
+
+		foo := ctx.moduleGroupFromName("foo", nil).moduleByVariantName("")
+		bar := ctx.moduleGroupFromName("bar", nil).moduleByVariantName("")
+
+		if g, w := foo.forwardDeps, []*moduleInfo{bar}; !reflect.DeepEqual(g, w) {
+			t.Fatalf("expected foo deps to be %q, got %q", w, g)
+		}
+
+		if g, w := results["foo"], []Module{bar.logicModule}; !reflect.DeepEqual(g, w) {
+			t.Fatalf("expected AddVariationDependencies return value to be %q, got %q", w, g)
+		}
+	})
+
+	t.Run("non-parallel", func(t *testing.T) {
+		ctx := NewContext()
+		ctx.RegisterModuleType("test", newModuleCtxTestModule)
+		results := make(map[string][]Module)
+		depsMutator := addVariantDepsResultMutator(nil, nil, "foo", "bar", results)
+		ctx.RegisterBottomUpMutator("deps", depsMutator)
+		run(ctx)
+
+		foo := ctx.moduleGroupFromName("foo", nil).moduleByVariantName("")
+		bar := ctx.moduleGroupFromName("bar", nil).moduleByVariantName("")
+
+		if g, w := foo.forwardDeps, []*moduleInfo{bar}; !reflect.DeepEqual(g, w) {
+			t.Fatalf("expected foo deps to be %q, got %q", w, g)
+		}
+
+		if g, w := results["foo"], []Module{nil}; !reflect.DeepEqual(g, w) {
+			t.Fatalf("expected AddVariationDependencies return value to be %q, got %q", w, g)
+		}
+	})
+
+	t.Run("missing", func(t *testing.T) {
+		ctx := NewContext()
+		ctx.RegisterModuleType("test", newModuleCtxTestModule)
+		results := make(map[string][]Module)
+		depsMutator := addVariantDepsResultMutator(nil, nil, "foo", "baz", results)
+		ctx.RegisterBottomUpMutator("deps", depsMutator).Parallel()
+		runWithFailures(ctx, `"foo" depends on undefined module "baz"`)
+
+		foo := ctx.moduleGroupFromName("foo", nil).moduleByVariantName("")
+
+		if g, w := foo.forwardDeps, []*moduleInfo(nil); !reflect.DeepEqual(g, w) {
+			t.Fatalf("expected foo deps to be %q, got %q", w, g)
+		}
+
+		if g, w := results["foo"], []Module{nil}; !reflect.DeepEqual(g, w) {
+			t.Fatalf("expected AddVariationDependencies return value to be %q, got %q", w, g)
+		}
+	})
+
+	t.Run("allow missing", func(t *testing.T) {
+		ctx := NewContext()
+		ctx.SetAllowMissingDependencies(true)
+		ctx.RegisterModuleType("test", newModuleCtxTestModule)
+		results := make(map[string][]Module)
+		depsMutator := addVariantDepsResultMutator(nil, nil, "foo", "baz", results)
+		ctx.RegisterBottomUpMutator("deps", depsMutator).Parallel()
+		run(ctx)
+
+		foo := ctx.moduleGroupFromName("foo", nil).moduleByVariantName("")
+
+		if g, w := foo.forwardDeps, []*moduleInfo(nil); !reflect.DeepEqual(g, w) {
+			t.Fatalf("expected foo deps to be %q, got %q", w, g)
+		}
+
+		if g, w := results["foo"], []Module{nil}; !reflect.DeepEqual(g, w) {
+			t.Fatalf("expected AddVariationDependencies return value to be %q, got %q", w, g)
+		}
+	})
+
 }
 
 func TestCheckBlueprintSyntax(t *testing.T) {
